@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import httpx
-from app.db import (
+from .db import (
     save_message,
     get_history,
     list_conversations,
@@ -19,8 +19,8 @@ from app.db import (
     get_projects,
     delete_project
 )
-from app.plans import PLANS
-from app.orchestrator import generate_response
+from .plans import PLANS
+from .orchestrator import generate_response
 
 logger = logging.getLogger("main")
 app = FastAPI(title="Likeway AI Python Backend", version="1.0.0")

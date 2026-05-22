@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Set, Optional
 import httpx
-from app.config import API_KEYS
+from .config import API_KEYS
 
 logger = logging.getLogger("api_manager")
 logging.basicConfig(level=logging.INFO)

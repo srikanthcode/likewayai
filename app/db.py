@@ -1,7 +1,7 @@
 import datetime
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
-from app.config import API_KEYS
+from .config import API_KEYS
 
 # Initialize Async MongoDB Client utilizing the credentials loaded from config
 client = AsyncIOMotorClient(API_KEYS["mongodb_uri"])

@@ -4,10 +4,10 @@ import re
 import logging
 from typing import List, Dict, Any, Optional
 import httpx
-from app.models import MODELS
-from app.plans import PLANS
-from app.api_manager import fetch_ai
-from app.rag import get_context
+from .models import MODELS
+from .plans import PLANS
+from .api_manager import fetch_ai
+from .rag import get_context
 
 logger = logging.getLogger("orchestrator")
 
