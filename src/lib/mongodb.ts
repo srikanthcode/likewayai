@@ -20,7 +20,7 @@ function createClientPromise(): Promise<MongoClient> {
     // This allows the build to complete without MongoDB configuration
     const mockClient = {
       db: () => ({
-        collection: () => ({
+        collection: <T = any>() => ({
           findOne: () => Promise.resolve(null),
           find: () => ({ toArray: () => Promise.resolve([]) }),
           insertOne: () => Promise.resolve({ acknowledged: true }),
