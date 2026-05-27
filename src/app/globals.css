@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
+}
+
+/* Premium Prose Typography System */
+.prose {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.625;
+  font-size: 0.95rem;
+  color: inherit;
+}
+
+/* Paragraphs */
+.prose p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: inherit;
+  opacity: 0.92;
+}
+
+/* Headings */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  color: inherit;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+.prose h1 { font-size: 1.5rem; }
+.prose h2 { font-size: 1.3rem; }
+.prose h3 { font-size: 1.15rem; }
+
+/* Lists */
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.prose li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Links */
+.prose a {
+  color: #06b6d4; /* cyan-500 */
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+.prose a:hover {
+  opacity: 0.8;
+}
+
+/* Blockquotes */
+.prose blockquote {
+  border-left: 3px solid #06b6d4; /* cyan-500 */
+  padding-left: 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+/* Inline Code */
+.prose code {
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 0.85em;
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.dark .prose code {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Bold/Strong */
+.prose strong {
+  font-weight: 700;
+  color: inherit;
+}
