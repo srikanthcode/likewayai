@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRazorpaySubscription } from "@/lib/razorpay";
 import { PLANS, PlanType } from "@/lib/plans";
 
 export const runtime = "nodejs";
@@ -25,6 +24,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const { createRazorpaySubscription } = await import("@/lib/razorpay");
     const subscription = await createRazorpaySubscription(plan.razorpayPlanId, { userId });
 
     return NextResponse.json({
