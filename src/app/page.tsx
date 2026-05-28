@@ -1833,21 +1833,15 @@ export default function ChatPage() {
               Searching the web
             </span>
           </div>
-        ) : m.status === 'streaming' ? (
+        ) : m.status === 'streaming' || m.status === 'typing' || !m.content ? (
                           <div className={cn(
                             "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
                             <ReactMarkdown components={buildMarkdownComponents(theme)}>
-                              {formatAIResponse(m.content)}
+                              {formatAIResponse(m.content || "Thinking...")}
                             </ReactMarkdown>
                             <span className="inline-block w-[2px] h-[1em] bg-cyan-400 ml-0.5 align-middle animate-pulse" />
-                          </div>
-                        ) : m.status === 'typing' ? (
-                          <div className="flex items-center gap-1.5 py-2 px-3 h-8">
-                             <motion.div animate={{ y: [0, -3, 0], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0 }} className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
-                             <motion.div animate={{ y: [0, -3, 0], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.2 }} className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
-                             <motion.div animate={{ y: [0, -3, 0], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.4 }} className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
                           </div>
                         ) : (
                           <div className={cn(
