@@ -57,3 +57,4 @@ likeway/
 likeway-backend/
 .vercel-tmp/
 h origin HEAD
+.env*
