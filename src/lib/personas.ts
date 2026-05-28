@@ -1,5 +1,5 @@
 import clientPromise from "./mongodb";
-import { ObjectId } from "mongodb";
+import { ObjectId, Collection } from "mongodb";
 
 export interface Persona {
     id?: string;
@@ -16,14 +16,14 @@ export interface Persona {
 export async function getPersonas(userId: string) {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Persona>("personas");
+    const collection: Collection<Persona> = db.collection("personas");
     return await collection.find({ userId }).toArray();
 }
 
 export async function savePersona(persona: Persona) {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Persona>("personas");
+    const collection: Collection<Persona> = db.collection("personas");
     
     if (persona.id) {
         const { id, ...data } = persona;
@@ -36,6 +36,6 @@ export async function savePersona(persona: Persona) {
 export async function deletePersona(id: string) {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection("personas");
+    const collection: Collection<Persona> = db.collection("personas");
     return await collection.deleteOne({ _id: new ObjectId(id) });
 }

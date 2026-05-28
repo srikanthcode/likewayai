@@ -1,5 +1,5 @@
 import clientPromise from "./mongodb";
-import { ObjectId } from "mongodb";
+import { ObjectId, Collection } from "mongodb";
 
 export type SubscriptionStatus = "active" | "authenticated" | "cancelled" | "expired" | "pending";
 
@@ -15,7 +15,7 @@ export async function getUserPlan(userId: string): Promise<UserSubscription> {
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<UserSubscription>("users");
+    const collection: Collection<UserSubscription> = db.collection("users");
 
     const user = await collection.findOne({ userId });
     
@@ -49,7 +49,7 @@ export async function updateUserSubscription(
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<UserSubscription>("users");
+    const collection: Collection<UserSubscription> = db.collection("users");
 
     await collection.updateOne(
       { userId },

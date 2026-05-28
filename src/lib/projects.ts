@@ -1,5 +1,5 @@
 import clientPromise from "./mongodb";
-import { ObjectId } from "mongodb";
+import { ObjectId, Collection } from "mongodb";
 
 export interface Project {
   _id?: ObjectId;
@@ -17,7 +17,7 @@ export async function createProject(project: Omit<Project, "_id" | "createdAt" |
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Project>("projects");
+    const collection: Collection<Project> = db.collection("projects");
 
     const newProject: Project = {
       ...project,
@@ -37,7 +37,7 @@ export async function getProjects(userId: string): Promise<Project[]> {
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Project>("projects");
+    const collection: Collection<Project> = db.collection("projects");
 
     return await collection.find({ userId }).toArray();
   } catch (error) {
@@ -50,7 +50,7 @@ export async function deleteProject(projectId: string) {
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Project>("projects");
+    const collection: Collection<Project> = db.collection("projects");
 
     await collection.deleteOne({ _id: new ObjectId(projectId) });
   } catch (error) {
