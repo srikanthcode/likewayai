@@ -1,16 +1,30 @@
 import Razorpay from "razorpay";
 
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  console.warn("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is not set in environment variables.");
-}
+let razorpayInstance: Razorpay | null = null;
 
-export const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || "",
-  key_secret: process.env.RAZORPAY_KEY_SECRET || "",
-});
+export const getRazorpay = () => {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    console.warn("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is not set in environment variables.");
+    return null;
+  }
+
+  if (!razorpayInstance) {
+    razorpayInstance = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  }
+
+  return razorpayInstance;
+};
 
 export const createRazorpayPlan = async (name: string, amount: number, description: string) => {
   try {
+    const razorpay = getRazorpay();
+    if (!razorpay) {
+      throw new Error("Razorpay is not configured");
+    }
+
     const plan = await razorpay.plans.create({
       period: "monthly",
       interval: 1,
@@ -30,6 +44,11 @@ export const createRazorpayPlan = async (name: string, amount: number, descripti
 
 export const createRazorpaySubscription = async (planId: string, notes: Record<string, string> = {}, customerNotify: boolean = true) => {
   try {
+    const razorpay = getRazorpay();
+    if (!razorpay) {
+      throw new Error("Razorpay is not configured");
+    }
+
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       customer_notify: customerNotify ? 1 : 0,
