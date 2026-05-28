@@ -1308,28 +1308,7 @@ export default function ChatPage() {
             </button>
           </div>
 
-          <div className="px-3 mb-6">
-            <div className={cn(
-              "p-3 rounded-2xl border transition-all flex flex-col gap-2",
-              theme === 'dark' ? "bg-cyan-500/5 border-white/5" : "bg-cyan-50 border-cyan-100"
-            )}>
-              <div className="flex items-center gap-2">
-                 <Zap size={14} className="text-cyan-500" />
-                 <span className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'dark' ? "text-cyan-400" : "text-cyan-600")}>Pro Insights</span>
-              </div>
-              <div className="space-y-1">
-                 <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-gray-500">Latency</span>
-                    <span className="text-emerald-500 font-bold">142ms</span>
-                 </div>
-                 <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-gray-500">Reasoning Depth</span>
-                    <span className="text-cyan-500 font-bold">L4 Expert</span>
-                 </div>
-              </div>
-            </div>
-          </div>
-
+          
           <div>
             <h3 className="px-3 text-xs font-semibold text-gray-500 mb-1">Like</h3>
             <div className="space-y-0.5">
