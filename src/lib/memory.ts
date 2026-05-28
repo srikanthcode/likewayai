@@ -1,5 +1,5 @@
 import clientPromise from "./mongodb";
-import { ObjectId } from "mongodb";
+import { ObjectId, Collection } from "mongodb";
 
 export type Message = {
   role: "user" | "assistant" | "system";
@@ -19,7 +19,7 @@ export async function saveMessage(userId: string, message: Omit<Message, "timest
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Conversation>("chatmemories");
+    const collection: Collection<Conversation> = db.collection("chatmemories");
 
     const fullMessage: Message = {
       ...message,
@@ -50,7 +50,7 @@ export async function getHistory(userId: string, limit: number = 20, projectId: 
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Conversation>("chatmemories") as any;
+    const collection: Collection<Conversation> = db.collection("chatmemories") as any;
 
     const query = conversationId ? { _id: new ObjectId(conversationId) } : { userId, projectId: projectId || "default" };
     const conversation = await collection.findOne(query);
@@ -66,7 +66,7 @@ export async function listConversations(userId: string, limit: number = 20): Pro
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Conversation>("chatmemories");
+    const collection: Collection<Conversation> = db.collection("chatmemories");
 
     const conversations = await collection.find({ userId })
       .sort({ updatedAt: -1 })
@@ -89,7 +89,7 @@ export async function clearHistory(userId: string, projectId: string = "default"
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Conversation>("chatmemories") as any;
+    const collection: Collection<Conversation> = db.collection("chatmemories") as any;
 
     await collection.deleteOne({ userId, projectId: projectId || "default" });
 
@@ -102,7 +102,7 @@ export async function deleteConversation(userId: string, conversationId: string)
   try {
     const client = await clientPromise;
     const db = client.db("zynthex_ai");
-    const collection = db.collection<Conversation>("chatmemories");
+    const collection: Collection<Conversation> = db.collection("chatmemories");
 
     await collection.deleteOne({ _id: new ObjectId(conversationId), userId });
 
