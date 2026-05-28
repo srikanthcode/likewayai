@@ -1,7 +1,7 @@
 import clientPromise from "./mongodb";
 import { ObjectId, Collection } from "mongodb";
 
-const DB_NAME = process.env.MONGODB_DB_NAME || "zynthex_ai";
+const DB_NAME = process.env.MONGODB_DB_NAME || process.env.MONGODB_DB || "zynthex_ai";
 
 export type Message = {
   role: "user" | "assistant" | "system";
