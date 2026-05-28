@@ -1,6 +1,8 @@
 import clientPromise from "./mongodb";
 import { ObjectId, Collection } from "mongodb";
 
+const DB_NAME = process.env.MONGODB_DB_NAME || "zynthex_ai";
+
 export type Message = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -18,7 +20,7 @@ export type Conversation = {
 export async function saveMessage(userId: string, message: Omit<Message, "timestamp">, projectId: string = "default", conversationId?: string) {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Conversation> = db.collection("chatmemories");
 
     const fullMessage: Message = {
@@ -49,7 +51,7 @@ export async function saveMessage(userId: string, message: Omit<Message, "timest
 export async function getHistory(userId: string, limit: number = 20, projectId: string = "default", conversationId?: string): Promise<Message[]> {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Conversation> = db.collection("chatmemories") as any;
 
     const query = conversationId ? { _id: new ObjectId(conversationId) } : { userId, projectId: projectId || "default" };
@@ -65,7 +67,7 @@ export async function getHistory(userId: string, limit: number = 20, projectId: 
 export async function listConversations(userId: string, limit: number = 20): Promise<{_id: string, title: string, updatedAt: Date}[]> {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Conversation> = db.collection("chatmemories");
 
     const conversations = await collection.find({ userId })
@@ -74,6 +76,7 @@ export async function listConversations(userId: string, limit: number = 20): Pro
       .project({ _id: 1, messages: { $slice: 1 }, updatedAt: 1 })
       .toArray();
 
+    console.log(`[Chat History] Found ${conversations.length} conversations for user: ${userId}`);
     return conversations.map(c => ({
       _id: c._id!.toString(),
       title: c.messages[0]?.content.substring(0, 40) || "Untitled Chat",
@@ -88,7 +91,7 @@ export async function listConversations(userId: string, limit: number = 20): Pro
 export async function clearHistory(userId: string, projectId: string = "default") {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Conversation> = db.collection("chatmemories") as any;
 
     await collection.deleteOne({ userId, projectId: projectId || "default" });
@@ -101,7 +104,7 @@ export async function clearHistory(userId: string, projectId: string = "default"
 export async function deleteConversation(userId: string, conversationId: string) {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Conversation> = db.collection("chatmemories");
 
     await collection.deleteOne({ _id: new ObjectId(conversationId), userId });
@@ -114,7 +117,7 @@ export async function deleteConversation(userId: string, conversationId: string)
 export async function checkUsageLimit(userId: string, limit: number): Promise<{ allowed: boolean; current: number }> {
     try {
         const client = await clientPromise;
-        const db = client.db("zynthex_ai");
+        const db = client.db(DB_NAME);
         const collection = db.collection("usage");
 
         const today = new Date().toDateString();
@@ -131,7 +134,7 @@ export async function checkUsageLimit(userId: string, limit: number): Promise<{ 
 export async function incrementUsage(userId: string) {
     try {
         const client = await clientPromise;
-        const db = client.db("zynthex_ai");
+        const db = client.db(DB_NAME);
         const collection = db.collection("usage");
 
         const today = new Date().toDateString();
@@ -151,7 +154,7 @@ export async function incrementUsage(userId: string) {
 export async function checkRateLimit(userId: string, limitPerMinute: number = 20): Promise<boolean> {
     try {
         const client = await clientPromise;
-        const db = client.db("zynthex_ai");
+        const db = client.db(DB_NAME);
         const collection = db.collection("rate_limits");
 
         const now = Date.now();
