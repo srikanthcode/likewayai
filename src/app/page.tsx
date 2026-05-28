@@ -1768,7 +1768,7 @@ export default function ChatPage() {
             className="flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-2 px-6 sm:pt-6 sm:pb-4 sm:px-10 scrollbar-hide flex flex-col custom-scrollbar"
           >
           <div className="max-w-3xl mx-auto space-y-4 flex-1 flex flex-col w-full">
-            {false && (
+            {messages.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {/* Icon removed per user request */}
 
