@@ -1,4 +1,4 @@
-import { MongoClient, MongoClientOptions } from "mongodb";
+import { MongoClient, MongoClientOptions, Collection, Document } from "mongodb";
 
 const rawUri = process.env.MONGODB_URI || "";
 const uri = rawUri.replace(/[&?]tlsAllowInvalidCertificates=true/gi, "");
@@ -20,13 +20,13 @@ function createClientPromise(): Promise<MongoClient> {
     // This allows the build to complete without MongoDB configuration
     const mockClient = {
       db: () => ({
-        collection: <T = any>() => ({
+        collection: <T extends Document = any>(name: string): Collection<T> => ({
           findOne: () => Promise.resolve(null),
           find: () => ({ toArray: () => Promise.resolve([]) }),
           insertOne: () => Promise.resolve({ acknowledged: true }),
           updateOne: () => Promise.resolve({ acknowledged: true }),
           deleteOne: () => Promise.resolve({ acknowledged: true }),
-        }),
+        } as unknown as Collection<T>),
       }),
       connect: () => Promise.resolve(),
       close: () => Promise.resolve(),
