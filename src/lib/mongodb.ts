@@ -54,10 +54,14 @@ export function getClientPromise(): Promise<MongoClient> {
 }
 
 // For backward compatibility, export a default that creates on first access
-export default new Proxy({} as any, {
-  get() {
-    return getClientPromise();
-  }
+export default new Proxy({} as Promise<MongoClient>, {
+  get(_target, prop) {
+    const promise = getClientPromise();
+    if (prop === "then" || prop === "catch" || prop === "finally") {
+      return (promise as any)[prop].bind(promise);
+    }
+    return (promise as any)[prop];
+  },
 });
 
 export function isMongoConfigured(): boolean {

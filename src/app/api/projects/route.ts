@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProject, getProjects } from "@/lib/projects";
 
+export const runtime = "nodejs";
+
 export async function GET(req: NextRequest) {
   try {
     const userId = req.headers.get("x-user-id") || "anonymous-user";

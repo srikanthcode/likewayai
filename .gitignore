@@ -40,3 +40,17 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Python virtual environments
+.venv/
+*.pyc
+__pycache__/
+
+# Leftover / demo directories
+frontend/
+backend/
+python_backend/
+searxng-src/
+streaming-demo/
+scripts/
+h origin HEAD

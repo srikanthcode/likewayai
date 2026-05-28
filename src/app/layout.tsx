@@ -1,12 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthInit from "@/components/auth-init";
+
+export const viewport: Viewport = {
+  themeColor: "#050505",
+};
 
 export const metadata: Metadata = {
   title: "AI Assistant",
   description: "Next-gen AI Orchestrator with Deep Research & Infinite Context.",
   manifest: "/manifest.json",
-  themeColor: "#050505",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

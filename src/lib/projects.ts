@@ -36,7 +36,7 @@ export async function createProject(project: Omit<Project, "_id" | "createdAt" |
 export async function getProjects(userId: string): Promise<Project[]> {
   try {
     const client = await clientPromise;
-    const db = client.db("gemma-ai");
+    const db = client.db("zynthex_ai");
     const collection = db.collection<Project>("projects");
 
     return await collection.find({ userId }).toArray();
@@ -49,7 +49,7 @@ export async function getProjects(userId: string): Promise<Project[]> {
 export async function deleteProject(projectId: string) {
   try {
     const client = await clientPromise;
-    const db = client.db("gemma-ai");
+    const db = client.db("zynthex_ai");
     const collection = db.collection<Project>("projects");
 
     await collection.deleteOne({ _id: new ObjectId(projectId) });

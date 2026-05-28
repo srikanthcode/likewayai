@@ -3,6 +3,8 @@ import crypto from "crypto";
 import { updateUserSubscription } from "@/lib/user";
 import { PLANS, PlanType } from "@/lib/plans";
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.text();

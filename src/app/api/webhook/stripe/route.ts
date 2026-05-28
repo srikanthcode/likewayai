@@ -3,6 +3,8 @@ import stripe from "@/lib/stripe";
 import { updateUserSubscription } from "@/lib/user";
 import { PlanType, PLANS } from "@/lib/plans";
 
+export const runtime = "nodejs";
+
 // Stripe sends raw body — must read as text before parsing
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();

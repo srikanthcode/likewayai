@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import stripe from "@/lib/stripe";
 import { PLANS, PlanType } from "@/lib/plans";
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const { userId, planId } = await req.json();
