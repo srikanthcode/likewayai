@@ -53,4 +53,7 @@ python_backend/
 searxng-src/
 streaming-demo/
 scripts/
+likeway/
+likeway-backend/
+.vercel-tmp/
 h origin HEAD
