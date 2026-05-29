@@ -333,10 +333,49 @@ export async function tavilySearch(query: string): Promise<string> {
 
 /**
  * Generates an image using a pool of API keys with rotation and failover.
- * Provider Order: Stability AI -> HuggingFace FLUX -> Pollinations
+ * Provider Order: OpenRouter Image Models -> Stability AI -> HuggingFace FLUX -> Pollinations
  */
 export async function generateImage(prompt: string): Promise<string> {
-  // Try Stability AI first with pool rotation & fallback
+  // Try OpenRouter image models first
+  const openrouterKeys = getLiveKey("OPENROUTER_KEYS");
+  const orKeys = openrouterKeys ? openrouterKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
+  
+  for (const orKey of orKeys) {
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${orKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://likeway.ai",
+          "X-Title": "Likeway AI"
+        },
+        body: JSON.stringify({
+          model: "openai/dall-e-3",
+          messages: [
+            { role: "user", content: `Generate an image: ${prompt}` }
+          ],
+          max_tokens: 1000
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const imageUrl = data.choices?.[0]?.message?.content || "";
+        if (imageUrl) {
+          console.log(`OpenRouter Image Generation: Success`);
+          return "<artifact type=\"doc\" title=\"Generated Image (OpenRouter)\">\n" +
+"![Generated Image](" + imageUrl + ")\n" +
+"Prompt: " + prompt + "\n" +
+"</artifact>";
+        }
+      }
+    } catch (e) {
+      console.warn(`OpenRouter image generation failed:`, e);
+    }
+  }
+
+  // Try Stability AI with pool rotation & fallback
   const rawKeys = getLiveKey("IMAGE_GENERATION_KEYS");
   const keys = rawKeys ? rawKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
   if (process.env.STABILITY_API_KEY) {

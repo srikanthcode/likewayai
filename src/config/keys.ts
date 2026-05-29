@@ -16,6 +16,8 @@ export const API_KEYS = {
   searxng: process.env.NEXT_PUBLIC_SEARXNG_URL || process.env.SEARXNG_URL || "",
   brave: process.env.BRAVE_API_KEY || "",
   firecrawl: process.env.FIRECRAWL_API_KEY || "",
+  stability: getKeys("STABILITY_API_KEY"),
+  huggingface: process.env.HF_TOKEN || "",
 };
 
 
