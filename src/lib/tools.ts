@@ -379,8 +379,9 @@ export async function generateImage(prompt: string): Promise<string> {
   // Fallback: Stability AI (if STABILITY_API_KEY is set)
   const rawKeys = getLiveKey("IMAGE_GENERATION_KEYS");
   const keys = rawKeys ? rawKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
-  if (process.env.STABILITY_API_KEY) {
-    keys.push(process.env.STABILITY_API_KEY);
+  const stabilityApiKey = process.env.STABILITY_API_KEY;
+  if (stabilityApiKey) {
+    keys.push(stabilityApiKey as string);
   }
 
   for (const stabilityKey of keys) {
