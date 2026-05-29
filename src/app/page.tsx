@@ -1002,7 +1002,10 @@ export default function ChatPage() {
     }
 
     const userMessage = input.trim();
-    const history = messages.map(m => ({ role: m.role, content: m.content }));
+    // Exclude system message placeholding states (thinking, typing, searching) and messages with empty content from history payload
+    const history = messages
+      .filter(m => m.content && m.content.trim() !== "" && m.role !== "system")
+      .map(m => ({ role: m.role, content: m.content }));
 
     let conversationIdToUse = activeConversationId;
     if (!conversationIdToUse && !activeProject) {

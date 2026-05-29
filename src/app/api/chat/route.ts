@@ -4,12 +4,28 @@ import { MODELS, getProviderForModel } from "@/lib/models";
 import { SYSTEM_PROMPTS, AgentMode } from "@/lib/agents";
 import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { executeDeepResearch } from "@/lib/deep-research";
-import { saveMessage } from "@/lib/memory";
+import { saveMessage, getHistory } from "@/lib/memory";
 import { generateImage } from "@/lib/tools";
 import { PlanType } from "@/lib/plans";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+export async function GET(req: NextRequest) {
+  try {
+    const userId = req.headers.get("x-user-id") || "anonymous-user";
+    const { searchParams } = new URL(req.url);
+    const conversationId = searchParams.get("conversationId") || undefined;
+    const projectId = searchParams.get("projectId") || "default";
+
+    const history = await getHistory(userId, 50, projectId, conversationId);
+    return NextResponse.json(history);
+  } catch (error) {
+    console.error("Failed to fetch conversation history:", error);
+    return NextResponse.json({ error: "Failed to fetch history" }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
