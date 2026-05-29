@@ -1980,21 +1980,22 @@ export default function ChatPage() {
           <AnimatePresence>
             {showScrollButton && (
               <motion.button
-                initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                initial={{ opacity: 0, scale: 0.8, y: 10, x: "-50%" }}
+                animate={{ opacity: 1, scale: 1, y: 0, x: "-50%" }}
+                exit={{ opacity: 0, scale: 0.8, y: 10, x: "-50%" }}
                 onClick={() => {
                   setUserScrolling(false);
                   scrollToBottom();
                 }}
-                className={cn(
-                  "absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-2xl border flex items-center gap-2 text-xs font-bold transition-all z-[60]",
-                  theme === 'dark' ? "bg-[#1c2128]/90 border-white/10 text-cyan-400 hover:border-cyan-500" : "bg-white/90 border-black/10 text-cyan-600 hover:border-cyan-500"
-                )}
+                className="group absolute bottom-4 left-1/2 flex h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-full bg-[#141414] font-semibold text-white border-none shadow-[0px_0px_0px_4px_rgba(180,160,255,0.25)] hover:w-[160px] hover:rounded-[50px] hover:bg-[#b5a0ff] cursor-pointer transition-all duration-300 z-[60]"
               >
-                <ChevronDown size={14} />
-                Back to down
-                {isStreaming && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />}
+                <svg className="w-[12px] h-[16px] transition-all duration-300 text-white fill-current group-hover:-translate-y-[200%]" viewBox="0 0 384 512">
+                  <path d="M169.4 470.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 370.8V64c0-17.7-14.3-32-32-32s-32 14.3-32 32v306.7L54.6 265.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z" />
+                </svg>
+                <span className="absolute bottom-[-20px] text-[0px] font-bold text-white opacity-0 transition-all duration-300 group-hover:bottom-auto group-hover:text-[13px] group-hover:opacity-100 whitespace-nowrap">
+                  New messages below
+                </span>
+                {isStreaming && <span className="absolute right-3 top-3 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />}
               </motion.button>
             )}
           </AnimatePresence>
