@@ -1020,14 +1020,26 @@ export default function ChatPage() {
     setIsLoading(true);
     setUserScrolling(false);
     setShowScrollButton(false);
-    const searchKeywords = ["latest news", "flash news", "today's news", "current news", "headlines",
-      "box office", "stock price", "share price", "weather", "score", "live score", "match result",
-      "election result", "breaking news"];
-    const timeKeywords = ["latest", "2026", "today", "current", "recent", "release date", "released",
-      "new movie", "new film", "upcoming", "just announced", "this week", "this month"];
-    const isCodingQ = /\b(code|coding|program|function|class|method|variable|syntax|debug|error|fix|how to|explain|what is|what are|define|difference between|compare|tutorial|example|implement|build|create|make a|write a)\b/i.test(userMessage);
-    const needsSearch = searchKeywords.some(w => userMessage.toLowerCase().includes(w)) || 
-      (timeKeywords.some(w => userMessage.toLowerCase().includes(w)) && !isCodingQ);
+    const searchKeywords = [
+      "latest news", "flash news", "today's news", "current news", "headlines",
+      "box office", "stock price", "share price", "weather", "score", "live score",
+      "match result", "election result", "breaking news", "usd to inr", "exchange rate",
+      "currency rate", "gold price", "silver price", "petrol price", "diesel price"
+    ];
+    const timeKeywords = [
+      "latest", "2026", "today", "current", "recent", "release date", "released",
+      "new movie", "new film", "upcoming", "just announced", "this week", "this month"
+    ];
+    // Strictly programming keywords to avoid false positives on simple questions like "what is"
+    const isCodingQ = /\b(javascript|typescript|python|java|rust|golang|c\+\+|html|css|react|nextjs|sql|database|programming|regex|compiler|runtime|npm|pip|git|github|docker|api endpoint)\b/i.test(userMessage) && /\b(code|function|class|method|variable|debug|error|fix|implement)\b/i.test(userMessage);
+
+    // Terms that always indicate real-time financial, currency, weather, or political lookup
+    const hasRealTimeTerm = /\b(usd|inr|eur|gbp|currency|exchange|forex|stock|share price|ticker|nasdaq|crypto|bitcoin|btc|weather|temperature|forecast|ipl|t20|world cup|live score|elections|chief minister|prime minister|who is current|gold price|silver price|petrol price|diesel price)\b/i.test(userMessage);
+
+    const needsSearch =
+      hasRealTimeTerm ||
+      searchKeywords.some((w) => userMessage.toLowerCase().includes(w)) ||
+      (timeKeywords.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ);
     setMessages(prev => [...prev, { role: "assistant", content: "", status: needsSearch ? 'searching' : 'typing' }]);
 
     // Helper: make a single chat API call and stream it

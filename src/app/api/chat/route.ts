@@ -77,14 +77,21 @@ export async function POST(req: NextRequest) {
     const searchKeywords = [
       "latest news", "flash news", "today's news", "current news", "headlines",
       "box office", "stock price", "share price", "weather", "score", "live score",
-      "match result", "election result", "breaking news"
+      "match result", "election result", "breaking news", "usd to inr", "exchange rate",
+      "currency rate", "gold price", "silver price", "petrol price", "diesel price"
     ];
     const timeKeywords = [
       "latest", "2026", "today", "current", "recent", "release date", "released",
       "new movie", "new film", "upcoming", "just announced", "this week", "this month"
     ];
-    const isCodingQ = /\b(code|coding|program|function|class|method|variable|syntax|debug|error|fix|how to|explain|what is|what are|define|difference between|compare|tutorial|example|implement|build|create|make a|write a)\b/i.test(prompt);
+    // Strictly programming keywords to avoid false positives on simple questions like "what is"
+    const isCodingQ = /\b(javascript|typescript|python|java|rust|golang|c\+\+|html|css|react|nextjs|sql|database|programming|regex|compiler|runtime|npm|pip|git|github|docker|api endpoint)\b/i.test(prompt) && /\b(code|function|class|method|variable|debug|error|fix|implement)\b/i.test(prompt);
+
+    // Terms that always indicate real-time financial, currency, weather, or political lookup
+    const hasRealTimeTerm = /\b(usd|inr|eur|gbp|currency|exchange|forex|stock|share price|ticker|nasdaq|crypto|bitcoin|btc|weather|temperature|forecast|ipl|t20|world cup|live score|elections|chief minister|prime minister|who is current|gold price|silver price|petrol price|diesel price)\b/i.test(prompt);
+
     const needsSearch =
+      hasRealTimeTerm ||
       searchKeywords.some((w) => prompt.toLowerCase().includes(w)) ||
       (timeKeywords.some((w) => prompt.toLowerCase().includes(w)) && !isCodingQ);
 
