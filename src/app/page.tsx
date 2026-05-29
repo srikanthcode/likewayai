@@ -883,31 +883,6 @@ export default function ChatPage() {
     return () => window.removeEventListener("plan_updated", handlePlanUpdate);
   }, []);
 
-  // Flush buffer to UI every 8ms (smooth rendering without React batching lags)
-  useEffect(() => {
-    if (!isStreaming) return;
-    const interval = setInterval(() => {
-      if (bufferRef.current) {
-        const delta = bufferRef.current;
-        bufferRef.current = "";
-        setMessages(prev => {
-          const copy = [...prev];
-          const lastIdx = copy.length - 1;
-          if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-            const currentMsg = copy[lastIdx];
-            if (currentMsg.status !== 'streaming') {
-              copy[lastIdx] = { ...currentMsg, content: delta, status: 'streaming' };
-            } else {
-              copy[lastIdx] = { ...currentMsg, content: currentMsg.content + delta, status: 'streaming' };
-            }
-          }
-          return copy;
-        });
-      }
-    }, 8); // 8ms flush — minimum without React batching issues
-    return () => clearInterval(interval);
-  }, [isStreaming]);
-
   // Load history on mount or when activeProject/activeConversationId changes
   useEffect(() => {
     async function loadHistory() {
@@ -980,17 +955,18 @@ export default function ChatPage() {
     }
   }
 
-  // Auto scroll ONLY during active streaming (not on history load) and ONLY if already near the bottom
+  // Auto scroll during active streaming (like ChatGPT)
   useEffect(() => {
     if (isInitialLoad.current) return; // Skip during history load
     if (isStreaming && chatContainerRef.current) {
       const el = chatContainerRef.current;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-      if (atBottom) {
+      // If user is near the bottom (less than 150px away) and NOT scrolling manually, keep them pinned to bottom
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+      if (atBottom && !userScrolling) {
         requestAnimationFrame(() => scrollToBottom("auto"));
       }
     }
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, userScrolling]);
 
   // Auto scroll when user sends a NEW message
   useEffect(() => {
@@ -1987,12 +1963,12 @@ export default function ChatPage() {
                   setUserScrolling(false);
                   scrollToBottom();
                 }}
-                className="group absolute bottom-4 left-1/2 flex h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-full bg-[#141414] font-semibold text-white border-none shadow-[0px_0px_0px_4px_rgba(180,160,255,0.25)] hover:w-[140px] hover:rounded-[50px] hover:bg-[#b5a0ff] cursor-pointer transition-all duration-300 z-[60]"
+                className="group absolute bottom-4 left-1/2 flex h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-full bg-[#141414]/75 backdrop-blur-md font-semibold text-white/95 border-none shadow-[0px_0px_0px_4px_rgba(180,160,255,0.25)] hover:w-[140px] hover:rounded-[50px] hover:bg-[#b5a0ff]/90 cursor-pointer transition-all duration-300 z-[60]"
               >
-                <svg className="w-[12px] h-[16px] transition-all duration-300 text-white fill-current group-hover:-translate-y-[200%]" viewBox="0 0 384 512">
+                <svg className="w-[12px] h-[16px] transition-all duration-300 text-white fill-current group-hover:-translate-y-[35px] group-hover:opacity-0" viewBox="0 0 384 512">
                   <path d="M169.4 470.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 370.8V64c0-17.7-14.3-32-32-32s-32 14.3-32 32v306.7L54.6 265.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z" />
                 </svg>
-                <span className="absolute bottom-[-20px] text-[0px] font-bold text-white opacity-0 transition-all duration-300 group-hover:bottom-auto group-hover:text-[10px] group-hover:opacity-100 whitespace-nowrap uppercase tracking-wider">
+                <span className="absolute translate-y-[20px] text-[10px] font-bold text-white/90 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 whitespace-nowrap uppercase tracking-wider">
                   New messages below
                 </span>
                 {isStreaming && <span className="absolute right-3 top-3 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />}
