@@ -2445,9 +2445,9 @@ export default function ChatPage() {
                 >
                   Done
                 </button>
-                <div className="p-3 rounded-2xl bg-cyan-500/5 border border-cyan-500/10 text-center">
-                  <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">v2.4.0</p>
-                </div>
+                <p className="text-center text-[10px] text-gray-500 font-medium tracking-widest uppercase mt-1 select-none">
+                  v2.4.0
+                </p>
               </div>
             </motion.div>
           </motion.div>
