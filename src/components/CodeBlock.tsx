@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Check, Copy } from "lucide-react";
 
 interface CodeBlockProps {
@@ -50,7 +50,7 @@ export default function CodeBlock({ language, value }: CodeBlockProps) {
       <div className="overflow-x-auto p-4 text-[13px] sm:text-[14px] leading-relaxed select-text">
         <SyntaxHighlighter
           language={language || "javascript"}
-          style={vscDarkPlus}
+          style={oneDark}
           customStyle={{
             margin: 0,
             padding: 0,
