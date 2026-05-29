@@ -1310,25 +1310,6 @@ export default function ChatPage() {
 
           
           <div>
-            <h3 className="px-3 text-xs font-semibold text-gray-500 mb-1">Like</h3>
-            <div className="space-y-0.5">
-              <button 
-                onClick={() => setSelectedModel(MODELS[0])}
-                className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium",
-                selectedModel.id === MODELS[0].id 
-                  ? (theme === 'dark' ? "bg-white/10 text-white" : "bg-black/10 text-gray-900")
-                  : (theme === 'dark' ? "hover:bg-white/5 text-gray-300" : "hover:bg-black/5 text-gray-700")
-              )}>
-                <div className="w-5 h-5 rounded-full bg-green-900/30 text-green-500 flex items-center justify-center border border-green-500/20">
-                  <Brain size={12} />
-                </div>
-                Likeway Pulse
-              </button>
-            </div>
-          </div>
-
-          <div>
             <h3 className="px-3 text-xs font-semibold text-gray-500 mb-1">Projects</h3>
             <div className="space-y-0.5">
               <button 
