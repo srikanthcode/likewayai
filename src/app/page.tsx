@@ -389,6 +389,7 @@ export default function ChatPage() {
   const bufferRef = useRef("");
   const [userScrolling, setUserScrolling] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isProgrammaticScroll = useRef(false);
   const isInitialLoad = useRef(true); // Prevent auto-scroll on history load
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -882,6 +883,15 @@ export default function ChatPage() {
     window.addEventListener("plan_updated", handlePlanUpdate);
     return () => window.removeEventListener("plan_updated", handlePlanUpdate);
   }, []);
+
+  // Dynamically adjust input textbox height based on content size
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    }
+  }, [input]);
 
   // Load history on mount or when activeProject/activeConversationId changes
   useEffect(() => {
@@ -2038,14 +2048,11 @@ export default function ChatPage() {
                   
                   {/* Input Field (Top) */}
                 <textarea 
+                  ref={textareaRef}
                   suppressHydrationWarning={true}
                   rows={1}
                   value={input} 
-                  onChange={e => {
-                    setInput(e.target.value);
-                    e.target.style.height = 'auto';
-                    e.target.style.height = `${e.target.scrollHeight}px`;
-                  }}
+                  onChange={e => setInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
