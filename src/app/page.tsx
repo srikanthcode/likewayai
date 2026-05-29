@@ -1962,29 +1962,7 @@ export default function ChatPage() {
 
           </section>
 
-          {/* Floating Scroll to Bottom Button */}
-          <AnimatePresence>
-            {showScrollButton && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.8, y: 10, x: "-50%" }}
-                animate={{ opacity: 1, scale: 1, y: 0, x: "-50%" }}
-                exit={{ opacity: 0, scale: 0.8, y: 10, x: "-50%" }}
-                onClick={() => {
-                  setUserScrolling(false);
-                  scrollToBottom();
-                }}
-                className="group absolute bottom-8 left-1/2 flex h-[30px] w-[30px] items-center justify-center overflow-hidden rounded-full bg-[#141414]/35 backdrop-blur-md border border-white/10 font-semibold text-white/95 shadow-[0px_0px_0px_2px_rgba(180,160,255,0.15)] hover:w-[130px] hover:rounded-[15px] hover:bg-[#b5a0ff]/80 cursor-pointer transition-all duration-300 z-[60]"
-              >
-                <svg className="w-[10px] h-[12px] transition-all duration-300 text-white fill-current group-hover:-translate-y-[20px] group-hover:opacity-0" viewBox="0 0 384 512">
-                  <path d="M169.4 470.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 370.8V64c0-17.7-14.3-32-32-32s-32 14.3-32 32v306.7L54.6 265.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z" />
-                </svg>
-                <span className="absolute translate-y-[12px] text-[9px] font-bold text-white/90 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 whitespace-nowrap uppercase tracking-wider">
-                  New messages below
-                </span>
-                {isStreaming && <span className="absolute right-1.5 top-1.5 w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />}
-              </motion.button>
-            )}
-          </AnimatePresence>
+          {/* Floating Scroll to Bottom Button removed per user request to avoid blocking text */}
         </div>
 
         {/* Input Form */}
