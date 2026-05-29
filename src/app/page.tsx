@@ -1732,7 +1732,7 @@ export default function ChatPage() {
             onScroll={handleScroll}
             onWheel={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
             onTouchMove={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
-            className="flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-32 px-6 sm:pt-6 sm:pb-40 sm:px-10 scrollbar-hide flex flex-col custom-scrollbar"
+            className="flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-4 px-6 sm:pt-6 sm:pb-6 sm:px-10 scrollbar-hide flex flex-col custom-scrollbar"
           >
           <div className="max-w-3xl mx-auto space-y-4 flex-1 flex flex-col w-full">
             {messages.length === 0 && (
@@ -1957,7 +1957,7 @@ export default function ChatPage() {
 
 
 
-            {(messages.length > 0 || isStreaming) && <div ref={endRef} className="h-32" />}
+            {(messages.length > 0 || isStreaming) && <div ref={endRef} className="h-4" />}
           </div>
 
           </section>
