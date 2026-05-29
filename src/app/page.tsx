@@ -1451,13 +1451,8 @@ export default function ChatPage() {
         "flex-1 flex flex-col relative min-w-0 transition-colors duration-300",
         theme === 'dark' ? "bg-[#495057] text-white" : "bg-[#e7e2ee] text-[#0d1117]"
       )}>
-        <header className={cn(
-          "w-full h-14 flex items-center justify-between px-4 z-50 border-b transition-all duration-300 shrink-0 shadow-sm",
-          theme === 'dark' 
-            ? "bg-[#495057] border-white/5 text-white" 
-            : "bg-[#e7e2ee] border-black/5 text-[#0d1117]"
-        )}>
-          <div className="flex items-center gap-2 md:gap-3">
+        <header className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-4 z-50 bg-transparent pointer-events-none transition-all duration-300">
+          <div className="flex items-center gap-2 md:gap-3 pointer-events-auto">
             {!isSidebarOpen && (
               <button onClick={() => setIsSidebarOpen(true)} className={cn("p-1.5 rounded-lg transition-all", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Open Sidebar">
                 <PanelLeft size={20} />
@@ -1485,7 +1480,7 @@ export default function ChatPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pointer-events-auto">
             {/* Theme Toggle */}
             <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className={cn("p-1.5 rounded-lg transition-colors", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Toggle Theme">
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -1747,7 +1742,7 @@ export default function ChatPage() {
             onScroll={handleScroll}
             onWheel={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
             onTouchMove={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
-            className="flex-1 overflow-y-auto overflow-x-hidden pt-8 pb-4 px-6 sm:pt-10 sm:pb-6 sm:px-10 scrollbar-hide flex flex-col custom-scrollbar"
+            className="flex-1 overflow-y-auto overflow-x-hidden pt-16 pb-4 px-6 sm:pt-20 sm:pb-6 sm:px-10 scrollbar-hide flex flex-col custom-scrollbar"
           >
           <div className="max-w-3xl mx-auto space-y-4 flex-1 flex flex-col w-full">
             {messages.length === 0 && (
