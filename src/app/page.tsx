@@ -1987,12 +1987,12 @@ export default function ChatPage() {
                   setUserScrolling(false);
                   scrollToBottom();
                 }}
-                className="group absolute bottom-4 left-1/2 flex h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-full bg-[#141414] font-semibold text-white border-none shadow-[0px_0px_0px_4px_rgba(180,160,255,0.25)] hover:w-[160px] hover:rounded-[50px] hover:bg-[#b5a0ff] cursor-pointer transition-all duration-300 z-[60]"
+                className="group absolute bottom-4 left-1/2 flex h-[50px] w-[50px] items-center justify-center overflow-hidden rounded-full bg-[#141414] font-semibold text-white border-none shadow-[0px_0px_0px_4px_rgba(180,160,255,0.25)] hover:w-[140px] hover:rounded-[50px] hover:bg-[#b5a0ff] cursor-pointer transition-all duration-300 z-[60]"
               >
                 <svg className="w-[12px] h-[16px] transition-all duration-300 text-white fill-current group-hover:-translate-y-[200%]" viewBox="0 0 384 512">
                   <path d="M169.4 470.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 370.8V64c0-17.7-14.3-32-32-32s-32 14.3-32 32v306.7L54.6 265.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z" />
                 </svg>
-                <span className="absolute bottom-[-20px] text-[0px] font-bold text-white opacity-0 transition-all duration-300 group-hover:bottom-auto group-hover:text-[13px] group-hover:opacity-100 whitespace-nowrap">
+                <span className="absolute bottom-[-20px] text-[0px] font-bold text-white opacity-0 transition-all duration-300 group-hover:bottom-auto group-hover:text-[10px] group-hover:opacity-100 whitespace-nowrap uppercase tracking-wider">
                   New messages below
                 </span>
                 {isStreaming && <span className="absolute right-3 top-3 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />}
