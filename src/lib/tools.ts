@@ -332,90 +332,22 @@ export async function tavilySearch(query: string): Promise<string> {
 }
 
 /**
- * Generates an image using a pool of API keys with rotation and failover.
- * Provider Order: OpenRouter Image Models -> Stability AI -> HuggingFace FLUX -> Pollinations
+ * Generates an image using reliable free services.
+ * Provider Order: Pollinations (free, fast) -> HuggingFace FLUX -> Stability AI
  */
 export async function generateImage(prompt: string): Promise<string> {
-  // Try OpenRouter image models first
-  const openrouterKeys = getLiveKey("OPENROUTER_KEYS");
-  const orKeys = openrouterKeys ? openrouterKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
+  // Use Pollinations directly - free, fast, no key required
+  const seed = Math.floor(Math.random() * 1000000);
+  const encodedPrompt = encodeURIComponent(prompt);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux&enhance=true`;
   
-  for (const orKey of orKeys) {
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${orKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://likeway.ai",
-          "X-Title": "Likeway AI"
-        },
-        body: JSON.stringify({
-          model: "openai/dall-e-3",
-          messages: [
-            { role: "user", content: `Generate an image: ${prompt}` }
-          ],
-          max_tokens: 1000
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const imageUrl = data.choices?.[0]?.message?.content || "";
-        if (imageUrl) {
-          console.log(`OpenRouter Image Generation: Success`);
-          return "<artifact type=\"doc\" title=\"Generated Image (OpenRouter)\">\n" +
+  console.log(`Image Generation: Using Pollinations - ${imageUrl}`);
+  return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
 "![Generated Image](" + imageUrl + ")\n" +
 "Prompt: " + prompt + "\n" +
 "</artifact>";
-        }
-      }
-    } catch (e) {
-      console.warn(`OpenRouter image generation failed:`, e);
-    }
-  }
 
-  // Try Stability AI with pool rotation & fallback
-  const rawKeys = getLiveKey("IMAGE_GENERATION_KEYS");
-  const keys = rawKeys ? rawKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
-  if (process.env.STABILITY_API_KEY) {
-    keys.push(process.env.STABILITY_API_KEY);
-  }
-
-  for (const stabilityKey of keys) {
-    try {
-      const formData = new FormData();
-      formData.append("prompt", prompt);
-      formData.append("output_format", "webp");
-      // Appending empty Blob instead of string for file field 'none'
-      formData.append("none", new Blob([''], { type: 'text/plain' }));
-
-      const response = await fetch("https://api.stability.ai/v2beta/stable-image/generate/ultra", {
-        method: "POST",
-        headers: {
-          "authorization": `Bearer ${stabilityKey}`,
-          "accept": "image/*"
-        },
-        body: formData as any
-      });
-
-      if (response.status === 200) {
-        const buffer = await response.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        console.log(`Stability AI Image Generation: Success using key ${stabilityKey.slice(0, 8)}...`);
-        return "<artifact type=\"doc\" title=\"Generated Image (Stability AI)\">\n" +
-"![Generated Image](data:image/webp;base64," + base64 + ")\n" +
-"Prompt: " + prompt + "\n" +
-"</artifact>";
-      } else {
-        console.warn(`Stability AI key ${stabilityKey.slice(0, 8)}... returned status ${response.status}`);
-      }
-    } catch (e) {
-      console.warn(`Stability AI generation failed for key ${stabilityKey.slice(0, 8)}...`, e);
-    }
-  }
-
-  // Fallback 1: HuggingFace FLUX
+  // Fallback: HuggingFace FLUX (if HF_TOKEN is set)
   const hfToken = process.env.HF_TOKEN;
   if (hfToken) {
     try {
@@ -444,9 +376,41 @@ export async function generateImage(prompt: string): Promise<string> {
     }
   }
 
-  // Fallback 2: Pollinations (No key required, instant)
-  const seed = Math.floor(Math.random() * 1000000);
-  const imageUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=1024&height=1024&nologo=true&seed=" + seed + "&model=flux";
+  // Fallback: Stability AI (if STABILITY_API_KEY is set)
+  const rawKeys = getLiveKey("IMAGE_GENERATION_KEYS");
+  const keys = rawKeys ? rawKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
+  if (process.env.STABILITY_API_KEY) {
+    keys.push(process.env.STABILITY_API_KEY);
+  }
+
+  for (const stabilityKey of keys) {
+    try {
+      const formData = new FormData();
+      formData.append("prompt", prompt);
+      formData.append("output_format", "webp");
+      formData.append("none", new Blob([''], { type: 'text/plain' }));
+
+      const response = await fetch("https://api.stability.ai/v2beta/stable-image/generate/ultra", {
+        method: "POST",
+        headers: {
+          "authorization": `Bearer ${stabilityKey}`,
+          "accept": "image/*"
+        },
+        body: formData as any
+      });
+
+      if (response.status === 200) {
+        const buffer = await response.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        return "<artifact type=\"doc\" title=\"Generated Image (Stability AI)\">\n" +
+"![Generated Image](data:image/webp;base64," + base64 + ")\n" +
+"Prompt: " + prompt + "\n" +
+"</artifact>";
+      }
+    } catch (e) {
+      console.warn(`Stability AI generation failed:`, e);
+    }
+  }
   
   return "<artifact type=\"doc\" title=\"Realtime Generated Image (Pollinations)\">\n" +
 "![Generated Image](" + imageUrl + ")\n" +
