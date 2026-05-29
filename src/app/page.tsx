@@ -1993,7 +1993,7 @@ export default function ChatPage() {
                 )}
               >
                 <ChevronDown size={14} />
-                New messages below
+                Back to down
                 {isStreaming && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />}
               </motion.button>
             )}
