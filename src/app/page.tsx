@@ -45,7 +45,8 @@ import {
   FolderPlus,
   GraduationCap,
   Brain,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from "lucide-react";
 
 
@@ -380,7 +381,7 @@ function buildMarkdownComponents(theme: 'dark' | 'light') {
 
 export default function ChatPage() {
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
-  const [messages, setMessages] = useState<{ role: string; content: string; status?: 'thinking' | 'typing' | 'streaming' | 'done' | 'searching' }[]>([]);
+  const [messages, setMessages] = useState<{ role: string; content: string; status?: 'thinking' | 'typing' | 'streaming' | 'done' | 'searching' | 'generating' }[]>([]);
   const [input, setInput] = useState("");
   
   // High-performance streaming & scroll state
@@ -1036,11 +1037,20 @@ export default function ChatPage() {
     // Terms that always indicate real-time financial, currency, weather, or political lookup
     const hasRealTimeTerm = /\b(usd|inr|eur|gbp|currency|exchange|forex|stock|share price|ticker|nasdaq|crypto|bitcoin|btc|weather|temperature|forecast|ipl|t20|world cup|live score|elections|chief minister|prime minister|who is current|gold price|silver price|petrol price|diesel price)\b/i.test(userMessage);
 
+    // Detect image generation requests
+    const isImageRequest = /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(userMessage);
+
     const needsSearch =
-      hasRealTimeTerm ||
-      searchKeywords.some((w) => userMessage.toLowerCase().includes(w)) ||
-      (timeKeywords.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ);
-    setMessages(prev => [...prev, { role: "assistant", content: "", status: needsSearch ? 'searching' : 'typing' }]);
+      !isImageRequest && (
+        hasRealTimeTerm ||
+        searchKeywords.some((w) => userMessage.toLowerCase().includes(w)) ||
+        (timeKeywords.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
+      );
+    setMessages(prev => [...prev, { 
+      role: "assistant", 
+      content: "", 
+      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing' 
+    }]);
 
     // Helper: make a single chat API call and stream it
     const attemptChat = async (modelId: string, trimHistory: boolean) => {
@@ -1791,6 +1801,42 @@ export default function ChatPage() {
                                <div className="w-3 h-3 rounded-full border-2 border-cyan-500/30 border-t-cyan-500 animate-spin" />
                                Reasoning...
                             </motion.div>
+                          </div>
+                        ) : m.status === 'generating' ? (
+                          <div className={cn(
+                            "flex flex-col gap-3 p-4 rounded-3xl border shadow-xl font-sans w-[280px] sm:w-[320px] overflow-hidden select-none",
+                            theme === 'dark' 
+                              ? "bg-[#1c2128]/80 border-cyan-500/30 text-white" 
+                              : "bg-white border-cyan-500/20 text-[#0d1117]"
+                          )}>
+                            <div className="flex items-center gap-2">
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                                className="flex items-center justify-center text-cyan-400"
+                              >
+                                <Sparkles size={15} className="stroke-[2.5px]" />
+                              </motion.div>
+                              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 animate-pulse">
+                                Likeway Image Engine
+                              </span>
+                            </div>
+                            
+                            <div className="flex flex-col gap-1 mt-1">
+                              <span className="text-xs sm:text-sm font-bold">Creating your masterpiece...</span>
+                              <p className="text-[10px] text-gray-500 line-clamp-2 italic">
+                                "{messages[messages.indexOf(m) - 1]?.content || "A magical AI generation"}"
+                              </p>
+                            </div>
+
+                            {/* Animated creation placeholder canvas */}
+                            <div className="relative w-full aspect-square rounded-2xl bg-black/15 dark:bg-white/5 border border-cyan-500/10 overflow-hidden flex items-center justify-center mt-2">
+                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-500/5 to-transparent -translate-x-full animate-pulse" />
+                              <div className="absolute w-24 h-24 rounded-full border-4 border-cyan-500/25 animate-ping" />
+                              <div className="absolute w-12 h-12 rounded-full border-4 border-blue-500/30 animate-pulse flex items-center justify-center">
+                                <ImageIcon size={22} className="text-cyan-400 animate-bounce" />
+                              </div>
+                            </div>
                           </div>
                         ) : m.status === 'searching' ? (
           <div className={cn(

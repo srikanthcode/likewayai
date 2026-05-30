@@ -336,12 +336,55 @@ export async function tavilySearch(query: string): Promise<string> {
  * Provider Order: Pollinations (free, fast) -> HuggingFace FLUX -> Stability AI
  */
 export async function generateImage(prompt: string): Promise<string> {
-  // Use Pollinations directly - free, fast, no key required
+  // 1st Priority: OpenRouter black-forest-labs/flux-dev if keys are available
+  const rawORKeys = getLiveKey("OPENROUTER_KEYS");
+  const orKeys = rawORKeys ? rawORKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
+  if (orKeys.length > 0) {
+    for (const orKey of orKeys) {
+      try {
+        console.log(`Image Generation: Trying OpenRouter with black-forest-labs/flux-dev...`);
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${orKey}`,
+            "HTTP-Referer": "https://likeway.ai",
+            "X-Title": "Likeway AI"
+          },
+          body: JSON.stringify({
+            model: "black-forest-labs/flux-dev",
+            messages: [{ role: "user", content: prompt }]
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            // Find base64 data URI or HTTP link in choice content
+            const urlMatch = content.match(/(https?:\/\/[^\s]+|data:image\/\w+;base64,[A-Za-z0-9+/=]+)/);
+            const imageUrl = urlMatch ? urlMatch[0] : content;
+            if (imageUrl.startsWith("data:image") || imageUrl.startsWith("http")) {
+              console.log("Image Generation: OpenRouter FLUX Dev succeeded.");
+              return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
+                     `![Generated Image](${imageUrl})\n` +
+                     "Prompt: " + prompt + "\n" +
+                     "</artifact>";
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("OpenRouter FLUX Dev generation failed, trying next fallback...", e);
+      }
+    }
+  }
+
+  // Fallback: Use Pollinations directly - free, fast, no key required
   const seed = Math.floor(Math.random() * 1000000);
   const encodedPrompt = encodeURIComponent(prompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux&enhance=true`;
   
-  console.log(`Image Generation: Using Pollinations - ${imageUrl}`);
+  console.log(`Image Generation: Using Pollinations fallback - ${imageUrl}`);
   return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
 "![Generated Image](" + imageUrl + ")\n" +
 "Prompt: " + prompt + "\n" +
