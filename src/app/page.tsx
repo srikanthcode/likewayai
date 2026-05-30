@@ -2414,57 +2414,60 @@ export default function ChatPage() {
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-6"
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
           >
             <motion.div 
-              initial={{ scale: 0.95, y: 20 }} 
+              initial={{ scale: 0.96, y: 10 }} 
               animate={{ scale: 1, y: 0 }} 
               className={cn(
-                "w-full max-w-lg border rounded-3xl p-6 shadow-2xl transition-colors",
+                "w-full max-w-sm border rounded-2xl p-4 shadow-2xl transition-colors",
                 theme === 'dark' ? "bg-[#161b22] border-white/10" : "bg-white border-black/10"
               )}
             >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className={cn("text-xl font-black", theme === 'dark' ? "text-white" : "text-gray-900")}>Settings</h2>
-                <button onClick={() => setIsSettingsOpen(false)} className={cn("p-2 rounded-full transition-colors", theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")}>
-                  <X size={20} />
+              <div className="flex items-center justify-between mb-4">
+                <h2 className={cn("text-base font-black", theme === 'dark' ? "text-white" : "text-gray-900")}>Settings</h2>
+                <button onClick={() => setIsSettingsOpen(false)} className={cn("p-1.5 rounded-full transition-colors", theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")}>
+                  <X size={16} />
                 </button>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {[
                   { id: 'experimental', name: 'Experimental Frontier Models', desc: 'Access 01-preview and experimental agents.', badge: 'ELITE' },
                   { id: 'highVelocity', name: 'High-Velocity Reasoning', desc: 'Minimize latencies for ultra-fast Pro responses.', badge: 'PRO' },
                   { id: 'voiceV2', name: 'Advanced Voice UI (v2)', desc: 'Enhanced visualizer and feedback systems.' }
                 ].map((s) => (
-                  <div key={s.id} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-white">{s.name}</p>
-                        {s.badge && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-black">{s.badge}</span>}
+                  <div key={s.id} className={cn(
+                    "flex items-center justify-between p-2.5 rounded-xl border transition-all",
+                    theme === 'dark' ? "bg-white/5 border-white/5" : "bg-black/5 border-black/5"
+                  )}>
+                    <div className="min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={cn("text-xs font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>{s.name}</p>
+                        {s.badge && <span className="text-[7px] px-1 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-black">{s.badge}</span>}
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-1">{s.desc}</p>
+                      <p className={cn("text-[10px] mt-0.5 leading-tight", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>{s.desc}</p>
                     </div>
                     <button 
                       onClick={() => setSettings(prev => ({...prev, [s.id]: !prev[s.id as keyof typeof settings]}))} 
                       className={cn(
-                        "w-10 h-6 rounded-full transition-all relative", 
-                        settings[s.id as keyof typeof settings] ? "bg-cyan-500" : "bg-white/10"
+                        "w-8 h-5 rounded-full transition-all relative shrink-0", 
+                        settings[s.id as keyof typeof settings] ? "bg-cyan-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/15")
                       )}
                     >
                       <motion.div 
-                        animate={{ x: settings[s.id as keyof typeof settings] ? 18 : 3 }} 
-                        className="absolute top-1 left-0 w-4 h-4 rounded-full bg-white shadow-md" 
+                        animate={{ x: settings[s.id as keyof typeof settings] ? 14 : 2 }} 
+                        className="absolute top-1 left-0 w-3 h-3 rounded-full bg-white shadow-sm" 
                       />
                     </button>
                   </div>
                 ))}
                 
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Brain size={16} className="text-cyan-400" />
-                    <p className="text-sm font-bold text-white uppercase tracking-widest">Memory</p>
+                <div className={cn("mt-3 pt-3 border-t", theme === 'dark' ? "border-white/5" : "border-black/5")}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Brain size={14} className="text-cyan-400" />
+                    <p className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-gray-900")}>Memory</p>
                   </div>
-                  <p className="text-[10px] text-gray-500 mb-2">These instructions will be applied to every new chat.</p>
+                  <p className={cn("text-[9px] mb-1.5 leading-tight", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>These instructions will be applied to every new chat.</p>
                   <textarea 
                     value={customInstructions}
                     onChange={(e) => {
@@ -2472,21 +2475,24 @@ export default function ChatPage() {
                       localStorage.setItem('gemma_memory', e.target.value);
                     }}
                     placeholder="e.g. 'I am a software engineer...'"
-                    className="w-full h-20 bg-white/5 border border-white/10 rounded-2xl p-3 text-xs text-gray-300 focus:outline-none focus:border-cyan-500/50 resize-none placeholder-gray-600 transition-all"
+                    className={cn(
+                      "w-full h-16 border rounded-xl p-2.5 text-[11px] focus:outline-none focus:border-cyan-500/50 resize-none transition-all",
+                      theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 placeholder-gray-600" : "bg-black/5 border-black/10 text-gray-800 placeholder-gray-400"
+                    )}
                   />
                 </div>
               </div>
-              <div className="mt-6 flex flex-col gap-3">
+              <div className="mt-4 flex flex-col gap-2">
                 <button 
                   onClick={() => setIsSettingsOpen(false)}
                   className={cn(
-                    "w-full py-3 rounded-2xl font-bold transition-all shadow-xl",
+                    "w-full py-2 rounded-xl font-bold transition-all shadow-md text-xs",
                     theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-black text-white hover:bg-gray-800"
                   )}
                 >
                   Done
                 </button>
-                <p className="text-center text-[10px] text-gray-500 font-medium tracking-widest uppercase mt-1 select-none">
+                <p className="text-center text-[9px] text-gray-500 font-medium tracking-widest uppercase mt-0.5 select-none">
                   v2.4.0
                 </p>
               </div>
