@@ -547,6 +547,33 @@ export default function ChatPage() {
     setIsAttachmentMenuOpen(false);
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    let hasImage = false;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf("image") !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          hasImage = true;
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64String = reader.result as string;
+            setFiles(prev => [...prev, base64String]);
+            setFilePreviews(prev => [...prev, base64String]);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+    
+    if (hasImage) {
+      e.preventDefault();
+    }
+  };
+
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
     setFilePreviews(prev => prev.filter((_, i) => i !== index));
@@ -2097,6 +2124,7 @@ export default function ChatPage() {
                       handleSend();
                     }
                   }}
+                  onPaste={handlePaste}
                   placeholder={isRecording ? "Listening..." : "Message AI Assistant..."} 
                   className={cn(
                     "w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-1 py-1 min-h-[28px] max-h-[200px] resize-none placeholder-gray-500 text-sm sm:text-base",
