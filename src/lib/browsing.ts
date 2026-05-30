@@ -1,5 +1,12 @@
 import { searxngSearch, tavilySearch, firecrawlSearch, braveSearch } from "./tools";
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs))
+  ]);
+}
+
 export interface FactData {
   title?: string;
   year?: string;
@@ -85,14 +92,13 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
     smartQuery = safeQueryLength(query);
   }
 
-  const [brave, firecrawl, jina] = await Promise.all([
-    braveSearch(smartQuery).catch(() => ""),
-    firecrawlSearch(smartQuery).catch(() => ""),
-    searxngSearch(smartQuery).catch(() => "")
+  const [brave, jina] = await Promise.all([
+    withTimeout(braveSearch(smartQuery).catch(() => ""), 2000, ""),
+    withTimeout(searxngSearch(smartQuery).catch(() => ""), 2000, "")
   ]);
 
   // Limit total context to prevent overloaded errors
-  const rawResults = [brave, firecrawl, jina].join("\n\n").slice(0, 8000);
+  const rawResults = [brave, jina].join("\n\n").slice(0, 8000);
 
   // 2. Fact Extraction & Authority Ranking
   const facts: string[] = [];

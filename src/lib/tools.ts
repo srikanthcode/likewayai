@@ -234,7 +234,7 @@ export async function searxngSearch(query: string): Promise<string> {
   try {
     const jinaUrl = `https://s.jina.ai/?q=${encodeURIComponent(query)}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
 
     const response = await fetch(jinaUrl, {
       headers: {
