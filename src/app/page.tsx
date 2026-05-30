@@ -406,6 +406,8 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [isExtendedThinking, setIsExtendedThinking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [editingMessageText, setEditingMessageText] = useState<string>("");
   const [files, setFiles] = useState<string[]>([]);
   const [filePreviews, setFilePreviews] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1244,6 +1246,213 @@ export default function ChatPage() {
     }
   }
 
+  async function handleEditSubmit(index: number, newText: string) {
+    if (!newText.trim() || isLoading) return;
+    setEditingMessageIndex(null);
+
+    // Cut off any ongoing speech
+    window.speechSynthesis.cancel();
+    isSpeakingRef.current = false;
+    if (voiceStatus === 'speaking') {
+      setVoiceStatus('idle');
+    }
+
+    // 1. Prepare the updated messages history up to index (exclusive)
+    const historyMessages = messages.slice(0, index);
+    const history = historyMessages
+      .filter(m => m.content && m.content.trim() !== "" && m.role !== "system")
+      .map(m => ({ role: m.role, content: m.content }));
+
+    const userMessage = newText.trim();
+
+    // 2. Truncate subsequent messages and set the updated user message at index
+    const updatedMessages = [...historyMessages, { role: "user", content: userMessage }];
+    setMessages(updatedMessages);
+    setIsLoading(true);
+    setUserScrolling(false);
+    setShowScrollButton(false);
+
+    let conversationIdToUse = activeConversationId;
+    if (!conversationIdToUse && !activeProject) {
+      const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+      const randomChars = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      conversationIdToUse = timestamp + randomChars;
+      setActiveConversationId(conversationIdToUse);
+    }
+
+    const searchKeywords = [
+      "latest news", "flash news", "today's news", "current news", "headlines",
+      "box office", "stock price", "share price", "weather", "score", "live score",
+      "match result", "election result", "breaking news", "usd to inr", "exchange rate",
+      "currency rate", "gold price", "silver price", "petrol price", "diesel price"
+    ];
+    const timeKeywords = [
+      "latest", "2026", "today", "current", "recent", "release date", "released",
+      "new movie", "new film", "upcoming", "just announced", "this week", "this month"
+    ];
+    const isCodingQ = /\b(javascript|typescript|python|java|rust|golang|c\+\+|html|css|react|nextjs|sql|database|programming|regex|compiler|runtime|npm|pip|git|github|docker|api endpoint)\b/i.test(userMessage) && /\b(code|function|class|method|variable|debug|error|fix|implement)\b/i.test(userMessage);
+    const hasRealTimeTerm = /\b(usd|inr|eur|gbp|currency|exchange|forex|stock|share price|ticker|nasdaq|crypto|bitcoin|btc|weather|temperature|forecast|ipl|t20|world cup|live score|elections|chief minister|prime minister|who is current|gold price|silver price|petrol price|diesel price)\b/i.test(userMessage);
+    const isImageRequest = /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(userMessage);
+
+    const needsSearch =
+      !isImageRequest && (
+        hasRealTimeTerm ||
+        searchKeywords.some((w) => userMessage.toLowerCase().includes(w)) ||
+        (timeKeywords.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
+      );
+
+    setMessages(prev => [...prev, { 
+      role: "assistant", 
+      content: "", 
+      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing' 
+    }]);
+
+    const attemptChat = async (modelId: string, trimHistory: boolean) => {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-user-id": userId
+        },
+        body: JSON.stringify({
+          prompt: userMessage,
+          modelId,
+          history: trimHistory ? history.slice(-4) : history,
+          files: [], // Do not carry over previous file arrays for safety unless desired
+          mode: selectedMode,
+          plan: currentPlan,
+          projectId: activeProject || "default",
+          customInstructions,
+          experimental: settings.experimental,
+          extendedThinking: isExtendedThinking,
+          userId: userId,
+          conversationId: conversationIdToUse
+        }),
+      });
+      return res;
+    };
+
+    const FALLBACK_MODELS = [
+      { id: selectedModel.id, trim: false },
+      { id: "google/gemini-2.5-flash", trim: true },
+      { id: "meta-llama/llama-3.2-3b-instruct:free", trim: true },
+    ];
+
+    try {
+      let res: Response | null = null;
+      for (const attempt of FALLBACK_MODELS) {
+        const r = await attemptChat(attempt.id, attempt.trim);
+        if (r.ok && r.body) {
+          res = r;
+          break;
+        }
+        console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
+      }
+
+      if (!res || !res.ok || !res.body) {
+        setMessages(prev => {
+          const copy = [...prev];
+          copy[copy.length - 1] = {
+            role: "assistant",
+            content: "I'm temporarily overloaded. Please start a new chat and try again.",
+            status: 'done'
+          };
+          return copy;
+        });
+        return;
+      }
+
+      const reader = res.body.getReader();
+      readerRef.current = reader;
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let didFinalize = false;
+      let streamingStarted = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.slice(6).trim();
+            if (dataStr === "[DONE]") {
+              didFinalize = true;
+              setMessages(prev => {
+                const copy = [...prev];
+                const lastIdx = copy.length - 1;
+                if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+                  copy[lastIdx] = { role: "assistant", content: fullContent, status: 'done' };
+                } else {
+                  copy.push({ role: "assistant", content: fullContent, status: 'done' });
+                }
+                return copy;
+              });
+              setIsStreaming(false);
+              setStreamingMessage("");
+              fetchRecentConversations();
+              break;
+            }
+
+            try {
+              const parsed = JSON.parse(dataStr);
+              const content = parsed.choices?.[0]?.delta?.content || "";
+              fullContent += content;
+              setStreamingMessage(fullContent);
+
+              if (content) {
+                if (!streamingStarted) {
+                  setIsStreaming(true);
+                  streamingStarted = true;
+                }
+                setMessages(prev => {
+                  const copy = [...prev];
+                  const lastIdx = copy.length - 1;
+                  if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+                    copy[lastIdx] = { 
+                      role: "assistant", 
+                      content: fullContent, 
+                      status: 'streaming' 
+                    };
+                  }
+                  return copy;
+                });
+              }
+            } catch {}
+          }
+        }
+      }
+
+      if (!didFinalize) {
+        didFinalize = true;
+        setMessages(prev => {
+          const copy = [...prev];
+          const lastIdx = copy.length - 1;
+          if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+            copy[lastIdx] = { role: "assistant", content: fullContent, status: 'done' };
+          } else {
+            copy.push({ role: "assistant", content: fullContent, status: 'done' });
+          }
+          return copy;
+        });
+        setIsStreaming(false);
+        setStreamingMessage("");
+      }
+    } catch (err: any) {
+      console.error("Frontend Edit Submit Error:", err);
+      setMessages(prev => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: "assistant", content: "Something went wrong. Please try again.", status: 'done' };
+        return copy;
+      });
+    } finally {
+      setIsLoading(false);
+      readerRef.current = null;
+    }
+  }
+
   return (
     <div className={cn("flex h-screen w-full overflow-hidden font-sans transition-colors duration-300", 
       theme === 'dark' ? "bg-[#495057] text-white" : "bg-[#e7e2ee] text-gray-900"
@@ -1812,17 +2021,34 @@ export default function ChatPage() {
                   )}>
 
                     <div className="flex items-center gap-1.5 group/userbubble">
-                      {m.role === "user" && (!m.status || (m.status !== 'thinking' && m.status !== 'typing')) && (
-                        <button 
-                          onClick={() => setInput(m.content)}
-                          className={cn(
-                            "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-opacity opacity-0 group-hover/message:opacity-100 shrink-0 border border-transparent dark:hover:border-white/10 hover:border-black/10 shadow-sm",
-                            theme === 'dark' ? "bg-[#1c2128]/50" : "bg-white/80"
-                          )}
-                          title="Edit message"
-                        >
-                          <Edit size={13} />
-                        </button>
+                      {m.role === "user" && (!m.status || (m.status !== 'thinking' && m.status !== 'typing')) && editingMessageIndex !== i && (
+                        <div className="flex flex-col gap-1 shrink-0 transition-opacity opacity-0 group-hover/message:opacity-100">
+                          <button 
+                            onClick={() => {
+                              setEditingMessageIndex(i);
+                              setEditingMessageText(m.content);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-transparent dark:hover:border-white/10 hover:border-black/10 shadow-sm transition-all",
+                              theme === 'dark' ? "bg-[#1c2128]/50" : "bg-white/80"
+                            )}
+                            title="Edit message"
+                          >
+                            <Edit size={13} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(m.content);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-transparent dark:hover:border-white/10 hover:border-black/10 shadow-sm transition-all",
+                              theme === 'dark' ? "bg-[#1c2128]/50" : "bg-white/80"
+                            )}
+                            title="Copy message"
+                          >
+                            <Copy size={13} />
+                          </button>
+                        </div>
                       )}
 
                       <div className={cn(
@@ -1918,7 +2144,37 @@ export default function ChatPage() {
                           </div>
                         )
                       ) : (
-                        <div className="whitespace-pre-wrap">{m.content}</div>
+                        editingMessageIndex === i ? (
+                          <div className="flex flex-col gap-2 min-w-[240px] sm:min-w-[320px] max-w-full">
+                            <textarea
+                              value={editingMessageText}
+                              onChange={(e) => setEditingMessageText(e.target.value)}
+                              className={cn(
+                                "w-full bg-black/10 dark:bg-black/30 border border-white/10 rounded-xl p-2.5 text-sm focus:outline-none focus:border-cyan-500/50 resize-y min-h-[80px]",
+                                theme === 'dark' ? "text-white" : "text-gray-900"
+                              )}
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setEditingMessageIndex(null)}
+                                className={cn(
+                                  "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border",
+                                  theme === 'dark' ? "border-white/10 hover:bg-white/5 text-gray-400 hover:text-white" : "border-black/10 hover:bg-black/5 text-gray-600 hover:text-gray-900"
+                                )}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleEditSubmit(i, editingMessageText)}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-black shadow-md transition-all"
+                              >
+                                Save & Submit
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="whitespace-pre-wrap">{m.content}</div>
+                        )
                       )}
 
                       {/* Message Actions (Copy/Edit) */}
