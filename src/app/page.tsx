@@ -1811,13 +1811,27 @@ export default function ChatPage() {
                     m.role === "user" ? "items-end" : "items-start"
                   )}>
 
-                    <div className={cn(
-                      "rounded-2xl text-[15px] leading-relaxed relative",
-                      m.role === "user" 
-                        ? (theme === 'dark' ? "bg-[#1c2128] border border-white/8 text-gray-100 px-4 py-2.5" : "bg-white border border-black/10 text-gray-900 px-4 py-2.5 shadow-sm")
-                        : (theme === 'dark' ? "bg-transparent text-gray-100 py-1" : "bg-transparent text-gray-900 py-1")
-                    )}>
-                      {m.role === "assistant" ? (
+                    <div className="flex items-center gap-1.5 group/userbubble">
+                      {m.role === "user" && (!m.status || (m.status !== 'thinking' && m.status !== 'typing')) && (
+                        <button 
+                          onClick={() => setInput(m.content)}
+                          className={cn(
+                            "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-opacity opacity-0 group-hover/message:opacity-100 shrink-0 border border-transparent dark:hover:border-white/10 hover:border-black/10 shadow-sm",
+                            theme === 'dark' ? "bg-[#1c2128]/50" : "bg-white/80"
+                          )}
+                          title="Edit message"
+                        >
+                          <Edit size={13} />
+                        </button>
+                      )}
+
+                      <div className={cn(
+                        "rounded-2xl text-[15px] leading-relaxed relative",
+                        m.role === "user" 
+                          ? (theme === 'dark' ? "bg-[#1c2128] border border-white/8 text-gray-100 px-4 py-2.5" : "bg-white border border-black/10 text-gray-900 px-4 py-2.5 shadow-sm")
+                          : (theme === 'dark' ? "bg-transparent text-gray-100 py-1" : "bg-transparent text-gray-900 py-1")
+                      )}>
+                        {m.role === "assistant" ? (
                         m.status === 'thinking' ? (
                           <div className={cn("flex items-center gap-2 py-1 px-2 rounded-xl border", theme === 'dark' ? "bg-white/5 border-white/5" : "bg-black/5 border-black/5")}>
                             <motion.div 
@@ -1908,21 +1922,9 @@ export default function ChatPage() {
                       )}
 
                       {/* Message Actions (Copy/Edit) */}
-                      {(!m.status || (m.status !== 'thinking' && m.status !== 'typing')) && (
-                        <div className={cn(
-                          "absolute -bottom-10 flex items-center gap-1 transition-opacity opacity-0 group-hover/message:opacity-100 z-10",
-                          m.role === "user" ? "right-0" : "left-0"
-                        )}>
-                          {m.role === "user" ? (
-                            <button 
-                              onClick={() => setInput(m.content)}
-                              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
-                              title="Edit message"
-                            >
-                              <Settings size={14} />
-                            </button>
-                          ) : (
-                            <div className="flex items-center gap-0.5">
+                      {(!m.status || (m.status !== 'thinking' && m.status !== 'typing')) && m.role === "assistant" && (
+                        <div className="flex items-center gap-1 transition-opacity opacity-0 group-hover/message:opacity-100 mt-1.5 self-start">
+                          <div className="flex items-center gap-0.5">
                               <button 
                                 onClick={() => {
                                   navigator.clipboard.writeText(m.content);
@@ -2026,9 +2028,9 @@ export default function ChatPage() {
                                 );
                               })()}
                             </div>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     {/* Metadata moved to top */}
                   </div>
