@@ -1,4 +1,4 @@
-import type { TestCase } from "../types.js";
+ import type { TestCase } from "../types.js";
 
 const baseline = (pass: boolean): boolean => pass;
 

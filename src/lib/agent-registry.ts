@@ -1,4 +1,4 @@
-import { AgentDefinition, AgentCategory } from "./agent-types";
+import { AgentDefinition, AgentCategory, PlanTier } from "./agent-types";
 
 // ══════════════════════════════════════════════════════════════════════
 // LIKEWAY AI — AGENT REGISTRY (50+ Agents)
@@ -23,6 +23,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Be honest about limitations`,
     tools: ["search", "code_interpreter"],
     premium: false,
+    minPlan: "Core",
     color: "#3B82F6",
   },
   {
@@ -38,6 +39,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Direct answer first, then brief context if needed`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#06B6D4",
   },
   {
@@ -54,6 +56,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include visual aids (tables, lists) when helpful`,
     tools: ["search"],
     premium: false,
+    minPlan: "Core",
     color: "#8B5CF6",
   },
   {
@@ -70,6 +73,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Regional variations when specified`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#10B981",
   },
   {
@@ -86,6 +90,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Provide different summary lengths on request`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#F59E0B",
   },
   {
@@ -102,6 +107,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Build on user's initial concepts`,
     tools: ["search"],
     premium: false,
+    minPlan: "Core",
     color: "#EC4899",
   },
   {
@@ -118,6 +124,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Provide contingency options`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#EF4444",
   },
 
@@ -139,6 +146,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include conflicting viewpoints when available`,
     tools: ["tavily_search", "searxng_search", "web_fetch"],
     premium: true,
+    minPlan: "Plus",
     color: "#8B5CF6",
   },
   {
@@ -156,6 +164,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include source credibility assessment`,
     tools: ["tavily_search", "searxng_search"],
     premium: false,
+    minPlan: "Go",
     color: "#EF4444",
   },
   {
@@ -173,6 +182,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Flag potential misinformation`,
     tools: ["tavily_search", "searxng_search"],
     premium: false,
+    minPlan: "Go",
     color: "#10B981",
   },
   {
@@ -190,6 +200,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Provide proper academic citations`,
     tools: ["arxiv_search", "semantic_scholar", "tavily_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#6366F1",
   },
   {
@@ -207,6 +218,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include sources for all data points`,
     tools: ["tavily_search", "searxng_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#F59E0B",
   },
   {
@@ -224,6 +236,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Cite specific laws and sections`,
     tools: ["tavily_search", "searxng_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#1F2937",
   },
   {
@@ -241,6 +254,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Note when information is preliminary`,
     tools: ["tavily_search", "searxng_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#DC2626",
   },
   {
@@ -258,6 +272,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Provide actionable insights`,
     tools: ["tavily_search", "searxng_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#7C3AED",
   },
 
@@ -279,6 +294,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Suggest optimizations when relevant`,
     tools: ["code_interpreter"],
     premium: false,
+    minPlan: "Go",
     color: "#10B981",
   },
   {
@@ -296,6 +312,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Test edge cases`,
     tools: ["code_interpreter"],
     premium: false,
+    minPlan: "Go",
     color: "#EF4444",
   },
   {
@@ -313,6 +330,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Rate overall code quality`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#F59E0B",
   },
   {
@@ -330,6 +348,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Provide implementation roadmap`,
     tools: [],
     premium: true,
+    minPlan: "Plus",
     color: "#6366F1",
   },
   {
@@ -347,6 +366,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include setup instructions`,
     tools: ["code_interpreter", "web_fetch"],
     premium: true,
+    minPlan: "Plus",
     color: "#06B6D4",
   },
   {
@@ -364,6 +384,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Optimize for readability and performance`,
     tools: ["code_interpreter"],
     premium: false,
+    minPlan: "Go",
     color: "#3B82F6",
   },
   {
@@ -381,6 +402,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Handle complex joins and subqueries`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#7C3AED",
   },
   {
@@ -398,6 +420,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Implement security best practices`,
     tools: ["code_interpreter"],
     premium: true,
+    minPlan: "Plus",
     color: "#059669",
   },
   {
@@ -415,6 +438,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Create smooth animations`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#EC4899",
   },
   {
@@ -432,6 +456,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Consider versioning strategy`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#14B8A6",
   },
 
@@ -453,6 +478,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Create memorable characters and scenes`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#F59E0B",
   },
   {
@@ -470,6 +496,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Adapt tone for different audiences`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Go",
     color: "#EF4444",
   },
   {
@@ -487,6 +514,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Analyze competitor content`,
     tools: ["tavily_search", "searxng_search"],
     premium: false,
+    minPlan: "Go",
     color: "#10B981",
   },
   {
@@ -504,6 +532,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include engagement tactics`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#EC4899",
   },
   {
@@ -521,6 +550,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Time scripts for target duration`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#DC2626",
   },
   {
@@ -538,6 +568,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Follow-up sequences`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#3B82F6",
   },
   {
@@ -555,6 +586,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Speaker notes for each slide`,
     tools: [],
     premium: true,
+    minPlan: "Plus",
     color: "#8B5CF6",
   },
   {
@@ -572,6 +604,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Suggest visual identity direction`,
     tools: ["tavily_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#F59E0B",
   },
 
@@ -593,6 +626,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include relevant background research`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Core",
     color: "#06B6D4",
   },
   {
@@ -610,6 +644,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Status reporting templates`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#3B82F6",
   },
   {
@@ -627,6 +662,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Optimize for team collaboration`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#1F2937",
   },
   {
@@ -644,6 +680,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Identify time-wasters and solutions`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#F59E0B",
   },
   {
@@ -661,6 +698,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include version control notes`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#6B7280",
   },
   {
@@ -678,6 +716,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Time each section`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#8B5CF6",
   },
   {
@@ -695,6 +734,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Measure ROI of automation`,
     tools: ["code_interpreter"],
     premium: true,
+    minPlan: "Plus",
     color: "#EC4899",
   },
 
@@ -716,6 +756,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Note data quality issues`,
     tools: ["code_interpreter"],
     premium: true,
+    minPlan: "Plus",
     color: "#3B82F6",
   },
   {
@@ -733,6 +774,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Note assumptions and limitations`,
     tools: ["code_interpreter", "tavily_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#10B981",
   },
   {
@@ -750,6 +792,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Provide sentiment scores`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Go",
     color: "#F59E0B",
   },
   {
@@ -767,6 +810,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Create structured summaries`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#6366F1",
   },
   {
@@ -784,6 +828,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Compare multiple images`,
     tools: [],
     premium: false,
+    minPlan: "Plus",
     color: "#EC4899",
   },
   {
@@ -801,6 +846,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Compare against best practices`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#10B981",
   },
   {
@@ -818,6 +864,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Create risk matrices`,
     tools: ["tavily_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#EF4444",
   },
 
@@ -839,6 +886,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Create implementation plans`,
     tools: ["code_interpreter"],
     premium: true,
+    minPlan: "Plus",
     color: "#EC4899",
   },
   {
@@ -856,6 +904,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Document automation logic`,
     tools: [],
     premium: false,
+    minPlan: "Go",
     color: "#FF4A00",
   },
   {
@@ -873,6 +922,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Monitor data quality`,
     tools: ["code_interpreter"],
     premium: true,
+    minPlan: "Plus",
     color: "#3B82F6",
   },
   {
@@ -890,6 +940,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Handle anti-scraping measures`,
     tools: ["playwright", "web_fetch"],
     premium: true,
+    minPlan: "Pro",
     color: "#7C3AED",
   },
   {
@@ -907,6 +958,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Track notification effectiveness`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#F59E0B",
   },
   {
@@ -924,6 +976,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Optimize resource usage`,
     tools: [],
     premium: false,
+    minPlan: "Core",
     color: "#06B6D4",
   },
 
@@ -945,6 +998,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Budget optimization`,
     tools: ["tavily_search", "searxng_search"],
     premium: false,
+    minPlan: "Core",
     color: "#06B6D4",
   },
   {
@@ -962,6 +1016,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Adapt for dietary restrictions`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Core",
     color: "#EF4444",
   },
   {
@@ -979,6 +1034,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Include recovery advice`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Core",
     color: "#10B981",
   },
   {
@@ -996,6 +1052,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Build professional networks`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Core",
     color: "#3B82F6",
   },
   {
@@ -1013,6 +1070,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Note: Not financial advice disclaimers`,
     tools: ["tavily_search", "searxng_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#10B981",
   },
   {
@@ -1030,6 +1088,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Always recommend consulting a lawyer`,
     tools: ["tavily_search"],
     premium: true,
+    minPlan: "Plus",
     color: "#1F2937",
   },
   {
@@ -1047,6 +1106,7 @@ export const AGENT_REGISTRY: AgentDefinition[] = [
 - Track learning progress`,
     tools: ["tavily_search"],
     premium: false,
+    minPlan: "Core",
     color: "#8B5CF6",
   },
 ];

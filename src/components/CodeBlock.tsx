@@ -158,7 +158,8 @@ export default function CodeBlock({
       setPhase(currentPhase);
     }, 1800);
     return () => clearInterval(interval);
-  }, [isGenerating]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Line-by-line typing animation (only if not already animated) ───
   useEffect(() => {
@@ -198,7 +199,8 @@ export default function CodeBlock({
     }, Math.max(25, Math.min(60, 300 / lines.length)));
 
     return () => clearInterval(interval);
-  }, [value, isGenerating, lines.length, isSingleLine]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Auto-scroll during generation ─────────────────────────────────
   useEffect(() => {

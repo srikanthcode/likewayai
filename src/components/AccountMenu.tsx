@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 import {
   User, Settings, LogOut, Sparkles, Folder, CreditCard, HelpCircle,
   Monitor, Sun, Moon, ChevronRight, Palette, Cpu, Briefcase, BarChart3,
@@ -107,10 +108,51 @@ export default function AccountMenu() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [plan, setPlan] = useState<PlanType>("Core");
   const planDisplay = getPlanDisplay(plan);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     setPlan(getCurrentPlan());
   }, []);
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const updatePosition = () => {
+        if (!triggerRef.current) return;
+        const rect = triggerRef.current.getBoundingClientRect();
+        const menuHeight = 600;
+        const menuWidth = 300;
+        
+        let top: number;
+        let left: number;
+        
+        if (rect.top > menuHeight) {
+          top = rect.top - menuHeight - 8;
+        } else {
+          top = rect.bottom + 8;
+        }
+        
+        left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+        
+        if (top + menuHeight > window.innerHeight) {
+          top = window.innerHeight - menuHeight - 8;
+        }
+        if (top < 8) {
+          top = 8;
+        }
+        
+        setMenuPosition({ top, left });
+      };
+      
+      updatePosition();
+      
+      const handleResize = () => updatePosition();
+      window.addEventListener('resize', handleResize);
+      
+      return () => {
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [isOpen]);
 
   const totalItems = 1 + quickActions.length + menuItems.length + themes.length + 1;
 
@@ -231,44 +273,47 @@ export default function AccountMenu() {
               onClick={closeMenu}
               aria-hidden="true"
             />
-            <motion.div
-              initial={{ opacity: 0, y: -8, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.96 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-              role="menu"
-              aria-label="Account menu"
-              className={cn(
-                "absolute bottom-full left-0 mb-2 w-[360px] max-sm:w-[320px] max-[480px]:w-screen max-[480px]:left-0 max-[480px]:right-0",
-                "rounded-2xl border shadow-2xl overflow-hidden z-[210]",
-                "bg-[var(--likeway-surface)] border-[var(--likeway-border)]",
-                "backdrop-blur-xl"
-              )}
-              style={{
-                boxShadow: "var(--likeway-shadow, 0 25px 50px -12px rgba(0,0,0,0.25))",
-              }}
-            >
+            {typeof document !== 'undefined' && createPortal(
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                role="menu"
+                aria-label="Account menu"
+                className={cn(
+                  "fixed w-[300px] max-sm:w-[280px] max-[480px]:w-[calc(100vw-32px)]",
+                  "rounded-xl border shadow-2xl z-[210]",
+                  "bg-[var(--likeway-surface)] border-[var(--likeway-border)]",
+                  "backdrop-blur-xl"
+                )}
+                style={{
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2)",
+                  top: menuPosition.top,
+                  left: menuPosition.left,
+                }}
+              >
               <div className="max-h-[80vh] overflow-y-auto custom-scrollbar">
                 {/* ── Header Section ── */}
                 <div
                   role="group"
                   aria-label={sectionLabel("header")}
-                  className="p-5 pb-4 border-b border-[var(--likeway-border)]"
+                  className="p-4 pb-3 border-b border-[var(--likeway-border)]"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <Link
                       href="/account"
                       onClick={closeMenu}
-                      className="relative group/avatar"
+                      className="relative group/avatar flex-shrink-0"
                       aria-label="Open account page"
                     >
                   <div className={
-                    `w-14 h-14 rounded-full bg-gradient-to-br flex items-center justify-center text-lg font-bold text-white shadow-lg transition-transform duration-200 ${planDisplay.color} group-hover/avatar:scale-105`
+                    `w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center text-sm font-bold text-white shadow-md transition-transform duration-200 ${planDisplay.color} group-hover/avatar:scale-105`
                   }>
                     {getAvatarFallback(user)}
                   </div>
                       <span className={cn(
-                        "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[3px] border-[var(--likeway-surface)]",
+                        "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--likeway-surface)]",
                         isAuthenticated ? "bg-emerald-500" : "bg-gray-400"
                       )} />
                     </Link>
@@ -277,7 +322,7 @@ export default function AccountMenu() {
                         <Link
                           href="/login"
                           onClick={closeMenu}
-                          className="text-base font-bold text-[var(--likeway-text-primary)] truncate hover:underline underline-offset-2"
+                          className="text-sm font-bold text-[var(--likeway-text-primary)] truncate hover:underline underline-offset-2"
                         >
                           Sign in
                         </Link>
@@ -285,27 +330,27 @@ export default function AccountMenu() {
                         <Link
                           href="/account"
                           onClick={closeMenu}
-                          className="text-base font-bold text-[var(--likeway-text-primary)] truncate hover:underline underline-offset-2"
+                          className="text-sm font-bold text-[var(--likeway-text-primary)] truncate hover:underline underline-offset-2"
                         >
                           {user?.name || user?.email}
                         </Link>
                       )}
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-1.5 mt-0.5">
                         <Link
                           href="/account?tab=billing"
                           onClick={closeMenu}
                           className={cn(
-                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all duration-200",
+                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold border transition-all duration-200",
                             "bg-gradient-to-r text-white border-transparent",
                             planDisplay.color,
-                            "hover:opacity-90 hover:scale-105"
+                            "hover:opacity-90"
                           )}
                         >
-                          <Sparkles size={10} />
+                          <Sparkles size={8} />
                           {planDisplay.label}
                         </Link>
                         {isAuthenticated && (
-                          <span className="flex items-center gap-1 text-[10px] text-emerald-500 font-semibold">
+                          <span className="flex items-center gap-1 text-[9px] text-emerald-500 font-semibold">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             Online
                           </span>
@@ -319,7 +364,7 @@ export default function AccountMenu() {
                 <div
                   role="group"
                   aria-label={sectionLabel("quick")}
-                  className="p-4 pb-2 space-y-2 border-b border-[var(--likeway-border)]"
+                  className="p-2 pb-1.5 space-y-0.5 border-b border-[var(--likeway-border)]"
                 >
                   {quickActions.map((action, i) => (
                     <button
@@ -329,23 +374,23 @@ export default function AccountMenu() {
                       role="menuitem"
                       tabIndex={focusedIndex === 1 + i ? 0 : -1}
                       className={cn(
-                        "w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-150",
+                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all duration-150",
                         "hover:bg-[var(--likeway-surface-hover)] active:scale-[0.98]",
                         "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--likeway-accent)]",
                         focusedIndex === 1 + i && "bg-[var(--likeway-surface-hover)]"
                       )}
                     >
                       <div className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",
+                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
                         "bg-[var(--likeway-accent)]/10 text-[var(--likeway-accent)]"
                       )}>
-                        <action.icon size={18} />
+                        <action.icon size={16} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-[var(--likeway-text-primary)]">{action.title}</div>
-                        <div className="text-[11px] text-[var(--likeway-text-secondary)] truncate">{action.desc}</div>
+                        <div className="text-[13px] font-bold text-[var(--likeway-text-primary)]">{action.title}</div>
+                        <div className="text-[10px] text-[var(--likeway-text-secondary)] truncate">{action.desc}</div>
                       </div>
-                      <ChevronRight size={14} className="text-[var(--likeway-text-secondary)] flex-shrink-0" />
+                      <ChevronRight size={12} className="text-[var(--likeway-text-secondary)] flex-shrink-0 opacity-50" />
                     </button>
                   ))}
                 </div>
@@ -354,7 +399,7 @@ export default function AccountMenu() {
                 <div
                   role="group"
                   aria-label={sectionLabel("menu")}
-                  className="p-2 border-b border-[var(--likeway-border)]"
+                  className="p-1.5 border-b border-[var(--likeway-border)]"
                 >
                   {menuItems.map((item, i) => (
                     <button
@@ -364,20 +409,20 @@ export default function AccountMenu() {
                       role="menuitem"
                       tabIndex={focusedIndex === 1 + quickActions.length + i ? 0 : -1}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
+                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all duration-150",
                         "hover:bg-[var(--likeway-surface-hover)] active:scale-[0.98]",
                         "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--likeway-accent)]",
                         focusedIndex === 1 + quickActions.length + i && "bg-[var(--likeway-surface-hover)]"
                       )}
                     >
-                      <item.icon size={16} className="text-[var(--likeway-text-secondary)] flex-shrink-0" />
-                      <span className="flex-1 text-sm font-semibold text-[var(--likeway-text-primary)]">{item.label}</span>
+                      <item.icon size={14} className="text-[var(--likeway-text-secondary)] flex-shrink-0" />
+                      <span className="flex-1 text-[13px] font-semibold text-[var(--likeway-text-primary)]">{item.label}</span>
                       {item.badge && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[var(--likeway-accent)]/10 text-[var(--likeway-accent)] font-bold">
+                        <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-[var(--likeway-accent)]/10 text-[var(--likeway-accent)] font-bold">
                           {item.badge}
                         </span>
                       )}
-                      <ChevronRight size={12} className="text-[var(--likeway-text-secondary)] flex-shrink-0" />
+                      <ChevronRight size={11} className="text-[var(--likeway-text-secondary)] flex-shrink-0 opacity-40" />
                     </button>
                   ))}
                 </div>
@@ -386,10 +431,10 @@ export default function AccountMenu() {
                 <div
                   role="group"
                   aria-label={sectionLabel("footer")}
-                  className="p-3 space-y-2"
+                  className="p-2 space-y-1.5"
                 >
                   {/* Theme Switcher */}
-                  <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--likeway-bg)] border border-[var(--likeway-border)]">
+                  <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--likeway-bg)] border border-[var(--likeway-border)]">
                     {themes.map((t, i) => {
                       const idx = 1 + quickActions.length + menuItems.length + i;
                       return (
@@ -401,7 +446,7 @@ export default function AccountMenu() {
                           tabIndex={focusedIndex === idx ? 0 : -1}
                           aria-pressed={theme === t.id}
                           className={cn(
-                            "flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all duration-150",
+                            "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-150",
                             theme === t.id
                               ? "bg-[var(--likeway-accent)] text-white shadow-sm"
                               : "text-[var(--likeway-text-secondary)] hover:text-[var(--likeway-text-primary)] hover:bg-[var(--likeway-surface-hover)]",
@@ -409,7 +454,7 @@ export default function AccountMenu() {
                             focusedIndex === idx && theme !== t.id && "bg-[var(--likeway-surface-hover)]"
                           )}
                         >
-                          <t.icon size={14} />
+                          <t.icon size={12} />
                           {t.label}
                         </button>
                       );
@@ -419,18 +464,18 @@ export default function AccountMenu() {
                   {/* Sign Out */}
                   {isAuthenticated ? (
                     showLogoutConfirm ? (
-                      <div className="p-3 rounded-xl bg-[var(--likeway-bg)] border border-[var(--likeway-border)] space-y-3">
-                        <p className="text-xs font-semibold text-[var(--likeway-text-primary)]">Sign Out of LikeWay?</p>
+                      <div className="p-2.5 rounded-lg bg-[var(--likeway-bg)] border border-[var(--likeway-border)] space-y-2">
+                        <p className="text-[11px] font-semibold text-[var(--likeway-text-primary)]">Sign Out of LikeWay?</p>
                         <div className="flex gap-2">
                           <button
                             onClick={() => setShowLogoutConfirm(false)}
-                            className="flex-1 py-2 rounded-lg text-xs font-bold text-[var(--likeway-text-secondary)] bg-[var(--likeway-surface-hover)] hover:opacity-80 transition-all active:scale-[0.98]"
+                            className="flex-1 py-1.5 rounded-md text-[11px] font-bold text-[var(--likeway-text-secondary)] bg-[var(--likeway-surface-hover)] hover:opacity-80 transition-all"
                           >
                             Cancel
                           </button>
                           <button
                             onClick={handleLogout}
-                            className="flex-1 py-2 rounded-lg text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-all active:scale-[0.98]"
+                            className="flex-1 py-1.5 rounded-md text-[11px] font-bold text-white bg-red-500 hover:bg-red-600 transition-all"
                           >
                             Sign Out
                           </button>
@@ -443,14 +488,14 @@ export default function AccountMenu() {
                         role="menuitem"
                         tabIndex={focusedIndex === 1 + quickActions.length + menuItems.length + themes.length ? 0 : -1}
                         className={cn(
-                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
+                          "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all duration-150",
                           "hover:bg-red-500/10 text-red-500 active:scale-[0.98]",
                           "focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500",
                           focusedIndex === 1 + quickActions.length + menuItems.length + themes.length && "bg-red-500/10"
                         )}
                       >
-                        <LogOut size={16} />
-                        <span className="text-sm font-bold">Sign Out</span>
+                        <LogOut size={14} />
+                        <span className="text-[13px] font-bold">Sign Out</span>
                       </button>
                     )
                   ) : (
@@ -458,17 +503,19 @@ export default function AccountMenu() {
                       href="/login"
                       onClick={closeMenu}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
+                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all duration-150",
                         "hover:bg-[var(--likeway-accent)]/10 text-[var(--likeway-accent)] active:scale-[0.98]"
                       )}
                     >
-                      <LogOut size={16} />
-                      <span className="text-sm font-bold">Sign In</span>
+                      <LogOut size={14} />
+                      <span className="text-[13px] font-bold">Sign In</span>
                     </Link>
                   )}
                 </div>
               </div>
-            </motion.div>
+            </motion.div>,
+            document.body
+            )}
           </>
         )}
       </AnimatePresence>

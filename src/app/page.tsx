@@ -41,7 +41,9 @@ import {
   Brain,
   ExternalLink,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Cpu,
+  Lock
 } from "lucide-react";
 
 
@@ -326,7 +328,11 @@ function YoutubeCard({ ytId, titleText, href }: { ytId: string; titleText: strin
 }
 
 // Shared ReactMarkdown component map — renders step cards for ordered lists
-function buildMarkdownComponents(theme: 'dark' | 'light', isGenerating: boolean = false) {
+// isGeneratingRef is read by CodeBlock via module-level variable to avoid re-mount
+let _isGeneratingRef = { current: false };
+export function getIsGenerating() { return _isGeneratingRef.current; }
+
+function buildMarkdownComponents() {
   let stepCounter = 0;
   
   const getYoutubeId = (url: string): string | null => {
@@ -349,7 +355,7 @@ function buildMarkdownComponents(theme: 'dark' | 'light', isGenerating: boolean 
     code: ({ node, inline, className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || '');
       return !inline && match ? (
-        <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} isGenerating={isGenerating} />
+        <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} isGenerating={_isGeneratingRef.current} />
       ) : (
         <code className={cn(className, "bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono")} {...props}>
           {children}
@@ -557,7 +563,7 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  const getMarkdownComponents = useCallback((isMsgGenerating: boolean) => buildMarkdownComponents(theme, isMsgGenerating), [theme]);
+  const markdownComponents = useMemo(() => buildMarkdownComponents(), []);
 
   const findVoiceForChar = (charId: string) => {
     const voices = window.speechSynthesis.getVoices();
@@ -1905,7 +1911,7 @@ export default function ChatPage() {
                 };
                 setSelectedMode(modeMap[agent.category] || "General");
               }}
-              isPremium={currentPlan !== "Core"}
+              currentPlan={currentPlan}
             />
           </div>
 
@@ -2331,7 +2337,7 @@ export default function ChatPage() {
                             "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown components={getMarkdownComponents(isMsgStreaming)}>
+                            <ReactMarkdown components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
                               {formatAIResponse(m.content || "Thinking...")}
                             </ReactMarkdown>
                             <span className="inline-block w-[2px] h-[1em] bg-cyan-400 ml-0.5 align-middle animate-pulse" />
@@ -2341,7 +2347,7 @@ export default function ChatPage() {
                             "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown components={getMarkdownComponents(isMsgStreaming)}>
+                            <ReactMarkdown components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
                               {formatAIResponse(m.content)}
                             </ReactMarkdown>
                           </div>
@@ -2703,24 +2709,44 @@ export default function ChatPage() {
                               <div className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-white/5 mb-1">
                                 Available Models
                               </div>
-                                {MODELS.map((model, modelIdx) => (
+                                {MODELS.map((model, modelIdx) => {
+                                  const planConfig = PLANS[currentPlan];
+                                  const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
+                                  return (
                                   <button
                                     key={`${model.id}-${model.provider}-${model.name}`}
-                                   onClick={() => { setSelectedModel(model); setIsInputModelMenuOpen(false); }}
-                                   className={cn(
-                                     "flex items-center gap-3 p-2.5 rounded-xl transition-all text-left group",
-                                     selectedModel.id === model.id && selectedModel.provider === model.provider
-                                       ? (theme === 'dark' ? "bg-cyan-500/10 text-cyan-400" : "bg-cyan-50 text-cyan-600")
-                                       : (theme === 'dark' ? "hover:bg-white/5 text-gray-300" : "hover:bg-black/5 text-gray-700")
-                                   )}
-                                 >
-                                   <div className="flex-1 min-w-0">
-                                      <div className={cn("text-sm font-semibold truncate", selectedModel.id === model.id ? "" : (theme === 'dark' ? "group-hover:text-white" : "group-hover:text-black"))}>{model.name}</div>
+                                    onClick={() => { if (isAllowed) { setSelectedModel(model); setIsInputModelMenuOpen(false); } }}
+                                    disabled={!isAllowed}
+                                    className={cn(
+                                      "flex items-center gap-3 p-2.5 rounded-xl transition-all text-left group",
+                                      !isAllowed ? "opacity-40 cursor-not-allowed" : "",
+                                      selectedModel.id === model.id && selectedModel.provider === model.provider
+                                        ? (theme === 'dark' ? "bg-cyan-500/10 text-cyan-400" : "bg-cyan-50 text-cyan-600")
+                                        : (theme === 'dark' ? "hover:bg-white/5 text-gray-300" : "hover:bg-black/5 text-gray-700")
+                                    )}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <div className={cn("text-sm font-semibold truncate", selectedModel.id === model.id ? "" : (theme === 'dark' ? "group-hover:text-white" : "group-hover:text-black"))}>{model.name}</div>
+                                        {!isAllowed && (
+                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                                            <Lock size={8} />
+                                            {model.plan}
+                                          </span>
+                                        )}
+                                        {isAllowed && model.plan !== "Core" && model.plan !== currentPlan && (
+                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">
+                                            <Sparkles size={8} />
+                                            {model.plan}
+                                          </span>
+                                        )}
+                                      </div>
                                       <div className="text-[10px] opacity-70 truncate mt-0.5">{model.description}</div>
-                                   </div>
-                                   {selectedModel.id === model.id && <Check size={16} />}
-                                 </button>
-                               ))}
+                                    </div>
+                                    {selectedModel.id === model.id && <Check size={16} />}
+                                  </button>
+                                  );
+                                })}
                             </motion.div>
                           </>
                         )}
@@ -2886,174 +2912,244 @@ export default function ChatPage() {
 
       <AnimatePresence>
         {isSettingsOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4"
+            onClick={() => setIsSettingsOpen(false)}
           >
-            <motion.div 
-              initial={{ scale: 0.96, y: 10 }} 
-              animate={{ scale: 1, y: 0 }} 
+            <motion.div
+              initial={{ scale: 0.95, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 20, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
               className={cn(
-                "w-full max-w-md border rounded-2xl shadow-2xl transition-colors overflow-hidden max-h-[85vh] flex flex-col",
-                theme === 'dark' ? "bg-[#161b22] border-white/10" : "bg-white border-black/10"
+                "w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col",
+                theme === 'dark' ? "bg-[#1c1c1e] border border-white/10" : "bg-white border border-black/10"
               )}
             >
               {/* Header */}
-              <div className={cn("flex items-center justify-between px-5 py-4 border-b shrink-0", theme === 'dark' ? "border-white/5" : "border-black/5")}>
-                <h2 className={cn("text-base font-black", theme === 'dark' ? "text-white" : "text-gray-900")}>Settings</h2>
-                <button onClick={() => setIsSettingsOpen(false)} className={cn("p-1.5 rounded-full transition-colors", theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")}>
-                  <X size={16} />
+              <div className={cn("flex items-center justify-between px-6 py-5 border-b shrink-0", theme === 'dark' ? "border-white/8" : "border-black/5")}>
+                <div>
+                  <h2 className={cn("text-lg font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>Settings</h2>
+                  <p className={cn("text-xs mt-0.5", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>Manage your account and preferences</p>
+                </div>
+                <button onClick={() => setIsSettingsOpen(false)} className={cn("p-2 rounded-xl transition-colors", theme === 'dark' ? "hover:bg-white/10 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-500 hover:text-gray-900")}>
+                  <X size={18} />
                 </button>
               </div>
 
-              {/* User Profile */}
-              <div className={cn("px-5 py-4 border-b shrink-0", theme === 'dark' ? "border-white/5" : "border-black/5")}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
-                    {user?.name?.charAt(0) || "U"}
+              {/* User Profile Card */}
+              <div className={cn("px-6 py-4 border-b shrink-0", theme === 'dark' ? "border-white/8" : "border-black/5")}>
+                <div className={cn("flex items-center gap-4 p-4 rounded-2xl", theme === 'dark' ? "bg-white/5" : "bg-gray-50")}>
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-cyan-500/20">
+                    {user?.name?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={cn("text-sm font-bold truncate", theme === 'dark' ? "text-white" : "text-gray-900")}>{user?.name || "User"}</p>
-                    <p className={cn("text-xs truncate", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>{user?.email || "user@email.com"}</p>
+                    <p className={cn("text-xs truncate mt-0.5", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>{user?.email || "user@email.com"}</p>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">{currentPlan}</span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[10px] text-green-400 font-medium">Online</span>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/20">{currentPlan}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      <span className="text-[10px] text-green-500 font-medium">Online</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1">
-                {/* Workspace */}
-                <SettingsSection title="Workspace" icon={<Briefcase size={14} />} theme={theme}>
-                  <SettingsItem label="Projects & dashboards" onClick={() => { setIsSettingsOpen(false); }} theme={theme} />
-                </SettingsSection>
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
-                {/* AI Personalization */}
-                <SettingsSection title="AI Personalization" icon={<Brain size={14} />} theme={theme}>
-                  <SettingsItem label="Memory, style & instructions" theme={theme} />
-                  <div className="mt-2">
-                    <textarea 
-                      value={customInstructions}
-                      onChange={(e) => {
-                        setCustomInstructions(e.target.value);
-                        localStorage.setItem('gemma_memory', e.target.value);
-                      }}
-                      placeholder="Add custom instructions for AI..."
-                      className={cn(
-                        "w-full h-16 border rounded-xl p-2.5 text-[11px] focus:outline-none focus:border-cyan-500/50 resize-none transition-all",
-                        theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 placeholder-gray-600" : "bg-black/5 border-black/10 text-gray-800 placeholder-gray-400"
-                      )}
-                    />
-                  </div>
-                </SettingsSection>
-
-                {/* Usage */}
-                <SettingsSection title="Usage" icon={<Zap size={14} />} theme={theme}>
-                  <SettingsItem label="Tokens, requests & storage" theme={theme} />
-                </SettingsSection>
-
-                {/* Settings */}
-                <SettingsSection title="Settings" icon={<Settings size={14} />} theme={theme}>
-                  {[
-                    { id: 'experimental', name: 'Experimental Frontier Models', badge: 'ELITE' },
-                    { id: 'highVelocity', name: 'High-Velocity Reasoning', badge: 'PRO' },
-                    { id: 'voiceV2', name: 'Advanced Voice UI (v2)' }
-                  ].map((s) => (
-                    <div key={s.id} className="flex items-center justify-between py-2">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("text-xs", theme === 'dark' ? "text-gray-300" : "text-gray-700")}>{s.name}</span>
-                        {s.badge && <span className="text-[7px] px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold">{s.badge}</span>}
+                {/* AI Settings */}
+                <div>
+                  <h3 className={cn("text-[11px] font-bold uppercase tracking-wider mb-3 flex items-center gap-2", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>
+                    <Sparkles size={12} />
+                    AI Settings
+                  </h3>
+                  <div className={cn("rounded-2xl divide-y", theme === 'dark' ? "bg-white/5 divide-white/5" : "bg-gray-50 divide-black/5")}>
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-purple-500/10" : "bg-purple-50")}>
+                          <Brain size={14} className="text-purple-400" />
+                        </div>
+                        <div>
+                          <p className={cn("text-xs font-semibold", theme === 'dark' ? "text-gray-200" : "text-gray-800")}>Extended Thinking</p>
+                          <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>Deeper reasoning for complex problems</p>
+                        </div>
                       </div>
-                      <button 
-                        onClick={() => setSettings(prev => ({...prev, [s.id]: !prev[s.id as keyof typeof settings]}))} 
+                      <button
+                        onClick={() => setIsExtendedThinking(!isExtendedThinking)}
                         className={cn(
-                          "w-8 h-5 rounded-full transition-all relative shrink-0", 
-                          settings[s.id as keyof typeof settings] ? "bg-cyan-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/15")
+                          "w-10 h-6 rounded-full transition-all relative shrink-0",
+                          isExtendedThinking ? "bg-purple-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/10")
                         )}
                       >
-                        <motion.div 
-                          animate={{ x: settings[s.id as keyof typeof settings] ? 14 : 2 }} 
-                          className="absolute top-1 left-0 w-3 h-3 rounded-full bg-white shadow-sm" 
+                        <motion.div
+                          animate={{ x: isExtendedThinking ? 18 : 3 }}
+                          className="absolute top-[3px] left-0 w-5 h-5 rounded-full bg-white shadow-md"
                         />
                       </button>
                     </div>
-                  ))}
-                  <div className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-2">
-                      <span className={cn("text-xs", theme === 'dark' ? "text-gray-300" : "text-gray-700")}>Extended Thinking</span>
-                      <span className="text-[7px] px-1 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-bold">BETA</span>
-                    </div>
-                    <button 
-                      onClick={() => setIsExtendedThinking(!isExtendedThinking)} 
-                      className={cn(
-                        "w-8 h-5 rounded-full transition-all relative shrink-0", 
-                        isExtendedThinking ? "bg-purple-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/15")
-                      )}
-                    >
-                      <motion.div 
-                        animate={{ x: isExtendedThinking ? 14 : 2 }} 
-                        className="absolute top-1 left-0 w-3 h-3 rounded-full bg-white shadow-sm" 
-                      />
-                    </button>
-                  </div>
-                </SettingsSection>
-
-                {/* AI Models */}
-                <SettingsSection title="AI Models" icon={<Sparkles size={14} />} theme={theme}>
-                  <SettingsItem label={`${selectedModel.name}`} theme={theme} />
-                </SettingsSection>
-
-                {/* Billing */}
-                <SettingsSection title="Billing" icon={<Star size={14} />} theme={theme}>
-                  <SettingsItem label="Manage subscription & payments" onClick={() => { setIsSettingsOpen(false); setIsPricingOpen(true); }} theme={theme} />
-                </SettingsSection>
-
-                {/* Manage Sessions */}
-                <SettingsSection title="Manage Sessions" icon={<Monitor size={14} />} theme={theme}>
-                  <SettingsItem label="Active sessions & devices" theme={theme} />
-                </SettingsSection>
-
-                {/* Support */}
-                <SettingsSection title="Support" icon={<MessageSquare size={14} />} theme={theme}>
-                  <SettingsItem label="Help center & contact" theme={theme} />
-                </SettingsSection>
-
-                {/* Theme */}
-                <div className={cn("py-3 border-t", theme === 'dark' ? "border-white/5" : "border-black/5")}>
-                  <p className={cn("text-xs font-bold mb-2", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>Theme</p>
-                  <div className="flex gap-2">
-                    {["dark", "light", "system"].map((t) => (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-cyan-500/10" : "bg-cyan-50")}>
+                          <Cpu size={14} className="text-cyan-400" />
+                        </div>
+                        <div>
+                          <p className={cn("text-xs font-semibold", theme === 'dark' ? "text-gray-200" : "text-gray-800")}>Experimental Models</p>
+                          <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>Access frontier AI models</p>
+                        </div>
+                      </div>
                       <button
-                        key={t}
-                        onClick={() => setTheme(t as any)}
+                        onClick={() => setSettings(prev => ({...prev, experimental: !prev.experimental}))}
                         className={cn(
-                          "flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
-                          theme === t
-                            ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
-                            : (theme === 'dark' ? "border-white/10 text-gray-500 hover:text-white" : "border-black/10 text-gray-500 hover:text-black")
+                          "w-10 h-6 rounded-full transition-all relative shrink-0",
+                          settings.experimental ? "bg-cyan-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/10")
                         )}
                       >
-                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                        <motion.div
+                          animate={{ x: settings.experimental ? 18 : 3 }}
+                          className="absolute top-[3px] left-0 w-5 h-5 rounded-full bg-white shadow-md"
+                        />
                       </button>
-                    ))}
+                    </div>
+                    <div className="px-4 py-3">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-orange-500/10" : "bg-orange-50")}>
+                          <Zap size={14} className="text-orange-400" />
+                        </div>
+                        <div>
+                          <p className={cn("text-xs font-semibold", theme === 'dark' ? "text-gray-200" : "text-gray-800")}>Custom Instructions</p>
+                          <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>Personalize AI responses</p>
+                        </div>
+                      </div>
+                      <textarea
+                        value={customInstructions}
+                        onChange={(e) => {
+                          setCustomInstructions(e.target.value);
+                          localStorage.setItem('gemma_memory', e.target.value);
+                        }}
+                        placeholder="e.g. Always respond in a professional tone..."
+                        rows={2}
+                        className={cn(
+                          "w-full rounded-xl px-3 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-cyan-500/30 resize-none transition-all",
+                          theme === 'dark' ? "bg-black/30 border-white/10 text-gray-300 placeholder-gray-600" : "bg-white border-black/10 text-gray-800 placeholder-gray-400"
+                        )}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Model Selection */}
+                <div>
+                  <h3 className={cn("text-[11px] font-bold uppercase tracking-wider mb-3 flex items-center gap-2", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>
+                    <Bot size={12} />
+                    Active Model
+                  </h3>
+                  <button
+                    onClick={() => { setIsSettingsOpen(false); setIsInputModelMenuOpen(true); }}
+                    className={cn(
+                      "w-full flex items-center justify-between p-4 rounded-2xl transition-all",
+                      theme === 'dark' ? "bg-white/5 hover:bg-white/8" : "bg-gray-50 hover:bg-gray-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-cyan-500/10" : "bg-cyan-50")}>
+                        <Sparkles size={16} className="text-cyan-400" />
+                      </div>
+                      <div className="text-left">
+                        <p className={cn("text-sm font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>{selectedModel.name}</p>
+                        <p className={cn("text-[10px] mt-0.5", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>{selectedModel.description}</p>
+                      </div>
+                    </div>
+                    <ChevronDown size={16} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-500" : "text-gray-400")} />
+                  </button>
+                </div>
+
+                {/* Account */}
+                <div>
+                  <h3 className={cn("text-[11px] font-bold uppercase tracking-wider mb-3 flex items-center gap-2", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>
+                    <User size={12} />
+                    Account
+                  </h3>
+                  <div className={cn("rounded-2xl divide-y", theme === 'dark' ? "bg-white/5 divide-white/5" : "bg-gray-50 divide-black/5")}>
+                    <button
+                      onClick={() => { setIsSettingsOpen(false); setIsPricingOpen(true); }}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-amber-500/10" : "bg-amber-50")}>
+                          <Star size={14} className="text-amber-400" />
+                        </div>
+                        <span className={cn("text-xs font-semibold", theme === 'dark' ? "text-gray-200" : "text-gray-800")}>Billing & Plans</span>
+                      </div>
+                      <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />
+                    </button>
+                    <button className="w-full flex items-center justify-between px-4 py-3 text-left">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-blue-500/10" : "bg-blue-50")}>
+                          <Monitor size={14} className="text-blue-400" />
+                        </div>
+                        <span className={cn("text-xs font-semibold", theme === 'dark' ? "text-gray-200" : "text-gray-800")}>Sessions & Devices</span>
+                      </div>
+                      <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />
+                    </button>
+                    <button className="w-full flex items-center justify-between px-4 py-3 text-left">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-green-500/10" : "bg-green-50")}>
+                          <MessageSquare size={14} className="text-green-400" />
+                        </div>
+                        <span className={cn("text-xs font-semibold", theme === 'dark' ? "text-gray-200" : "text-gray-800")}>Help & Support</span>
+                      </div>
+                      <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Theme */}
+                <div>
+                  <h3 className={cn("text-[11px] font-bold uppercase tracking-wider mb-3 flex items-center gap-2", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>
+                    {theme === 'dark' ? <Moon size={12} /> : <Sun size={12} />}
+                    Appearance
+                  </h3>
+                  <div className={cn("rounded-2xl p-4", theme === 'dark' ? "bg-white/5" : "bg-gray-50")}>
+                    <div className="flex gap-2">
+                      {[
+                        { id: 'dark', label: 'Dark', icon: Moon },
+                        { id: 'light', label: 'Light', icon: Sun },
+                      ].map(({ id, label, icon: Icon }) => (
+                        <button
+                          key={id}
+                          onClick={() => setTheme(id as any)}
+                          className={cn(
+                            "flex-1 flex flex-col items-center gap-2 py-3 rounded-xl transition-all border-2",
+                            theme === id
+                              ? "border-cyan-500 bg-cyan-500/10"
+                              : (theme === 'dark' ? "border-transparent bg-white/5 hover:bg-white/8" : "border-transparent bg-white hover:bg-gray-100")
+                          )}
+                        >
+                          <Icon size={18} className={cn(theme === id ? "text-cyan-400" : (theme === 'dark' ? "text-gray-400" : "text-gray-500"))} />
+                          <span className={cn("text-[11px] font-bold", theme === id ? "text-cyan-400" : (theme === 'dark' ? "text-gray-400" : "text-gray-500"))}>{label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Footer */}
-              <div className={cn("px-5 py-3 border-t shrink-0", theme === 'dark' ? "border-white/5" : "border-black/5")}>
-                <button 
+              <div className={cn("px-6 py-4 border-t shrink-0", theme === 'dark' ? "border-white/8" : "border-black/5")}>
+                <button
                   onClick={() => { logout(); setIsSettingsOpen(false); }}
-                  className="w-full py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all"
+                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all"
                 >
                   Sign Out
                 </button>
-                <p className="text-center text-[9px] text-gray-600 mt-2">v2.4.0</p>
+                <p className="text-center text-[10px] text-gray-600 mt-2">LikeWay AI v2.4.0</p>
               </div>
             </motion.div>
           </motion.div>

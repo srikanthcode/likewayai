@@ -4,15 +4,15 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, ChevronDown, Lock, Sparkles } from "lucide-react";
 import { AGENT_REGISTRY, getAgentById } from "@/lib/agent-registry";
-import { AGENT_CATEGORIES, AgentCategory, AgentDefinition } from "@/lib/agent-types";
+import { AGENT_CATEGORIES, AgentCategory, AgentDefinition, PlanTier, canAccessAgent } from "@/lib/agent-types";
 
 interface AgentSelectorProps {
   selectedAgentId: string;
   onSelect: (agent: AgentDefinition) => void;
-  isPremium: boolean;
+  currentPlan: PlanTier;
 }
 
-export default function AgentSelector({ selectedAgentId, onSelect, isPremium }: AgentSelectorProps) {
+export default function AgentSelector({ selectedAgentId, onSelect, currentPlan }: AgentSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<AgentCategory | "all">("all");
@@ -156,26 +156,32 @@ export default function AgentSelector({ selectedAgentId, onSelect, isPremium }: 
                     <button
                       key={agent.id}
                       onClick={() => {
-                        if (agent.premium && !isPremium) return;
+                        if (!canAccessAgent(currentPlan, agent.minPlan)) return;
                         onSelect(agent);
                         setIsOpen(false);
                         setSearch("");
                       }}
-                      disabled={agent.premium && !isPremium}
+                      disabled={!canAccessAgent(currentPlan, agent.minPlan)}
                       className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${
                         selectedAgentId === agent.id
                           ? "bg-white/10"
                           : "hover:bg-white/5"
-                      } ${agent.premium && !isPremium ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                      } ${!canAccessAgent(currentPlan, agent.minPlan) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       <span className="text-xl mt-0.5 shrink-0">{agent.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-white">{agent.name}</span>
-                          {agent.premium && (
+                          {!canAccessAgent(currentPlan, agent.minPlan) && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                              {isPremium ? <Sparkles size={8} /> : <Lock size={8} />}
-                              PRO
+                              <Lock size={8} />
+                              {agent.minPlan}
+                            </span>
+                          )}
+                          {canAccessAgent(currentPlan, agent.minPlan) && agent.minPlan !== "Core" && (
+                            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">
+                              <Sparkles size={8} />
+                              {agent.minPlan}
                             </span>
                           )}
                         </div>

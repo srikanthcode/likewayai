@@ -24,6 +24,15 @@ export type AgentCapability =
   | "calendar"
   | "api";
 
+export type PlanTier = "Core" | "Go" | "Plus" | "Pro";
+
+export const PLAN_HIERARCHY: Record<PlanTier, number> = {
+  Core: 0,
+  Go: 1,
+  Plus: 2,
+  Pro: 3,
+};
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -35,7 +44,13 @@ export interface AgentDefinition {
   systemPrompt: string;
   tools: string[];
   premium: boolean;
+  /** Minimum plan required to use this agent */
+  minPlan: PlanTier;
   color: string;
+}
+
+export function canAccessAgent(userPlan: PlanTier, agentMinPlan: PlanTier): boolean {
+  return PLAN_HIERARCHY[userPlan] >= PLAN_HIERARCHY[agentMinPlan];
 }
 
 // ── Agent Categories ──────────────────────────────────────────────────
