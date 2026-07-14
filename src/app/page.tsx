@@ -875,7 +875,20 @@ export default function ChatPage() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+      // Detect if on iOS Chrome (WebKit doesn't support Speech API)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isChrome = /CriOS/.test(navigator.userAgent);
+
+      let message = "Speech recognition is not supported in this browser.";
+      if (isIOS && isChrome) {
+        message = "Speech recognition doesn't work in Chrome on iPhone. Please open this page in Safari instead.";
+      } else if (isIOS) {
+        message = "Speech recognition works best in Safari on iPhone. Please open this page in Safari.";
+      } else {
+        message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
+      }
+
+      alert(message);
       stopVoiceAssistant();
       return;
     }
@@ -939,6 +952,32 @@ export default function ChatPage() {
 
     recognition.onerror = (e: any) => {
       console.error("Speech Recognition Error:", e.error);
+
+      // Provide helpful error messages
+      if (e.error === 'not-allowed') {
+        alert("Microphone permission denied. Please allow microphone access in your browser settings and try again.");
+        stopVoiceAssistant();
+        return;
+      }
+      if (e.error === 'no-speech') {
+        // No speech detected - just restart silently
+        if (isVoiceMode) {
+          setTimeout(startVoiceListeningCycle, 500);
+        }
+        return;
+      }
+      if (e.error === 'audio-capture') {
+        alert("No microphone found. Please connect a microphone and try again.");
+        stopVoiceAssistant();
+        return;
+      }
+      if (e.error === 'network') {
+        alert("Speech recognition network error. Please check your internet connection.");
+        stopVoiceAssistant();
+        return;
+      }
+
+      // For other errors, retry silently
       if (isVoiceMode && e.error !== 'aborted') {
         setTimeout(startVoiceListeningCycle, 500);
       }
@@ -1005,7 +1044,19 @@ export default function ChatPage() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isChrome = /CriOS/.test(navigator.userAgent);
+
+      let message = "Speech recognition is not supported in this browser.";
+      if (isIOS && isChrome) {
+        message = "Speech recognition doesn't work in Chrome on iPhone. Please open this page in Safari instead.";
+      } else if (isIOS) {
+        message = "Speech recognition works best in Safari on iPhone. Please open this page in Safari.";
+      } else {
+        message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
+      }
+
+      alert(message);
       return;
     }
 
@@ -1034,6 +1085,17 @@ export default function ChatPage() {
 
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error", event.error);
+
+      if (event.error === 'not-allowed') {
+        alert("Microphone permission denied. Please allow microphone access in your browser settings.");
+      } else if (event.error === 'no-speech') {
+        // No speech detected - just stop quietly
+      } else if (event.error === 'audio-capture') {
+        alert("No microphone found. Please connect a microphone.");
+      } else if (event.error === 'network') {
+        alert("Speech recognition network error. Check your connection.");
+      }
+
       setIsRecording(false);
     };
 
