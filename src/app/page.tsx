@@ -875,15 +875,14 @@ export default function ChatPage() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      // Detect if on iOS Chrome (WebKit doesn't support Speech API)
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isChrome = /CriOS/.test(navigator.userAgent);
+      const isStandalone = (window as any).navigator?.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
       let message = "Speech recognition is not supported in this browser.";
-      if (isIOS && isChrome) {
-        message = "Speech recognition doesn't work in Chrome on iPhone. Please open this page in Safari instead.";
-      } else if (isIOS) {
-        message = "Speech recognition works best in Safari on iPhone. Please open this page in Safari.";
+      if (isIOS && !isStandalone) {
+        message = "To use voice on iPhone:\n\n1. Tap the Share button\n2. Tap 'Add to Home Screen'\n3. Open Likeway from your home screen\n\nOr open this page in Safari.";
+      } else if (isIOS && isStandalone) {
+        message = "Voice not working? Try closing and reopening from your home screen.";
       } else {
         message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
       }
@@ -892,6 +891,9 @@ export default function ChatPage() {
       stopVoiceAssistant();
       return;
     }
+
+    // On iOS, try anyway — newer versions may support it
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     if (voiceRecognitionRef.current) {
       try { voiceRecognitionRef.current.stop(); } catch(e) {}
     }
@@ -1045,13 +1047,13 @@ export default function ChatPage() {
 
     if (!SpeechRecognition) {
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isChrome = /CriOS/.test(navigator.userAgent);
+      const isStandalone = (window as any).navigator?.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
       let message = "Speech recognition is not supported in this browser.";
-      if (isIOS && isChrome) {
-        message = "Speech recognition doesn't work in Chrome on iPhone. Please open this page in Safari instead.";
-      } else if (isIOS) {
-        message = "Speech recognition works best in Safari on iPhone. Please open this page in Safari.";
+      if (isIOS && !isStandalone) {
+        message = "To use voice on iPhone:\n\n1. Tap the Share button\n2. Tap 'Add to Home Screen'\n3. Open Likeway from your home screen\n\nOr open this page in Safari.";
+      } else if (isIOS && isStandalone) {
+        message = "Voice not working? Try closing and reopening from your home screen.";
       } else {
         message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
       }
