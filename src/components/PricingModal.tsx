@@ -21,15 +21,15 @@ const PLAN_ICONS: Record<PlanType, typeof Check> = {
 const PLAN_COLORS: Record<PlanType, string> = {
   Core: "#6B7280",
   Go: "#3B82F6",
-  Plus: "#8B5CF6",
+  Plus: "#6366F1",
   Pro: "#F59E0B",
 };
 
 const PLAN_BADGES: Record<PlanType, string | null> = {
   Core: null,
-  Go: null,
-  Plus: "BEST VALUE",
-  Pro: "🔥 LIMITED TIME OFFER",
+  Go: "LIMITED OFFER",
+  Plus: "MOST POPULAR",
+  Pro: "BEST VALUE",
 };
 
 export default function PricingModal({ open, onClose, onSelectPlan, currentPlan }: PricingModalProps) {
@@ -79,6 +79,7 @@ export default function PricingModal({ open, onClose, onSelectPlan, currentPlan 
                 const badge = PLAN_BADGES[plan.id];
                 const isCurrent = currentPlan === plan.id;
                 const isFree = plan.id === "Core";
+                const isPlus = plan.id === "Plus";
 
                 return (
                   <div
@@ -86,6 +87,8 @@ export default function PricingModal({ open, onClose, onSelectPlan, currentPlan 
                     className={`relative flex flex-col p-5 rounded-2xl border transition-all ${
                       isCurrent
                         ? "border-cyan-500/50 bg-cyan-500/5"
+                        : isPlus
+                        ? "border-indigo-500/50 bg-indigo-500/5 ring-1 ring-indigo-500/20"
                         : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
                     }`}
                   >

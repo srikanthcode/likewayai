@@ -41,6 +41,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Python virtual environments
 .venv/
 *.pyc

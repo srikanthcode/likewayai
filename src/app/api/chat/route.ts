@@ -6,7 +6,7 @@ import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { executeDeepResearch } from "@/lib/deep-research";
 import { saveMessage, getHistory } from "@/lib/memory";
 import { generateImage, editImage } from "@/lib/tools";
-import { PlanType } from "@/lib/plans";
+import { PLANS, PlanType } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import {
   SEARCH_KEYWORDS,
@@ -16,6 +16,7 @@ import {
   REAL_TIME_TERM_PATTERN
 } from "@/lib/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export const maxDuration = 60;
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Rate limiting
+    // Rate limiting - Per minute
     const rateLimitConfig = { windowMs: 60000, maxRequests: 20 }; // 20 requests per minute
     const rateLimit = checkRateLimit(userId, rateLimitConfig);
     if (!rateLimit.allowed) {
@@ -112,6 +113,27 @@ export async function POST(req: NextRequest) {
           "X-RateLimit-Limit": rateLimitConfig.maxRequests.toString(),
           "X-RateLimit-Remaining": rateLimit.remaining.toString(),
           "X-RateLimit-Reset": Math.ceil(rateLimit.resetTime / 1000).toString(),
+        },
+      });
+    }
+
+    // Rate limiting - Daily plan limit
+    const planConfig = PLANS[plan] || PLANS.Core;
+    const dailyLimit = checkDailyLimit(userId, planConfig.limits.messagesDay);
+    if (!dailyLimit.allowed) {
+      return new Response(JSON.stringify({
+        error: `Daily message limit reached (${dailyLimit.limit} messages/day). Upgrade your plan for unlimited messages.`,
+        limit: dailyLimit.limit,
+        used: dailyLimit.used,
+        resetTime: dailyLimit.resetTime,
+        plan: plan,
+      }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-DailyLimit-Limit": dailyLimit.limit.toString(),
+          "X-DailyLimit-Remaining": "0",
+          "X-DailyLimit-Reset": dailyLimit.resetTime.toString(),
         },
       });
     }
@@ -398,6 +420,9 @@ export async function POST(req: NextRequest) {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "X-DailyLimit-Limit": dailyLimit.limit.toString(),
+        "X-DailyLimit-Remaining": dailyLimit.remaining.toString(),
+        "X-DailyLimit-Used": dailyLimit.used.toString(),
       },
     });
   } catch (error: any) {

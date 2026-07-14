@@ -4,6 +4,7 @@ export interface Plan {
   id: PlanType;
   name: string;
   price: string;
+  badge?: string;
   razorpayPlanId?: string;
   stripePriceId?: string;
   limits: {
@@ -23,14 +24,14 @@ export const PLANS: Record<PlanType, Plan> = {
     name: "Core",
     price: "Free",
     limits: {
-      messagesDay: 500,
+      messagesDay: 200,
       modelsAllowed: ["mistral-small-latest", "llama-3.1-8b-instant"],
       tools: false,
       deepResearch: false,
       imageGen: false,
     },
     features: [
-      "500 responses/day",
+      "200 responses/day",
       "2 powerful models unlocked",
       "Smart conversation assistant",
       "Web search capabilities",
@@ -72,6 +73,7 @@ export const PLANS: Record<PlanType, Plan> = {
     id: "Plus",
     name: "Plus",
     price: "₹799",
+    badge: "MOST POPULAR",
     razorpayPlanId: process.env.RAZORPAY_PLAN_PLUS || "",
     stripePriceId: process.env.STRIPE_PRICE_PLUS || "",
     limits: {
@@ -94,13 +96,13 @@ export const PLANS: Record<PlanType, Plan> = {
     },
     features: [
       "Unlimited messages",
-      "10 elite models unlocked",
-      "Advanced vision & image understanding",
-      "Deep autonomous research",
-      "Multi-step web analysis",
-      "Architect coding agent access",
-      "Image generation support",
-      "Custom instructions & memory",
+      "10 elite Likeway models unlocked",
+      "Architect Coding Agent for 50+ languages",
+      "Deep Research with autonomous web analysis",
+      "Advanced vision — analyze screenshots & diagrams",
+      "AI-powered image generation",
+      "Custom instructions & persistent memory",
+      "Priority response queue",
     ],
     modelCount: 10,
   },
@@ -108,6 +110,7 @@ export const PLANS: Record<PlanType, Plan> = {
     id: "Pro",
     name: "Pro",
     price: "₹1,999",
+    badge: "BEST VALUE",
     razorpayPlanId: process.env.RAZORPAY_PLAN_PRO || "",
     stripePriceId: process.env.STRIPE_PRICE_PRO || "",
     limits: {

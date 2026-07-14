@@ -270,19 +270,25 @@ export default function PricingPage() {
                 className={`relative p-6 md:p-8 rounded-3xl border transition-all duration-300 flex flex-col ${
                   hoveredPlan === plan.id ? "translate-y-[-8px]" : ""
                 } ${
-                  plan.id === "Go" 
-                    ? "border-cyan-500/50 shadow-[0_0_40px_rgba(6,182,212,0.15)] ring-1 ring-cyan-500/20 bg-gradient-to-b from-[#0a1628] to-[#0a0e16]" 
-                    : plan.id === "Pro" 
+                  plan.id === "Go"
+                    ? "border-cyan-500/50 shadow-[0_0_40px_rgba(6,182,212,0.15)] ring-1 ring-cyan-500/20 bg-gradient-to-b from-[#0a1628] to-[#0a0e16]"
+                    : plan.id === "Pro"
                     ? "border-violet-500/50 shadow-[0_0_40px_rgba(139,92,246,0.15)] ring-1 ring-violet-500/20 bg-gradient-to-b from-[#140a28] to-[#0a0e16]"
                     : plan.id === "Plus"
-                    ? "border-blue-500/30 shadow-[0_0_30px_rgba(59,130,246,0.08)] bg-[#0a0e16]"
+                    ? "border-blue-500/50 shadow-[0_0_50px_rgba(59,130,246,0.2)] ring-1 ring-blue-500/30 bg-gradient-to-b from-[#0a1430] to-[#0a0e16] md:scale-[1.02] z-10"
                     : "border-white/5 bg-[#0a0e16] hover:border-white/10"
                 }`}
               >
                 {/* Badge */}
                 {plan.id === "Go" && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-cyan-500 to-blue-500 text-black text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-cyan-500/30 whitespace-nowrap z-10">
-                     🔥 LIMITED TIME OFFER
+                     LIMITED TIME OFFER
+                  </div>
+                )}
+
+                {plan.id === "Plus" && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-blue-500/30 whitespace-nowrap z-10">
+                     MOST POPULAR
                   </div>
                 )}
 
@@ -296,6 +302,7 @@ export default function PricingPage() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xl font-black tracking-tight">{plan.name}</h3>
                     {plan.id === "Pro" && <Rocket size={16} className="text-violet-400" />}
+                    {plan.id === "Plus" && <Sparkles size={16} className="text-blue-400" />}
                     {plan.id === "Go" && <Zap size={16} className="text-cyan-400" />}
                   </div>
 
@@ -343,12 +350,12 @@ export default function PricingPage() {
                 <button
                   onClick={() => handleSelectPlan(plan.id)}
                   className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg ${
-                    plan.id === "Go" 
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-black hover:from-cyan-400 hover:to-blue-400 hover:shadow-cyan-500/25" 
-                      : plan.id === "Pro" 
+                    plan.id === "Go"
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-black hover:from-cyan-400 hover:to-blue-400 hover:shadow-cyan-500/25"
+                      : plan.id === "Pro"
                       ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white hover:from-violet-400 hover:to-purple-400 hover:shadow-violet-500/25"
                       : plan.id === "Plus"
-                      ? "bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20"
+                      ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-400 hover:to-indigo-400 hover:shadow-blue-500/25"
                       : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
                   } ${hoveredPlan === plan.id ? "scale-[1.02]" : ""}`}
                 >
