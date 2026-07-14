@@ -7,8 +7,8 @@ const AUTH_ONLY = ["/login", "/signup"];
 const PROTECTED = ["/account", "/settings", "/onboarding"];
 // "/" (root) is handled separately — it's the chat/main screen
 
-// ── Proxy ─────────────────────────────────────────────────────────────
-export function proxy(req: NextRequest) {
+// ── Middleware ─────────────────────────────────────────────────────────
+export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Read both new and legacy cookie names
