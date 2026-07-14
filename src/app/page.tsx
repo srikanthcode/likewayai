@@ -496,6 +496,7 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isProgrammaticScroll = useRef(false);
   const isInitialLoad = useRef(true); // Prevent auto-scroll on history load
+  const isSendingRef = useRef(false); // Prevent history load from clearing messages during send
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -1070,6 +1071,10 @@ export default function ChatPage() {
 
   // Load history on mount or when activeProject/activeConversationId changes
   useEffect(() => {
+    // Skip history load if we're in the middle of sending a message
+    // (handleSend sets activeConversationId which triggers this effect)
+    if (isSendingRef.current) return;
+
     isInitialLoad.current = true; // Reset flag when switching chats
     async function loadHistory() {
       try {
@@ -1083,14 +1088,17 @@ export default function ChatPage() {
         if (activeConversationId) {
           url = `/api/chat?conversationId=${activeConversationId}`;
         }
-        
+
         const localUserId = userId || 'anonymous-user';
         const res = await fetch(url, {
             headers: { "x-user-id": localUserId }
         });
         if (res.ok) {
           const loadedHistory = await res.json();
-          setMessages(loadedHistory || []);
+          // Double-check we haven't started sending while fetch was in flight
+          if (!isSendingRef.current) {
+            setMessages(loadedHistory || []);
+          }
           // Jump instantly to the bottom
           setTimeout(() => {
             if (chatContainerRef.current) {
@@ -1099,7 +1107,9 @@ export default function ChatPage() {
             isInitialLoad.current = false;
           }, 80);
         } else {
-          setMessages([]);
+          if (!isSendingRef.current) {
+            setMessages([]);
+          }
           isInitialLoad.current = false;
         }
       } catch (err) {
@@ -1177,6 +1187,9 @@ export default function ChatPage() {
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    // Mark sending state to prevent history load from clearing messages
+    isSendingRef.current = true;
 
     // Cut off any ongoing speech if user types a new message
     window.speechSynthesis.cancel();
@@ -1412,6 +1425,7 @@ export default function ChatPage() {
         return copy;
       });
     } finally {
+      isSendingRef.current = false;
       setIsLoading(false);
       setIsStreaming(false);
       readerRef.current = null;
@@ -1641,7 +1655,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className={cn("flex h-screen w-full overflow-hidden font-sans",
+    <div className={cn("flex h-dvh w-full overflow-hidden font-sans safe-area-top safe-area-bottom",
       theme === 'dark' ? "bg-[#212121] text-white" : "bg-[#FFFFFF] text-gray-900"
     )}>
       {/* Mobile Sidebar Overlay */}
@@ -1652,11 +1666,11 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Sidebar — fixed width, collapse via w-0, overlay on mobile */}
+      {/* Sidebar — overlay on mobile, fixed on desktop */}
       <aside className={cn(
-        "relative z-[70] flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out overflow-hidden",
+        "z-[70] flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out overflow-hidden",
         isSidebarOpen ? "w-64" : "w-0",
-        "fixed md:relative inset-y-0 left-0",
+        "fixed inset-y-0 left-0",
         theme === 'dark' ? "bg-[#171717] text-gray-300" : "bg-[#F7F7F8] border-r border-[#E5E5E5] text-gray-700"
       )}>
         <div className="w-64 flex flex-col h-full p-4 flex-shrink-0">
