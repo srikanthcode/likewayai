@@ -228,7 +228,7 @@ export default function AccountPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="relative flex gap-1 mb-8 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-xl"
+          className="relative flex gap-1 mb-8 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-xl overflow-x-auto scrollbar-none"
         >
           {tabs.map((t) => {
             const Icon = t.icon;
@@ -237,7 +237,7 @@ export default function AccountPage() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className="relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex-1 justify-center group"
+                className="relative flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 sm:flex-1 justify-center group"
               >
                 {active && (
                   <motion.div

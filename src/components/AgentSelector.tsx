@@ -90,7 +90,7 @@ export default function AgentSelector({ selectedAgentId, onSelect, currentPlan }
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 mt-2 w-[360px] max-h-[480px] bg-[#1a1d27] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100]"
+            className="absolute top-full left-0 mt-2 w-[calc(100vw-2rem)] max-w-[360px] max-h-[480px] bg-[#1a1d27] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100]"
           >
             {/* Search */}
             <div className="p-3 border-b border-white/5">

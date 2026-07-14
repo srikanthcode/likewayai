@@ -318,14 +318,14 @@ function PracticeContent() {
               </div>
 
               {/* Interaction Modes */}
-              <div className="flex gap-4 mb-6">
-                <button onClick={() => setInputMode("click")} className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border transition-all ${inputMode === "click" ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" : "bg-white/5 border-white/5 text-gray-500 hover:text-gray-300"}`}>
+              <div className="flex gap-2 sm:gap-4 mb-6">
+                <button onClick={() => setInputMode("click")} className={`flex-1 py-2.5 sm:py-2 rounded-xl text-[11px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border transition-all min-h-[44px] ${inputMode === "click" ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" : "bg-white/5 border-white/5 text-gray-500 hover:text-gray-300"}`}>
                   Selection
                 </button>
-                <button onClick={() => setInputMode("type")} className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border transition-all ${inputMode === "type" ? "bg-purple-500/10 border-purple-500/30 text-purple-400" : "bg-white/5 border-white/5 text-gray-500 hover:text-gray-300"}`}>
+                <button onClick={() => setInputMode("type")} className={`flex-1 py-2.5 sm:py-2 rounded-xl text-[11px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border transition-all min-h-[44px] ${inputMode === "type" ? "bg-purple-500/10 border-purple-500/30 text-purple-400" : "bg-white/5 border-white/5 text-gray-500 hover:text-gray-300"}`}>
                   <Keyboard size={12} /> Type
                 </button>
-                <button onClick={() => setInputMode("voice")} className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border transition-all ${inputMode === "voice" ? "bg-rose-500/10 border-rose-500/30 text-rose-400" : "bg-white/5 border-white/5 text-gray-500 hover:text-gray-300"}`}>
+                <button onClick={() => setInputMode("voice")} className={`flex-1 py-2.5 sm:py-2 rounded-xl text-[11px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 border transition-all min-h-[44px] ${inputMode === "voice" ? "bg-rose-500/10 border-rose-500/30 text-rose-400" : "bg-white/5 border-white/5 text-gray-500 hover:text-gray-300"}`}>
                   <Mic size={12} /> Voice
                 </button>
               </div>

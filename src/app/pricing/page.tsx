@@ -519,13 +519,13 @@ export default function PricingPage() {
             </main>
 
             <footer className="bg-white border-t border-gray-100 py-8 px-6 md:px-10">
-              <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+              <div className="max-w-6xl mx-auto flex flex-col items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row items-center gap-4 text-center">
                   <span className="font-black text-lg text-[#00154f]/40 tracking-tight">Likeway Pay</span>
-                  <div className="h-4 w-px bg-gray-200 hidden md:block" />
+                  <div className="h-4 w-px bg-gray-200 hidden sm:block" />
                   <p className="text-[11px] text-gray-400">© 2024 Likeway Technologies. All rights reserved.</p>
                 </div>
-                <div className="flex gap-6">
+                <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
                   {['Support Center', 'Refund Policy', 'Security Overview'].map((l) => (
                     <span key={l} className="text-[11px] font-bold text-gray-400 hover:text-[#00154f] transition-colors cursor-pointer">{l}</span>
                   ))}
