@@ -872,7 +872,7 @@ export default function ChatPage() {
     }
   };
 
-  const startVoiceListeningCycle = () => {
+  const startVoiceListeningCycle = async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
@@ -888,13 +888,28 @@ export default function ChatPage() {
         message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
       }
 
-      alert(message);
-      stopVoiceAssistant();
+      setLiveTranscript(message);
       return;
     }
 
-    // On iOS, try anyway — newer versions may support it
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // Request microphone permission first via getUserMedia
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Got permission — stop the stream, we don't need it
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err: any) {
+      // Permission denied or no mic
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setLiveTranscript("Microphone blocked. Click the lock icon in the address bar → Allow microphone → then try again.");
+      } else if (err.name === 'NotFoundError') {
+        setLiveTranscript("No microphone found. Please connect a microphone.");
+      } else {
+        setLiveTranscript("Could not access microphone: " + err.message);
+      }
+      return;
+    }
+
+    // Permission granted — start speech recognition
     if (voiceRecognitionRef.current) {
       try { voiceRecognitionRef.current.stop(); } catch(e) {}
     }
@@ -956,14 +971,12 @@ export default function ChatPage() {
     recognition.onerror = (e: any) => {
       console.error("Speech Recognition Error:", e.error);
 
-      // Handle permission error gracefully — show in UI, don't alert
       if (e.error === 'not-allowed') {
-        setLiveTranscript("Microphone access denied. Please allow microphone in your browser settings.");
+        setLiveTranscript("Microphone blocked by browser. Click the lock/camera icon in the address bar → reset microphone permission → Allow → refresh page.");
         setVoiceStatus('idle');
         return;
       }
       if (e.error === 'no-speech') {
-        // No speech detected - just restart silently
         if (isVoiceMode) {
           setTimeout(startVoiceListeningCycle, 500);
         }
@@ -980,7 +993,6 @@ export default function ChatPage() {
         return;
       }
 
-      // For other errors, retry silently
       if (isVoiceMode && e.error !== 'aborted') {
         setTimeout(startVoiceListeningCycle, 500);
       }
@@ -1037,7 +1049,7 @@ export default function ChatPage() {
     setLiveTranscript('');
   };
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (isRecording) {
       recognitionRef.current?.stop();
       setIsRecording(false);
@@ -1059,7 +1071,22 @@ export default function ChatPage() {
         message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
       }
 
-      alert(message);
+      setInput(message);
+      return;
+    }
+
+    // Request microphone permission first
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setInput("Microphone blocked. Click the lock icon in address bar → Allow microphone → try again.");
+      } else if (err.name === 'NotFoundError') {
+        setInput("No microphone found.");
+      } else {
+        setInput("Could not access microphone: " + err.message);
+      }
       return;
     }
 
@@ -1090,9 +1117,9 @@ export default function ChatPage() {
       console.error("Speech recognition error", event.error);
 
       if (event.error === 'not-allowed') {
-        setInput("Microphone access denied. Please allow microphone in browser settings.");
+        setInput("Microphone blocked. Click lock icon in address bar → reset permission → Allow → refresh.");
       } else if (event.error === 'no-speech') {
-        // No speech detected - just stop quietly
+        // No speech detected
       } else if (event.error === 'audio-capture') {
         setInput("No microphone found.");
       } else if (event.error === 'network') {
