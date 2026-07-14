@@ -63,7 +63,9 @@ import AgentSelector from "@/components/AgentSelector";
 import PricingModal from "@/components/PricingModal";
 import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
 import AccountMenu from "@/components/AccountMenu";
+import SlashCommandMenu from "@/components/SlashCommandMenu";
 import { cn } from "@/lib/utils";
+import { type SlashCommand } from "@/lib/commands";
 import {
   SEARCH_KEYWORDS,
   TIME_KEYWORDS,
@@ -502,6 +504,8 @@ export default function ChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isSlashMenuOpen, setIsSlashMenuOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
   const [selectedMode, setSelectedMode] = useState<AgentMode>("General");
   const [selectedAgentId, setSelectedAgentId] = useState("general");
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
@@ -1877,10 +1881,11 @@ export default function ChatPage() {
         "flex-1 min-w-0 flex flex-col overflow-hidden",
         theme === 'dark' ? "bg-[#212121] text-white" : "bg-[#FFFFFF] text-[#1a1a1a]"
       )}>
-        <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 z-50 transition-colors duration-300">
+        {/* ChatGPT-style 56px header */}
+        <header className="chat-header h-14 sm:h-12 flex-shrink-0 flex items-center justify-between px-3 sm:px-4 z-50 transition-colors duration-300 safe-area-top">
           <div className="flex items-center gap-2 md:gap-3">
             {!isSidebarOpen && (
-              <button onClick={() => setIsSidebarOpen(true)} className={cn("p-1.5 rounded-lg transition-all", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Open Sidebar">
+              <button onClick={() => setIsSidebarOpen(true)} className={cn("chat-menu-btn rounded-lg transition-all", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Open Sidebar">
                 <PanelLeft size={20} />
               </button>
             )}
@@ -1894,7 +1899,7 @@ export default function ChatPage() {
               </span>
               <ChevronDown size={12} className="text-gray-500" />
             </div>
-            
+
             <AgentSelector
               selectedAgentId={selectedAgentId}
               onSelect={(agent) => {
@@ -2190,9 +2195,9 @@ export default function ChatPage() {
               // If scrolling DOWN and already at bottom → don't interfere, auto-scroll will handle
             }}
             onTouchMove={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
-            className="flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-2 px-4 sm:px-8 scrollbar-hide flex flex-col custom-scrollbar"
+            className="flex-1 overflow-y-auto overflow-x-hidden chat-messages scrollbar-hide flex flex-col custom-scrollbar scrollable-y"
           >
-          <div className="max-w-3xl mx-auto w-full flex flex-col min-h-full">
+          <div className="chat-container max-w-3xl mx-auto w-full flex flex-col min-h-full">
             {messages.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center text-center py-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="mb-6">
@@ -2510,11 +2515,11 @@ export default function ChatPage() {
           </section>
         </div>
 
-        {/* Input Form */}
-        <div className={cn("px-4 py-3 sm:px-8 sm:py-4 transition-colors duration-300 shrink-0", theme === 'dark' ? "bg-[#212121] border-white/5" : "bg-[#FFFFFF] border-black/5")}>
-          <div className="max-w-4xl mx-auto">
+        {/* Input Form — ChatGPT-style responsive layout */}
+        <div className={cn("chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom", theme === 'dark' ? "bg-[#212121] border-t border-white/5" : "bg-[#FFFFFF] border-t border-black/5")}>
+          <div className="chat-container">
 
-            <form 
+            <form
               onSubmit={handleSend}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -2524,12 +2529,58 @@ export default function ChatPage() {
             >
                 {/* Focus Glow Effect */}
                 <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 blur-xl rounded-[32px] opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
-                
-                <div 
-                  suppressHydrationWarning 
+
+                {/* Slash Command Menu */}
+                <SlashCommandMenu
+                  isOpen={isSlashMenuOpen}
+                  query={slashQuery}
+                  theme={theme}
+                  onClose={() => { setIsSlashMenuOpen(false); setSlashQuery(""); }}
+                  onSelect={(cmd: SlashCommand) => {
+                    if (cmd.needsInput) {
+                      // Keep the /command text, user types after it
+                      setInput(cmd.label + " ");
+                    } else {
+                      // Execute immediately - set input and send
+                      setInput(cmd.label);
+                      // For commands that need no input, trigger the action
+                      if (cmd.id === "new") {
+                        setActiveConversationId(null);
+                        setMessages([]);
+                      } else if (cmd.id === "help") {
+                        // Show help - just keep the text
+                        setInput("Show me all available slash commands");
+                      } else if (cmd.id === "think") {
+                        setIsExtendedThinking(true);
+                        setInput("Enable extended thinking mode for this conversation");
+                      } else if (cmd.id === "code") {
+                        setSelectedMode("Architect");
+                        setInput("");
+                      } else if (cmd.id === "deepresearch" || cmd.id === "research") {
+                        setSelectedMode("Researcher");
+                        setInput("");
+                      } else if (cmd.id === "settings") {
+                        setIsSettingsOpen(true);
+                        setInput("");
+                      } else if (cmd.id === "models") {
+                        setIsInputModelMenuOpen(true);
+                        setInput("");
+                      } else {
+                        // For action commands, set the text and let user add context
+                        setInput(cmd.label + " ");
+                      }
+                    }
+                    setIsSlashMenuOpen(false);
+                    setSlashQuery("");
+                    setTimeout(() => textareaRef.current?.focus(), 50);
+                  }}
+                />
+
+                <div
+                  suppressHydrationWarning
                   className={cn(
-                  "relative flex flex-col gap-2 rounded-3xl shadow-2xl px-3 py-3",
-                  theme === 'dark' ? "bg-[#212121]" : "bg-[#F4F4F4]"
+                  "chat-input-box relative flex flex-col gap-2 shadow-2xl",
+                  theme === 'dark' ? "bg-[#2f2f2f]" : "bg-[#F4F4F4]"
                 )}>
                   {/* Drag & Drop Overlay */}
                   <AnimatePresence>
@@ -2557,14 +2608,33 @@ export default function ChatPage() {
                     </div>
                   )}
                   
-                  {/* Input Field (Top) */}
-                <textarea 
+                  {/* Input Field — 16px font prevents iOS zoom */}
+                <textarea
                   ref={textareaRef}
                   suppressHydrationWarning={true}
                   rows={1}
-                  value={input} 
-                  onChange={e => setInput(e.target.value)}
+                  value={input}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setInput(val);
+
+                    // Slash command detection
+                    if (val.startsWith("/")) {
+                      setIsSlashMenuOpen(true);
+                      setSlashQuery(val);
+                    } else {
+                      setIsSlashMenuOpen(false);
+                      setSlashQuery("");
+                    }
+                  }}
                   onKeyDown={(e) => {
+                    // Let SlashCommandMenu handle its own keyboard when open
+                    if (isSlashMenuOpen) {
+                      if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+                        // Don't prevent default for Enter if slash menu needs input
+                        return;
+                      }
+                    }
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       if (isRecording) {
@@ -2575,12 +2645,12 @@ export default function ChatPage() {
                     }
                   }}
                   onPaste={handlePaste}
-                  placeholder={isRecording ? "Listening..." : "Message AI Assistant..."} 
+                  placeholder={isRecording ? "Listening..." : "Message AI Assistant..."}
                   className={cn(
-                    "w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-1 py-1 min-h-[28px] max-h-[200px] resize-none placeholder-gray-500 text-sm sm:text-base",
+                    "chat-input w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-1 py-1 resize-none placeholder-gray-500",
                     theme === 'dark' ? "text-white" : "text-gray-900"
                   )}
-                  style={{ boxShadow: 'none' }}
+                  style={{ boxShadow: 'none', fontSize: '16px', minHeight: '24px', maxHeight: '180px' }}
                 />
 
                 {/* File Previews */}
@@ -2605,16 +2675,16 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {/* Bottom Icons Row */}
+                {/* Bottom Icons Row — 44x44px touch targets */}
                 <div className="flex items-center justify-between mt-1">
-                  
+
                   {/* Left + Icon & Menu */}
                   <div className="relative">
-                    <button 
+                    <button
                       type="button"
                       onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
                       className={cn(
-                        "p-1.5 rounded-full",
+                        "chat-attach-btn rounded-full",
                         theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
                       )}
                     >
@@ -2671,14 +2741,14 @@ export default function ChatPage() {
                     />
                   </div>
 
-                  {/* Right Icons Container */}
-                  <div className="flex items-center gap-2">
+                  {/* Right Icons Container — 44x44px touch targets */}
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <div className="relative">
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setIsInputModelMenuOpen(!isInputModelMenuOpen)}
                         className={cn(
-                          "p-2 rounded-full",
+                          "chat-menu-btn rounded-full",
                           theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
                         )}
                         title="Select AI Model"
@@ -2753,14 +2823,14 @@ export default function ChatPage() {
                       </AnimatePresence>
                     </div>
                     
-                    {/* Voice to Text Converter (Bare Icon) */}
-                    <button 
+                    {/* Voice to Text Converter — 44x44px touch target */}
+                    <button
                       type="button"
                       onClick={toggleRecording}
                       className={cn(
-                        "p-2 rounded-full",
-                        isRecording 
-                          ? "text-red-500 bg-red-500/10" 
+                        "chat-menu-btn rounded-full",
+                        isRecording
+                          ? "text-red-500 bg-red-500/10"
                           : (theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")
                       )}
                       title="Voice to text"
@@ -2768,8 +2838,8 @@ export default function ChatPage() {
                       <Mic size={20} />
                     </button>
 
-                    {/* Send / Voice Assistant Button (Solid Circled Icon) */}
-                    <button 
+                    {/* Send / Voice Assistant Button — 44x44px touch target */}
+                    <button
                       type="button"
                       disabled={isLoading && !isStreaming}
                       onClick={() => {
@@ -2785,7 +2855,7 @@ export default function ChatPage() {
                         }
                       }}
                       className={cn(
-                        "flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all ml-1",
+                        "chat-send-btn flex-shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-full items-center justify-center transition-all ml-1",
                         theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-black text-white hover:bg-gray-800"
                       )}
                       title={isStreaming ? "Stop generation" : input.trim() ? "Send message" : "Start Voice Assistant"}
