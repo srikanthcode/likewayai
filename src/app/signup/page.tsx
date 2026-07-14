@@ -229,29 +229,47 @@ export default function SignupPage() {
             {error && <p className="text-red-400 text-xs">{error}</p>}
 
             {/* Consent Checkboxes (DPDP Act 2023) */}
-            <div className="flex flex-col gap-2 py-1">
-              <label className="flex items-start gap-2.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={consentTerms}
-                  onChange={(e) => setConsentTerms(e.target.checked)}
-                  className="mt-0.5 w-3.5 h-3.5 rounded border-[#908fa0] bg-[#1e2020] text-[#c0c1ff] focus:ring-[#6366F1] cursor-pointer accent-[#c0c1ff]"
-                />
-                <span className="text-[11px] text-[#c7c4d7] leading-tight">
+            <div className="flex flex-col gap-3 py-2">
+              <label className="flex items-start gap-3 cursor-pointer group min-h-[44px] py-1">
+                <div className="relative flex-shrink-0 mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={consentTerms}
+                    onChange={(e) => setConsentTerms(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="w-5 h-5 rounded border border-[#908fa0] bg-[#1e2020] peer-checked:bg-[#c0c1ff] peer-checked:border-[#c0c1ff] transition-all flex items-center justify-center">
+                    {consentTerms && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0c0f0f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[11px] text-[#c7c4d7] leading-tight pt-0.5">
                   I agree to the{" "}
                   <a href="/legal/terms" target="_blank" className="text-[#c0c1ff] hover:underline font-medium">Terms of Service</a>
                   {" "}and{" "}
                   <a href="/legal/privacy" target="_blank" className="text-[#c0c1ff] hover:underline font-medium">Privacy Policy</a>
                 </span>
               </label>
-              <label className="flex items-start gap-2.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={consentAI}
-                  onChange={(e) => setConsentAI(e.target.checked)}
-                  className="mt-0.5 w-3.5 h-3.5 rounded border-[#908fa0] bg-[#1e2020] text-[#c0c1ff] focus:ring-[#6366F1] cursor-pointer accent-[#c0c1ff]"
-                />
-                <span className="text-[11px] text-[#c7c4d7] leading-tight">
+              <label className="flex items-start gap-3 cursor-pointer group min-h-[44px] py-1">
+                <div className="relative flex-shrink-0 mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={consentAI}
+                    onChange={(e) => setConsentAI(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="w-5 h-5 rounded border border-[#908fa0] bg-[#1e2020] peer-checked:bg-[#c0c1ff] peer-checked:border-[#c0c1ff] transition-all flex items-center justify-center">
+                    {consentAI && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0c0f0f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[11px] text-[#c7c4d7] leading-tight pt-0.5">
                   I consent to AI processing of my conversations by third-party providers as described in our{" "}
                   <a href="/legal/privacy" target="_blank" className="text-[#c0c1ff] hover:underline font-medium">Privacy Policy</a>
                 </span>
