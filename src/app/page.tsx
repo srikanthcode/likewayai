@@ -2353,7 +2353,7 @@ export default function ChatPage() {
           </div>
         ) : m.status === 'streaming' || m.status === 'typing' || !m.content ? (
                           <div className={cn(
-                            "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
+                            "prose max-w-none overflow-hidden break-words prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
                             <ReactMarkdown components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
@@ -2363,7 +2363,7 @@ export default function ChatPage() {
                           </div>
                         ) : (
                           <div className={cn(
-                            "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
+                            "prose max-w-none overflow-hidden break-words prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
                             <ReactMarkdown components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
