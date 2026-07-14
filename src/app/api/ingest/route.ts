@@ -1,8 +1,6 @@
 import { ingestDocument } from "@/lib/rag";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 export async function POST(req: NextRequest) {
     try {
         const { content, title, projectId } = await req.json();

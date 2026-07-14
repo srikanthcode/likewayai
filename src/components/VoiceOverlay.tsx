@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { motion } from "framer-motion";
 import { Mic, X, RefreshCw, AudioLines } from "lucide-react";

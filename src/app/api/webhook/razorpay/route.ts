@@ -3,7 +3,10 @@ import crypto from "crypto";
 import { updateUserSubscription } from "@/lib/user";
 import { PLANS, PlanType } from "@/lib/plans";
 
-export const runtime = "nodejs";
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +20,7 @@ export async function POST(req: NextRequest) {
       .update(body)
       .digest("hex");
 
-    if (expectedSignature !== signature) {
+    if (!timingSafeEqual(expectedSignature, signature)) {
       console.error("Invalid Razorpay Webhook Signature");
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }

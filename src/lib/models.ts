@@ -1,4 +1,4 @@
-export type ModelProvider = "openrouter" | "groq";
+export type ModelProvider = "openrouter" | "groq" | "mistral";
 
 export interface Model {
   id: string;
@@ -15,13 +15,31 @@ export type ModelConfig = Model;
 
 export const MODELS: Model[] = [
   {
-    id: "llama-3.1-8b-instant",
-    name: "Likeway Fast",
-    provider: "groq",
-    contextWindow: 128000,
+    id: "mistral-medium-latest",
+    name: "Likeway CodeMaster",
+    provider: "mistral",
+    contextWindow: 32000,
     vision: false,
     plan: "Core",
-    description: "Ultra-responsive and efficient for everyday streamlined tasks",
+    description: "Main chat model – excellent for chat, reasoning, and coding.",
+  },
+  {
+    id: "codestral-latest",
+    name: "Likeway Maverick",
+    provider: "mistral",
+    contextWindow: 32000,
+    vision: false,
+    plan: "Core",
+    description: "World-class coding model for complex software engineering tasks.",
+  },
+  {
+    id: "mistral-small-latest",
+    name: "Likeway Micro",
+    provider: "mistral",
+    contextWindow: 32000,
+    vision: false,
+    plan: "Core",
+    description: "Lightweight model for fast responses.",
     fast: true,
   },
   {
@@ -30,17 +48,18 @@ export const MODELS: Model[] = [
     provider: "groq",
     contextWindow: 128000,
     vision: false,
-    plan: "Go",
+    plan: "Core",
     description: "Focused and precise knowledge retrieval for basic research",
   },
   {
-    id: "llama-3.1-70b-versatile",
-    name: "Likeway Matrix",
+    id: "llama-3.1-8b-instant",
+    name: "Likeway Fast",
     provider: "groq",
     contextWindow: 128000,
     vision: false,
     plan: "Core",
-    description: "Versatile router model that excels at varied free-tier tasks",
+    description: "Ultra-responsive and efficient for everyday tasks",
+    fast: true,
   },
   {
     id: "google/gemini-2.5-flash",
@@ -50,25 +69,6 @@ export const MODELS: Model[] = [
     vision: true,
     plan: "Go",
     description: "High-speed multimodal engine with basic image understanding",
-  },
-  {
-    id: "meta-llama/llama-3.2-3b-instruct:free",
-    name: "Likeway Micro",
-    provider: "openrouter",
-    contextWindow: 128000,
-    vision: false,
-    plan: "Core",
-    description: "Extremely lightweight logic processor for simple queries",
-    fast: true,
-  },
-  {
-    id: "llama-3.1-70b-versatile",
-    name: "Likeway Versatile",
-    provider: "openrouter",
-    contextWindow: 128000,
-    vision: false,
-    plan: "Go",
-    description: "Flagship high-performance model for complex reasoning and analysis",
   },
   {
     id: "google/gemini-2.5-pro",
@@ -87,15 +87,6 @@ export const MODELS: Model[] = [
     vision: true,
     plan: "Plus",
     description: "Lightning-fast and highly secure analysis engine",
-  },
-  {
-    id: "google/gemini-2.5-pro",
-    name: "Likeway Omni Vision",
-    provider: "openrouter",
-    contextWindow: 1000000,
-    vision: true,
-    plan: "Pro",
-    description: "Advanced semantic understanding and deep image analysis",
   },
   {
     id: "anthropic/claude-sonnet-4",
@@ -125,31 +116,13 @@ export const MODELS: Model[] = [
     description: "Ultra-high reasoning capacity for mathematical and scientific breakthroughs",
   },
   {
-    id: "anthropic/claude-3.5-sonnet",
-    name: "Likeway Architect",
-    provider: "openrouter",
-    contextWindow: 200000,
-    vision: true,
-    plan: "Pro",
-    description: "Next-gen deep thought routines optimized for immense logic validation",
-  },
-  {
-    id: "google/gemini-2.5-pro",
+    id: "google/gemini-2.5-pro-preview",
     name: "Likeway Pinnacle",
     provider: "openrouter",
     contextWindow: 1000000,
     vision: true,
     plan: "Pro",
     description: "The absolute pinnacle of creative generation and structural mastery",
-  },
-  {
-    id: "meta-llama/llama-3.1-70b-instruct",
-    name: "Likeway Unbounded",
-    provider: "openrouter",
-    contextWindow: 128000,
-    vision: false,
-    plan: "Pro",
-    description: "Uncensored, real-time advanced multimodal intelligence",
   },
 ];
 

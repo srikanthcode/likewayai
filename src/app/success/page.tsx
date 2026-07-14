@@ -7,8 +7,11 @@ import { motion } from "framer-motion";
 
 import { useState } from "react";
 
+import { useAuth } from "@/components/AuthProvider";
+
 export default function SuccessPage() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [upgradedPlan, setUpgradedPlan] = useState("Plus");
 
   useEffect(() => {
@@ -20,20 +23,16 @@ export default function SuccessPage() {
     // Update local state plan
     setCurrentPlan(planId);
 
-    // Save the upgraded plan to the database persistently
-    const userId = localStorage.getItem('gemma_userId') || 'anonymous-user';
-    fetch('/api/user/plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, plan: planId }),
-    }).catch(err => console.error("Failed to persist user subscription update in database:", err));
+    // Refresh user session state dynamically
+    refreshUser().catch(err => console.error("Failed to refresh user subscription:", err));
 
     const timer = setTimeout(() => {
       router.push("/");
     }, 4500);
 
     return () => clearTimeout(timer);
-  }, [router]);
+  }, [router, refreshUser]);
+
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-white">

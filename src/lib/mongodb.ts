@@ -1,10 +1,10 @@
-import { MongoClient, MongoClientOptions, Collection, Document } from "mongodb";
+import { MongoClient, MongoClientOptions, ObjectId } from "mongodb";
 
 const rawUri = process.env.MONGODB_URI || "";
 const uri = rawUri.replace(/[&?]tlsAllowInvalidCertificates=true/gi, "");
 
 const options: MongoClientOptions = {
-  maxPoolSize: 10,
+  maxPoolSize: process.env.NODE_ENV === "production" ? 50 : 10,
   serverSelectionTimeoutMS: 10000,
   connectTimeoutMS: 10000,
 };
@@ -14,23 +14,49 @@ declare global {
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
+// Re-export ObjectId so other modules can import it from here
+export { ObjectId };
+
 function createClientPromise(): Promise<MongoClient> {
   if (!uri) {
-    // During build time, return a mock client that can be used without errors
-    // This allows the build to complete without MongoDB configuration
+    if (process.env.NODE_ENV === "production") {
+      // In production, fail loudly if MongoDB URI is not configured
+      console.error("[MongoDB] CRITICAL: MONGODB_URI not set in production! Application cannot function without a database.");
+      throw new Error("MONGODB_URI must be set in production environment");
+    }
+    // Development only: use mock client for local development without MongoDB
+    console.warn("[MongoDB] MONGODB_URI not set — using in-memory mock for development only. Auth will not persist.");
+    function mockCursor(_result: any[] = []) {
+      const cursor: any = {
+        sort: () => cursor,
+        limit: () => cursor,
+        project: () => cursor,
+        skip: () => cursor,
+        toArray: () => Promise.resolve([]),
+      };
+      return cursor;
+    }
+
     const mockClient = {
       db: () => ({
-        collection: <T extends Document = any>(name: string): Collection<T> => ({
+        collection: (name: string) => ({
           findOne: () => Promise.resolve(null),
-          find: () => ({ toArray: () => Promise.resolve([]) }),
-          insertOne: () => Promise.resolve({ acknowledged: true }),
-          updateOne: () => Promise.resolve({ acknowledged: true }),
-          deleteOne: () => Promise.resolve({ acknowledged: true }),
-        } as unknown as Collection<T>),
+          find: () => mockCursor([]),
+          insertOne: (doc: any) => {
+            const insertedId = new ObjectId();
+            return Promise.resolve({ acknowledged: true, insertedId });
+          },
+          updateOne: () => Promise.resolve({ acknowledged: true, matchedCount: 1, modifiedCount: 1 }),
+          deleteOne: () => Promise.resolve({ acknowledged: true, deletedCount: 1 }),
+          deleteMany: () => Promise.resolve({ acknowledged: true, deletedCount: 0 }),
+          countDocuments: () => Promise.resolve(0),
+          aggregate: () => mockCursor([]),
+        }),
       }),
       connect: () => Promise.resolve(),
       close: () => Promise.resolve(),
     } as unknown as MongoClient;
+
     return Promise.resolve(mockClient);
   }
 
@@ -42,8 +68,6 @@ function createClientPromise(): Promise<MongoClient> {
   return global._mongoClientPromise;
 }
 
-// Don't create the promise at module level to avoid build-time errors
-// It will be created when first accessed
 let clientPromise: Promise<MongoClient> | null = null;
 
 export function getClientPromise(): Promise<MongoClient> {
@@ -53,7 +77,6 @@ export function getClientPromise(): Promise<MongoClient> {
   return clientPromise;
 }
 
-// For backward compatibility, export a default that creates on first access
 export default new Proxy({} as Promise<MongoClient>, {
   get(_target, prop) {
     const promise = getClientPromise();

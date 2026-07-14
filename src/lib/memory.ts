@@ -54,7 +54,7 @@ export async function getHistory(userId: string, limit: number = 20, projectId: 
     const db = client.db(DB_NAME);
     const collection: Collection<Conversation> = db.collection("chatmemories") as any;
 
-    const query = conversationId ? { _id: new ObjectId(conversationId) } : { userId, projectId: projectId || "default" };
+    const query = conversationId ? { _id: new ObjectId(conversationId), userId } : { userId, projectId: projectId || "default" };
     const conversation = await collection.findOne(query);
 
     return conversation ? conversation.messages.slice(-limit) : [];
@@ -120,7 +120,7 @@ export async function checkUsageLimit(userId: string, limit: number): Promise<{ 
         const db = client.db(DB_NAME);
         const collection = db.collection("usage");
 
-        const today = new Date().toDateString();
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
         const usage = await collection.findOne({ userId, date: today }) as any;
 
         if (!usage) return { allowed: true, current: 0 };
@@ -137,7 +137,7 @@ export async function incrementUsage(userId: string) {
         const db = client.db(DB_NAME);
         const collection = db.collection("usage");
 
-        const today = new Date().toDateString();
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
         await collection.updateOne(
             { userId, date: today },
             { 

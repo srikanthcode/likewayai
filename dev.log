@@ -1,0 +1,11 @@
+
+> likeway@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.56.1:3000
+- Environments: .env.local
+✓ Ready in 2.4s
+[Error: `experimental.ppr` has been merged into `cacheComponents`. The Partial Prerendering feature is still available, but is now enabled via `cacheComponents`. Please update your next.config.ts accordingly.]
+[?25h

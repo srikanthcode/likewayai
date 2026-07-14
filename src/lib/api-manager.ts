@@ -1,6 +1,6 @@
 import { API_KEYS } from "@/config/keys";
 
-type Provider = "openrouter" | "groq" | "image";
+type Provider = "openrouter" | "groq" | "mistral" | "image";
 
 class KeyPool {
   private keys: Record<Provider, string[]>;
@@ -12,6 +12,7 @@ class KeyPool {
     this.indices = {
       openrouter: 0,
       groq: 0,
+      mistral: 0,
       image: 0,
     };
   }
@@ -54,31 +55,75 @@ class KeyPool {
 
 export const keyPool = new KeyPool();
 
+// ── Provider Health Check ─────────────────────────────────────────────────
+// Logs active key pools on server startup so missing env vars are immediately visible
+const _providerStatus = (["mistral", "groq", "openrouter"] as const).map(p => {
+  const keys = API_KEYS[p as keyof typeof API_KEYS];
+  const count = Array.isArray(keys) ? keys.filter(Boolean).length : 0;
+  return `${p}: ${count > 0 ? `✅ ${count} key(s)` : "❌ NO KEYS — set env var"}`;
+});
+console.log("[LikeWay API] Provider pool status:\n" + _providerStatus.join("\n"));
+
 const PROVIDER_URLS: Record<Provider, string> = {
     groq: "https://api.groq.com/openai/v1/chat/completions",
     openrouter: "https://openrouter.ai/api/v1/chat/completions",
+    mistral: "https://api.mistral.ai/v1/chat/completions",
     image: "https://api.deepai.org/api/text2img" // Not really used this way anymore
 };
 
 export async function fetchAI(provider: Provider, url: string, options: any) {
-  const providersToTry: Provider[] = provider === "groq" ? ["groq", "openrouter"] : ["openrouter", "groq"];
+  const providersToTry: Provider[] = [];
+  if (provider === "groq") {
+    providersToTry.push("groq", "openrouter", "mistral");
+  } else if (provider === "mistral") {
+    providersToTry.push("mistral", "openrouter", "groq");
+  } else {
+    providersToTry.push("openrouter", "groq", "mistral");
+  }
   
   for (const currentProvider of providersToTry) {
     let key;
     const currentUrl = PROVIDER_URLS[currentProvider] || url;
 
-    // Try all keys for current provider
-    while ((key = keyPool.getNextKey(currentProvider)) !== null) {
+    // Translate body parameters dynamically during fallback
+    let requestOptions = options;
+    if (currentProvider !== provider && options.body) {
       try {
-        const response = await fetch(currentUrl, {
+        const bodyObj = JSON.parse(options.body);
+        if (currentProvider === "mistral") {
+          bodyObj.model = "mistral/mistral-medium-latest";
+        } else if (currentProvider === "groq") {
+          bodyObj.model = "llama-3.3-70b-versatile";
+        } else if (currentProvider === "openrouter") {
+          bodyObj.model = "google/gemini-2.5-flash";
+        }
+        requestOptions = {
           ...options,
+          body: JSON.stringify(bodyObj)
+        };
+      } catch (e) {
+        console.warn("[Key Rotator] Dynamic translation failed during fallback:", e);
+      }
+    }
+
+    // Try all keys for current provider (max attempts to prevent infinite loop from self-healing)
+    let providerAttempts = 0;
+    const maxProviderAttempts = 6; // Enough to try all keys + one self-healing reset cycle
+    while ((key = keyPool.getNextKey(currentProvider)) !== null && providerAttempts++ < maxProviderAttempts) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const response = await fetch(currentUrl, {
+          ...requestOptions,
+          signal: controller.signal,
           headers: {
-            ...options.headers,
+            ...requestOptions.headers,
             "Authorization": "Bearer " + key,
             "HTTP-Referer": "https://likeway.ai",
             "X-Title": "Likeway AI",
           },
         });
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errText = await response.clone().text().catch(() => "");

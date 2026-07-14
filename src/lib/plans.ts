@@ -14,6 +14,7 @@ export interface Plan {
     imageGen: boolean;
   };
   features: string[];
+  modelCount: number;
 }
 
 export const PLANS: Record<PlanType, Plan> = {
@@ -22,13 +23,21 @@ export const PLANS: Record<PlanType, Plan> = {
     name: "Core",
     price: "Free",
     limits: {
-      messagesDay: 20,
-      modelsAllowed: ["llama-3.1-8b-instant", "meta-llama/llama-3.2-3b-instruct:free"],
+      messagesDay: 500,
+      modelsAllowed: ["mistral-small-latest", "llama-3.1-8b-instant"],
       tools: false,
       deepResearch: false,
       imageGen: false,
     },
-    features: ["20 messages/day", "Access to standard models", "Basic conversation features"],
+    features: [
+      "500 responses/day",
+      "2 powerful models unlocked",
+      "Smart conversation assistant",
+      "Web search capabilities",
+      "Voice input support",
+      "Code snippet formatting",
+    ],
+    modelCount: 2,
   },
   Go: {
     id: "Go",
@@ -37,13 +46,27 @@ export const PLANS: Record<PlanType, Plan> = {
     razorpayPlanId: process.env.RAZORPAY_PLAN_GO || "",
     stripePriceId: process.env.STRIPE_PRICE_GO || "",
     limits: {
-      messagesDay: 100,
-      modelsAllowed: ["llama-3.1-8b-instant", "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct"],
+      messagesDay: 99999,
+      modelsAllowed: [
+        "mistral-small-latest",
+        "llama-3.1-8b-instant",
+        "mistral-medium-latest",
+        "codestral-latest",
+        "google/gemini-2.5-flash",
+      ],
       tools: true,
       deepResearch: false,
       imageGen: false,
     },
-    features: ["100 messages/day", "Access to advanced models", "Tool execution support"],
+    features: [
+      "Unlimited messages",
+      "5 advanced models unlocked",
+      "Tool execution & web browsing",
+      "Code generation & debugging",
+      "File upload & analysis",
+      "Priority response speed",
+    ],
+    modelCount: 5,
   },
   Plus: {
     id: "Plus",
@@ -52,19 +75,34 @@ export const PLANS: Record<PlanType, Plan> = {
     razorpayPlanId: process.env.RAZORPAY_PLAN_PLUS || "",
     stripePriceId: process.env.STRIPE_PRICE_PLUS || "",
     limits: {
-      messagesDay: 500,
+      messagesDay: 99999,
       modelsAllowed: [
+        "mistral-small-latest",
         "llama-3.1-8b-instant",
+        "mistral-medium-latest",
+        "codestral-latest",
         "google/gemini-2.5-flash",
-        "meta-llama/llama-3.3-70b-instruct",
+        "llama-3.3-70b-versatile",
+        "google/gemini-2.5-pro",
         "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-sonnet-4",
         "openai/gpt-4o",
       ],
       tools: true,
       deepResearch: true,
-      imageGen: false,
+      imageGen: true,
     },
-    features: ["500 messages/day", "Access to elite models (Claude 3.5, GPT-4o)", "Tool execution support", "Deep Research capability"],
+    features: [
+      "Unlimited messages",
+      "10 elite models unlocked",
+      "Advanced vision & image understanding",
+      "Deep autonomous research",
+      "Multi-step web analysis",
+      "Architect coding agent access",
+      "Image generation support",
+      "Custom instructions & memory",
+    ],
+    modelCount: 10,
   },
   Pro: {
     id: "Pro",
@@ -79,7 +117,17 @@ export const PLANS: Record<PlanType, Plan> = {
       deepResearch: true,
       imageGen: true,
     },
-    features: ["Unlimited messages", "Access to all models", "Tool execution support", "Deep Research capability", "Image generation support"],
+    features: [
+      "Unlimited messages",
+      "All models unlocked — ultimate power",
+      "Early access to cutting-edge models",
+      "Unlimited image generation",
+      "Deep Research with extended context",
+      "Architect Coding Agent — 50+ languages",
+      "Voice Assistant with natural speech",
+      "Priority support & feature requests",
+    ],
+    modelCount: 12,
   },
 };
 
@@ -101,4 +149,3 @@ export function isFeatureUnlocked(plan: PlanType, feature: keyof Plan["limits"])
   if (!planConfig) return false;
   return !!planConfig.limits[feature];
 }
-

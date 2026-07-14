@@ -1,0 +1,28 @@
+
+> likeway@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.56.1:3000
+- Environments: .env.local
+✓ Ready in 1914ms
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+ GET /api/health 200 in 1498ms (next.js: 1416ms, application-code: 82ms)
+ GET /pricing 200 in 1511ms (next.js: 339ms, proxy.ts: 327ms, application-code: 844ms)
+[Payment Verify] Signature mismatch
+ POST /api/verify-payment 400 in 223ms (next.js: 206ms, application-code: 17ms)
+ GET /pricing 200 in 264ms (next.js: 19ms, proxy.ts: 24ms, application-code: 220ms)
+ GET /manifest.json 404 in 366ms (next.js: 148ms, proxy.ts: 12ms, application-code: 206ms)
+ GET /manifest.json 404 in 272ms (next.js: 24ms, proxy.ts: 11ms, application-code: 237ms)
+ GET /api/user/plan 200 in 1399ms (next.js: 128ms, application-code: 1271ms)
+ GET /api/auth/me 200 in 1854ms (next.js: 290ms, application-code: 1564ms)
+Creating Razorpay order with options: { amount: 29900, currency: 'INR', receipt: 'lk_Go_mrjl6ldg' }
+ POST /api/create-order 200 in 615ms (next.js: 143ms, application-code: 471ms)
+✓ Compiled in 358ms
+ GET /pricing 200 in 331ms (next.js: 139ms, proxy.ts: 41ms, application-code: 151ms)
+ GET /manifest.json 404 in 234ms (next.js: 26ms, proxy.ts: 8ms, application-code: 201ms)
+✓ Compiled in 297ms
+ GET /pricing 200 in 357ms (next.js: 172ms, proxy.ts: 44ms, application-code: 141ms)
+ GET /manifest.json 404 in 233ms (next.js: 25ms, proxy.ts: 9ms, application-code: 199ms)

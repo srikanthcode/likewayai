@@ -9,17 +9,21 @@ export function getStripe(): Stripe | null {
   }
 
   if (!stripeInstance) {
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2026-04-22.dahlia",
-    });
+    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
   }
 
   return stripeInstance;
 }
 
-// For backward compatibility, export a default that creates on first access
+// Proxy that forwards all property access to the lazy-initialized Stripe instance
 export default new Proxy({} as any, {
-  get() {
-    return getStripe();
-  }
+  get(_target, prop, receiver) {
+    const stripe = getStripe();
+    if (!stripe) return undefined;
+    const value = (stripe as any)[prop];
+    if (typeof value === "function") {
+      return value.bind(stripe);
+    }
+    return value;
+  },
 });

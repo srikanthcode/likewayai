@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import stripe from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import { updateUserSubscription } from "@/lib/user";
 import { PlanType, PLANS } from "@/lib/plans";
-
-export const runtime = "nodejs";
 
 // Stripe sends raw body — must read as text before parsing
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get("stripe-signature") || "";
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error("STRIPE_WEBHOOK_SECRET is not configured");
+    return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    console.error("Stripe is not configured");
+    return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
+  }
 
   let event: any;
 

@@ -1,6 +1,8 @@
 import clientPromise from "./mongodb";
 import { ObjectId, Collection } from "mongodb";
 
+const DB_NAME = process.env.MONGODB_DB_NAME || process.env.MONGODB_DB || "likeway_ai";
+
 export interface Project {
   _id?: ObjectId;
   userId: string;
@@ -16,7 +18,7 @@ export interface Project {
 export async function createProject(project: Omit<Project, "_id" | "createdAt" | "updatedAt">) {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Project> = db.collection("projects");
 
     const newProject: Project = {
@@ -36,7 +38,7 @@ export async function createProject(project: Omit<Project, "_id" | "createdAt" |
 export async function getProjects(userId: string): Promise<Project[]> {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Project> = db.collection("projects");
 
     return await collection.find({ userId }).toArray();
@@ -46,13 +48,13 @@ export async function getProjects(userId: string): Promise<Project[]> {
   }
 }
 
-export async function deleteProject(projectId: string) {
+export async function deleteProject(projectId: string, userId: string) {
   try {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Project> = db.collection("projects");
 
-    await collection.deleteOne({ _id: new ObjectId(projectId) });
+    await collection.deleteOne({ _id: new ObjectId(projectId), userId });
   } catch (error) {
     console.error("Failed to delete project:", error);
   }

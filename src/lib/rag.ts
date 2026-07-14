@@ -1,4 +1,7 @@
 import clientPromise from "./mongodb";
+import crypto from "crypto";
+
+const DB_NAME = process.env.MONGODB_DB_NAME || process.env.MONGODB_DB || "likeway_ai";
 
 export async function ingestDocument(
   content: string,
@@ -6,10 +9,10 @@ export async function ingestDocument(
   projectId?: string
 ): Promise<void> {
   const client = await clientPromise;
-  const db = client.db("zynthex_ai");
+  const db = client.db(DB_NAME);
   const collection = db.collection("rag_documents");
 
-  const docId = Math.random().toString(36).substring(2, 9);
+  const docId = crypto.randomUUID();
   await collection.insertOne({
     id: docId,
     content,

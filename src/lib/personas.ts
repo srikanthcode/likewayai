@@ -1,6 +1,8 @@
 import clientPromise from "./mongodb";
 import { ObjectId, Collection } from "mongodb";
 
+const DB_NAME = process.env.MONGODB_DB_NAME || process.env.MONGODB_DB || "likeway_ai";
+
 export interface Persona {
     id?: string;
     userId: string;
@@ -15,27 +17,27 @@ export interface Persona {
 
 export async function getPersonas(userId: string) {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Persona> = db.collection("personas");
     return await collection.find({ userId }).toArray();
 }
 
 export async function savePersona(persona: Persona) {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Persona> = db.collection("personas");
     
     if (persona.id) {
         const { id, ...data } = persona;
-        return await collection.updateOne({ _id: new ObjectId(id) }, { $set: data });
+        return await collection.updateOne({ _id: new ObjectId(id), userId: persona.userId }, { $set: data });
     } else {
         return await collection.insertOne(persona);
     }
 }
 
-export async function deletePersona(id: string) {
+export async function deletePersona(id: string, userId: string) {
     const client = await clientPromise;
-    const db = client.db("zynthex_ai");
+    const db = client.db(DB_NAME);
     const collection: Collection<Persona> = db.collection("personas");
-    return await collection.deleteOne({ _id: new ObjectId(id) });
+    return await collection.deleteOne({ _id: new ObjectId(id), userId });
 }

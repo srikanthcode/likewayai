@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProject, getProjects } from "@/lib/projects";
-
-export const runtime = "nodejs";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.headers.get("x-user-id") || "anonymous-user";
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
+
     const projects = await getProjects(userId);
     return NextResponse.json(projects);
   } catch (error) {
@@ -15,7 +23,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = req.headers.get("x-user-id") || "anonymous-user";
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
+
     const body = await req.json();
     const { name, description, emoji } = body;
 

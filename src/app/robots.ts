@@ -2,16 +2,20 @@ import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: {
-      userAgent: "*",
-      allow: "/",
-      disallow: [
-        "/api/",
-        "/_next/",
-        "/static/",
-        "/success", // user purchase completion screen
-      ],
-    },
+    rules: [
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: [
+          "/api/",
+          "/_next/",
+          "/static/",
+          "/success",
+          "/account",
+          "/onboarding",
+        ],
+      },
+    ],
     sitemap: "https://likeway.in/sitemap.xml",
   };
 }

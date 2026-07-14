@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listConversations } from "@/lib/memory";
-
-export const runtime = "nodejs";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.headers.get("x-user-id") || "anonymous-user";
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
+
     const conversations = await listConversations(userId, 50);
     return NextResponse.json(conversations);
   } catch (error) {

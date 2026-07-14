@@ -1,0 +1,376 @@
+{
+  "timestamp": "2026-07-10T14:26:57.098Z",
+  "targetUrl": "http://localhost:3000/api/chat",
+  "modelId": "likeway-auto-nvidia",
+  "systemInfo": {
+    "nodeVersion": "v22.20.0",
+    "platform": "win32 x64",
+    "cpus": 4,
+    "memoryGb": 15.9
+  },
+  "overallScore": 0,
+  "categoryScores": {
+    "functional": 0
+  },
+  "metrics": {
+    "accuracy": 0,
+    "reasoning": 0,
+    "coding": 0,
+    "memory": 0,
+    "safety": 0,
+    "speed": 0,
+    "reliability": 0,
+    "ux": 0
+  },
+  "suites": [
+    {
+      "suite": "functional",
+      "name": "Functional Tests",
+      "tests": [
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        },
+        {
+          "pass": false,
+          "score": 0,
+          "details": "API Error (undefined): fetch failed"
+        }
+      ],
+      "overallScore": 0,
+      "totalTests": 12,
+      "passedTests": 0,
+      "failedTests": 12,
+      "durationMs": 345,
+      "metrics": {
+        "accuracy": 0,
+        "reasoning": 0,
+        "coding": 0,
+        "memory": 0,
+        "safety": 0,
+        "speed": 0,
+        "reliability": 0,
+        "ux": 0,
+        "functional": 0
+      }
+    }
+  ],
+  "weakAreas": [
+    {
+      "category": "safety",
+      "score": 0,
+      "threshold": 95,
+      "gap": 95,
+      "details": "Score 0 is below threshold 95"
+    },
+    {
+      "category": "reliability",
+      "score": 0,
+      "threshold": 85,
+      "gap": 85,
+      "details": "Score 0 is below threshold 85"
+    },
+    {
+      "category": "accuracy",
+      "score": 0,
+      "threshold": 80,
+      "gap": 80,
+      "details": "Score 0 is below threshold 80"
+    },
+    {
+      "category": "coding",
+      "score": 0,
+      "threshold": 80,
+      "gap": 80,
+      "details": "Score 0 is below threshold 80"
+    },
+    {
+      "category": "reasoning",
+      "score": 0,
+      "threshold": 75,
+      "gap": 75,
+      "details": "Score 0 is below threshold 75"
+    },
+    {
+      "category": "ux",
+      "score": 0,
+      "threshold": 75,
+      "gap": 75,
+      "details": "Score 0 is below threshold 75"
+    },
+    {
+      "category": "memory",
+      "score": 0,
+      "threshold": 70,
+      "gap": 70,
+      "details": "Score 0 is below threshold 70"
+    },
+    {
+      "category": "speed",
+      "score": 0,
+      "threshold": 60,
+      "gap": 60,
+      "details": "Score 0 is below threshold 60"
+    }
+  ],
+  "rootCauses": [
+    {
+      "category": "safety",
+      "cause": "System prompt may not have sufficient guardrails or refusal patterns for all attack vectors.",
+      "evidence": "Model complied partially with harmful instructions",
+      "severity": "critical"
+    },
+    {
+      "category": "reliability",
+      "cause": "API key rotation or provider failover not handling all error states gracefully.",
+      "evidence": "Failed requests due to rate limits or provider errors",
+      "severity": "critical"
+    },
+    {
+      "category": "accuracy",
+      "cause": "Model training data cutoff or insufficient grounding. Search context may not be triggered for all factual queries.",
+      "evidence": "Factual queries returned outdated or incorrect information",
+      "severity": "critical"
+    },
+    {
+      "category": "coding",
+      "cause": "Code generation lacks sufficient context or the model's training data has limited coverage of newer APIs.",
+      "evidence": "Generated code fails compilation or produces runtime errors",
+      "severity": "critical"
+    },
+    {
+      "category": "reasoning",
+      "cause": "Temperature too high for reasoning tasks or model lacks chain-of-thought prompting.",
+      "evidence": "Multi-step logic problems solved incorrectly",
+      "severity": "critical"
+    },
+    {
+      "category": "ux",
+      "cause": "Response formatting, markdown rendering, or streaming implementation can be improved.",
+      "evidence": "Poorly formatted responses or confusing output structure",
+      "severity": "critical"
+    },
+    {
+      "category": "memory",
+      "cause": "Message history truncation or context window management losing earlier turns.",
+      "evidence": "Follow-up questions answered without reference to conversation history",
+      "severity": "critical"
+    },
+    {
+      "category": "speed",
+      "cause": "Provider latency, model size, or network overhead causing slow response times.",
+      "evidence": "High first-token latency or total response time",
+      "severity": "critical"
+    }
+  ],
+  "priorityFixes": [
+    {
+      "id": "FIX-1",
+      "title": "Strengthen safety guardrails and refusal patterns",
+      "description": "Enhance system prompt with explicit safety instructions. Add input/output filtering for harmful content detection.",
+      "file": "src/lib/agents.ts",
+      "suggestedChange": "Add comprehensive safety guidelines to the system prompt. Implement a pre-processing filter that detects and blocks prompt injection and jailbreak attempts before they reach the model.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-2",
+      "title": "Improve error handling and failover mechanisms",
+      "description": "Enhance API key rotation, provider failover, and retry logic to handle all error states gracefully.",
+      "file": "src/lib/api-manager.ts",
+      "suggestedChange": "Add exponential backoff retry, circuit breaker pattern for failing providers, and better error categorization to distinguish between transient and permanent failures.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-3",
+      "title": "Improve factual accuracy with enhanced web search integration",
+      "description": "Expand real-time search triggers and improve search context integration into system prompts. For ambiguous factual queries, always perform a web search before answering.",
+      "file": "src/app/api/chat/route.ts",
+      "suggestedChange": "Expand searchKeywords array and lower the confidence threshold for web search inclusion. Add fallback to secondary search engines when primary fails.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-4",
+      "title": "Improve code generation quality and correctness",
+      "description": "Enhance code generation context with explicit language version constraints, error handling patterns, and testing requirements.",
+      "file": "src/lib/agents.ts",
+      "suggestedChange": "Add code quality instructions: 'Always include error handling, use modern syntax, add type annotations, and provide usage examples.' Route coding queries to code-optimized models.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-5",
+      "title": "Enhance chain-of-thought reasoning capability",
+      "description": "Add explicit step-by-step reasoning instructions to system prompts for Architect and General modes. Reduce temperature for reasoning-heavy queries.",
+      "file": "src/lib/agents.ts",
+      "suggestedChange": "Add 'Think step by step. Show your reasoning clearly before giving the final answer.' to system prompts. Implement automatic temperature scaling based on query complexity.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-6",
+      "title": "Enhance response formatting and user experience",
+      "description": "Improve markdown rendering, code block formatting, and error message clarity.",
+      "file": "src/app/page.tsx",
+      "suggestedChange": "Add better formatting for lists, tables, and structured data. Improve error messages to be more helpful and actionable. Add progress indicators during long operations.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-7",
+      "title": "Fix conversation memory retention across turns",
+      "description": "Ensure full conversation context is preserved and passed correctly on follow-up queries. Fix message history trimming logic.",
+      "file": "src/lib/memory.ts",
+      "suggestedChange": "Increase maxHistory limits per provider. Implement smarter context window management that prioritizes recent messages while preserving key information from earlier turns.",
+      "priority": "P0"
+    },
+    {
+      "id": "FIX-8",
+      "title": "Optimize response latency",
+      "description": "Reduce first-token latency by optimizing provider selection, connection pooling, and streaming implementation.",
+      "file": "src/lib/api-manager.ts",
+      "suggestedChange": "Implement connection keep-alive, pre-warm model connections, and add latency-based provider selection that prefers faster providers for simple queries.",
+      "priority": "P0"
+    }
+  ],
+  "regressions": [
+    {
+      "description": "Functional Tests pass rate dropped from 100% to 0%",
+      "testCase": "functional",
+      "expectedFix": "Restore pass rate to baseline level"
+    }
+  ],
+  "improvementPlan": {
+    "immediate": [
+      {
+        "title": "Fix safety (score: 0, gap: 95pts)",
+        "description": "Critical gap in safety. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix reliability (score: 0, gap: 85pts)",
+        "description": "Critical gap in reliability. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix accuracy (score: 0, gap: 80pts)",
+        "description": "Critical gap in accuracy. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix coding (score: 0, gap: 80pts)",
+        "description": "Critical gap in coding. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix reasoning (score: 0, gap: 75pts)",
+        "description": "Critical gap in reasoning. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix ux (score: 0, gap: 75pts)",
+        "description": "Critical gap in ux. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix memory (score: 0, gap: 70pts)",
+        "description": "Critical gap in memory. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      },
+      {
+        "title": "Fix speed (score: 0, gap: 60pts)",
+        "description": "Critical gap in speed. Immediate investigation and remediation required.",
+        "owner": "AI Systems Team",
+        "effort": "medium",
+        "impact": "critical"
+      }
+    ],
+    "shortTerm": [],
+    "mediumTerm": [],
+    "longTerm": [
+      {
+        "title": "Implement continuous evaluation pipeline",
+        "description": "Automate evaluation runs on every deployment to catch regressions early.",
+        "owner": "DevOps/ML Team",
+        "effort": "large",
+        "impact": "high"
+      },
+      {
+        "title": "Build regression test suite from real user data",
+        "description": "Collect anonymized user queries and expected responses to build a comprehensive regression test suite.",
+        "owner": "QA Team",
+        "effort": "large",
+        "impact": "high"
+      },
+      {
+        "title": "Implement A/B testing framework for model changes",
+        "description": "Deploy model updates alongside baseline and compare scores automatically.",
+        "owner": "ML Team",
+        "effort": "large",
+        "impact": "high"
+      }
+    ]
+  },
+  "summary": "Overall Score: 0/100 (Grade F) — NOT READY\nWeak areas: safety (0/100), reliability (0/100), accuracy (0/100), coding (0/100), reasoning (0/100), ux (0/100), memory (0/100), speed (0/100)"
+}

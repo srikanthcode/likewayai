@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteProject } from "@/lib/projects";
 import { getHistory } from "@/lib/memory";
-
-export const runtime = "nodejs";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
@@ -10,7 +9,15 @@ export async function GET(
 ) {
   try {
     const { id: projectId } = await params;
-    const userId = req.headers.get("x-user-id") || "anonymous-user";
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
 
     
     // In this app, messages are stored in memory/mongodb separately from project metadata
@@ -27,7 +34,17 @@ export async function DELETE(
 ) {
   try {
     const { id: projectId } = await params;
-    await deleteProject(projectId);
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
+
+    await deleteProject(projectId, userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

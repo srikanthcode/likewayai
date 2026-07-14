@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import stripe from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import { PLANS, PlanType } from "@/lib/plans";
-
-export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +14,11 @@ export async function POST(req: NextRequest) {
 
     if (!plan || !plan.stripePriceId) {
       return NextResponse.json({ error: "Invalid plan or missing Stripe Price ID" }, { status: 400 });
+    }
+
+    const stripe = getStripe();
+    if (!stripe) {
+      return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
     }
 
     // Create a Stripe Checkout Session (Stripe hosts the entire payment page)

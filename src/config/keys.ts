@@ -7,6 +7,7 @@ const getKeys = (envVar: string): string[] => {
 export const API_KEYS = {
   openrouter: getKeys("OPENROUTER_KEYS"),
   groq: getKeys("GROQ_KEYS"),
+  mistral: getKeys("MISTRAL_API_KEY"),
   tavily: process.env.TAVILY_API_KEY || "",
   openai: process.env.OPENAI_API_KEY || "",
   image: getKeys("IMAGE_GENERATION_KEYS"),
@@ -19,6 +20,46 @@ export const API_KEYS = {
   stability: getKeys("STABILITY_API_KEY"),
   huggingface: process.env.HF_TOKEN || "",
 };
+
+// Helper function to get user-specific API keys
+export async function getUserApiKeys(userId: string): Promise<Record<string, string>> {
+  try {
+    const { MongoClient, ObjectId } = await import("mongodb");
+    const MONGODB_URI = process.env.MONGODB_URI || "";
+    const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
+
+    const client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    const db = client.db(MONGODB_DB_NAME);
+
+    const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
+    await client.close();
+    
+    return user?.apiKeys || {};
+  } catch (error) {
+    console.error("Error fetching user API keys:", error);
+    return {};
+  }
+}
+
+// Helper function to merge env keys with user-specific keys
+export async function getMergedApiKeys(userId: string): Promise<Record<string, string[] | string>> {
+  const userKeys = await getUserApiKeys(userId);
+  
+  return {
+    openrouter: userKeys.openrouter ? [userKeys.openrouter] : API_KEYS.openrouter,
+    groq: userKeys.groq ? [userKeys.groq] : API_KEYS.groq,
+    mistral: userKeys.mistral ? [userKeys.mistral] : API_KEYS.mistral,
+    tavily: userKeys.tavily || API_KEYS.tavily,
+    openai: userKeys.openai || API_KEYS.openai,
+    image: userKeys.image ? [userKeys.image] : API_KEYS.image,
+    searxng: API_KEYS.searxng,
+    brave: userKeys.brave || API_KEYS.brave,
+    firecrawl: userKeys.firecrawl || API_KEYS.firecrawl,
+    stability: userKeys.stability ? [userKeys.stability] : API_KEYS.stability,
+    huggingface: userKeys.huggingface || API_KEYS.huggingface,
+  };
+}
 
 
 

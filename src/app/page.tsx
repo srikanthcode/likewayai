@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
@@ -10,8 +10,6 @@ import {
   User,
   Mic,
   Monitor,
-  Save,
-  Wand2,
   ChevronDown,
   Paperclip,
   X,
@@ -22,7 +20,6 @@ import {
   Plus,
   Globe,
   Code,
-  Terminal,
   History,
   Briefcase,
   Star,
@@ -40,17 +37,16 @@ import {
   AudioLines,
   Edit,
   Bot,
-  Package,
-  Folder,
   FolderPlus,
-  GraduationCap,
   Brain,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  BookOpen
 } from "lucide-react";
 
 
 import Link from "next/link";
+import { useAuth } from "@/components/AuthProvider";
 import ReactMarkdown from "react-markdown";
 import { MODELS } from "@/lib/models";
 import { PLANS, getCurrentPlan, PlanType, isFeatureUnlocked } from "@/lib/plans";
@@ -60,8 +56,19 @@ import PersonaManager from "@/components/PersonaManager";
 import CommandPalette from "@/components/CommandPalette";
 import CodeBlock from "@/components/CodeBlock";
 import VoiceOverlay from "@/components/VoiceOverlay";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import AgentSelector from "@/components/AgentSelector";
+import PricingModal from "@/components/PricingModal";
 import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
+import AccountMenu from "@/components/AccountMenu";
 import { cn } from "@/lib/utils";
+import {
+  SEARCH_KEYWORDS,
+  TIME_KEYWORDS,
+  CODING_KEYWORDS_PATTERN,
+  CODING_ACTION_PATTERN,
+  REAL_TIME_TERM_PATTERN
+} from "@/lib/constants";
 
 
 function formatAIResponse(content: string) {
@@ -96,6 +103,34 @@ function formatAIResponse(content: string) {
   });
 
   return formatted;
+}
+
+// ── Settings Helper Components ─────────────────────────────────────────
+function SettingsSection({ title, icon, children, theme }: { title: string; icon: React.ReactNode; children: React.ReactNode; theme: string }) {
+  return (
+    <div className={cn("py-3 border-t", theme === 'dark' ? "border-white/5" : "border-black/5")}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-cyan-400">{icon}</span>
+        <p className={cn("text-xs font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>{title}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SettingsItem({ label, onClick, theme }: { label: string; onClick?: () => void; theme: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center justify-between py-2 text-left transition-colors",
+        onClick ? "hover:opacity-70" : "cursor-default"
+      )}
+    >
+      <span className={cn("text-xs", theme === 'dark' ? "text-gray-300" : "text-gray-700")}>{label}</span>
+      {onClick && <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />}
+    </button>
+  );
 }
 
 // Source Badge Component for inline citations
@@ -291,7 +326,7 @@ function YoutubeCard({ ytId, titleText, href }: { ytId: string; titleText: strin
 }
 
 // Shared ReactMarkdown component map — renders step cards for ordered lists
-function buildMarkdownComponents(theme: 'dark' | 'light') {
+function buildMarkdownComponents(theme: 'dark' | 'light', isGenerating: boolean = false) {
   let stepCounter = 0;
   
   const getYoutubeId = (url: string): string | null => {
@@ -314,7 +349,7 @@ function buildMarkdownComponents(theme: 'dark' | 'light') {
     code: ({ node, inline, className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || '');
       return !inline && match ? (
-        <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} />
+        <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} isGenerating={isGenerating} />
       ) : (
         <code className={cn(className, "bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono")} {...props}>
           {children}
@@ -363,29 +398,89 @@ function buildMarkdownComponents(theme: 'dark' | 'light') {
         </a>
       );
     },
-    img: ({ src, alt, ...props }: any) => (
-      <span className="block my-4 w-full max-w-xl group/img">
-        <span className="block relative w-full rounded-2xl overflow-hidden shadow-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5">
-          <img 
-            src={src} 
-            alt={alt || "Generated Visual"} 
-            loading="lazy"
-            className="w-full h-auto object-cover transition-transform duration-500 ease-out group-hover/img:scale-[1.02]"
-            {...props}
-          />
+    img: ({ src, alt, ...props }: any) => {
+      const [copied, setCopied] = React.useState(false);
+      const handleDownload = () => {
+        const link = document.createElement('a');
+        link.href = src || '';
+        link.download = alt || 'image';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      const handleCopyImage = async () => {
+        try {
+          const resp = await fetch(src);
+          const blob = await resp.blob();
+          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          navigator.clipboard.writeText(src || '');
+        }
+      };
+      return (
+        <span className="block my-4 w-full max-w-xl group/img">
+          <span className="block relative w-full rounded-2xl overflow-hidden shadow-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5">
+            <img 
+              src={src} 
+              alt={alt || "Generated Visual"} 
+              loading="lazy"
+              className="w-full h-auto object-cover transition-transform duration-500 ease-out group-hover/img:scale-[1.02]"
+              {...props}
+            />
+            <span className="absolute bottom-2 right-2 flex items-center gap-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
+              <button
+                onClick={handleDownload}
+                className="p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white hover:bg-black/80 transition-colors inline-flex"
+                title="Download image"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </button>
+              <button
+                onClick={handleCopyImage}
+                className="p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white hover:bg-black/80 transition-colors inline-flex"
+                title="Copy image"
+              >
+                {copied ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                )}
+              </button>
+            </span>
+          </span>
         </span>
-      </span>
-    ),
+      );
+    },
   };
 }
 
+const VOICE_CHARACTERS = [
+  { id: 'aria',   name: 'Aria',   gender: 'female', desc: 'Warm & Friendly',    emoji: '👩', keywords: ['Zira','Aria','Samantha','Google UK English Female','Microsoft Zira'] },
+  { id: 'nova',   name: 'Nova',   gender: 'female', desc: 'Clear & Professional', emoji: '👩‍💼', keywords: ['Google US English Female','Ava','Victoria','Karen','Moira','Tessa'] },
+  { id: 'echo',   name: 'Echo',   gender: 'male',   desc: 'Deep & Confident',   emoji: '🧑', keywords: ['Google UK English Male','Daniel','Microsoft David','Fred'] },
+  { id: 'spark',  name: 'Spark',  gender: 'female', desc: 'Bright & Energetic',  emoji: '👧', keywords: ['Google IN English Female','Rishi','Alex','Fiona'] },
+  { id: 'atlas',  name: 'Atlas',  gender: 'male',   desc: 'Calm & Authoritative', emoji: '🧑‍💻', keywords: ['Microsoft Mark','Google US English Male','Tom','Ralph'] },
+  { id: 'luna',   name: 'Luna',   gender: 'female', desc: 'Soft & Soothing',    emoji: '🌙', keywords: ['Nicky','Amelie','Monica','Kyoko','Mei-Jia'] },
+];
+
 export default function ChatPage() {
+  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
-  const [messages, setMessages] = useState<{ role: string; content: string; status?: 'thinking' | 'typing' | 'streaming' | 'done' | 'searching' | 'generating' }[]>([]);
+  const [messages, setMessages] = useState<{ id?: string; role: string; content: string; status?: 'thinking' | 'typing' | 'streaming' | 'done' | 'searching' | 'generating'; animationPlayed?: boolean }[]>([]);
   const [input, setInput] = useState("");
   
   // High-performance streaming & scroll state
-  const [streamingMessage, setStreamingMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const bufferRef = useRef("");
   const [userScrolling, setUserScrolling] = useState(false);
@@ -394,14 +489,16 @@ export default function ChatPage() {
   const isProgrammaticScroll = useRef(false);
   const isInitialLoad = useRef(true); // Prevent auto-scroll on history load
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string; type: ArtifactType } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [selectedMode, setSelectedMode] = useState<AgentMode>("General");
+  const [selectedAgentId, setSelectedAgentId] = useState("general");
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isInputModelMenuOpen, setIsInputModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [isExtendedThinking, setIsExtendedThinking] = useState(false);
@@ -410,6 +507,7 @@ export default function ChatPage() {
   const [editingMessageText, setEditingMessageText] = useState<string>("");
   const [files, setFiles] = useState<string[]>([]);
   const [filePreviews, setFilePreviews] = useState<string[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -435,9 +533,9 @@ export default function ChatPage() {
   const [switchUserIdInput, setSwitchUserIdInput] = useState("");
 
   useEffect(() => {
-    const id = localStorage.getItem('gemma_userId') || 'anonymous-user';
+    const id = user?.id || localStorage.getItem('gemma_userId') || 'anonymous-user';
     setUserId(id);
-  }, []);
+  }, [user]);
 
   // Listen to new assistant messages and auto-open generated artifacts in side panel
   useEffect(() => {
@@ -459,14 +557,7 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  const VOICE_CHARACTERS = [
-    { id: 'aria',   name: 'Aria',   gender: 'female', desc: 'Warm & Friendly',    emoji: '👩', keywords: ['Zira','Aria','Samantha','Google UK English Female','Microsoft Zira'] },
-    { id: 'nova',   name: 'Nova',   gender: 'female', desc: 'Clear & Professional', emoji: '👩‍💼', keywords: ['Google US English Female','Ava','Victoria','Karen','Moira','Tessa'] },
-    { id: 'echo',   name: 'Echo',   gender: 'male',   desc: 'Deep & Confident',   emoji: '🧑', keywords: ['Google UK English Male','Daniel','Microsoft David','Fred'] },
-    { id: 'spark',  name: 'Spark',  gender: 'female', desc: 'Bright & Energetic',  emoji: '👧', keywords: ['Google IN English Female','Rishi','Alex','Fiona'] },
-    { id: 'atlas',  name: 'Atlas',  gender: 'male',   desc: 'Calm & Authoritative', emoji: '🧑‍💻', keywords: ['Microsoft Mark','Google US English Male','Tom','Ralph'] },
-    { id: 'luna',   name: 'Luna',   gender: 'female', desc: 'Soft & Soothing',    emoji: '🌙', keywords: ['Nicky','Amelie','Monica','Kyoko','Mei-Jia'] },
-  ];
+  const getMarkdownComponents = useCallback((isMsgGenerating: boolean) => buildMarkdownComponents(theme, isMsgGenerating), [theme]);
 
   const findVoiceForChar = (charId: string) => {
     const voices = window.speechSynthesis.getVoices();
@@ -494,10 +585,13 @@ export default function ChatPage() {
   const [recentConversations, setRecentConversations] = useState<{_id: string, title: string, updatedAt: Date}[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
-  
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", message: "", onConfirm: () => {} });
 
   const fetchProjects = async () => {
     try {
@@ -513,23 +607,34 @@ export default function ChatPage() {
 
   const fetchRecentConversations = async () => {
     try {
-      const localUserId = localStorage.getItem('gemma_userId') || 'anonymous-user';
+      const localUserId = userId || 'anonymous-user';
       const res = await fetch("/api/chat/history/list", {
         headers: { "x-user-id": localUserId }
       });
       if (res.ok) {
         const data = await res.json();
-        setRecentConversations(data);
+        if (data && data.length > 0) {
+          setRecentConversations(data);
+          localStorage.setItem("likeway_recent_chats", JSON.stringify(data));
+          return;
+        }
       }
     } catch (err) {
       console.error("Failed to fetch recent conversations", err);
     }
+    // Fallback: load from localStorage cache
+    try {
+      const cached = localStorage.getItem("likeway_recent_chats");
+      if (cached) {
+        setRecentConversations(JSON.parse(cached));
+      }
+    } catch {}
   };
 
   useEffect(() => {
     fetchProjects();
     fetchRecentConversations();
-  }, []);
+  }, [user]);
 
   const PROJECT_EMOJIS = ['📁','🎵','📱','🎬','💼','🚀','🎨','🌐','📊','🔬','✍️','🎮','🏆','⚡','🧠'];
 
@@ -579,6 +684,36 @@ export default function ChatPage() {
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
     setFilePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+    Array.from(droppedFiles).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setFiles(prev => [...prev, base64String]);
+        setFilePreviews(prev => [...prev, base64String]);
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -666,7 +801,7 @@ export default function ChatPage() {
     setShowScrollButton(false);
 
     const history = messages.map(m => ({ role: m.role, content: m.content }));
-    setMessages(prev => [...prev, { role: 'user', content: text }]);
+    setMessages(prev => [...prev, { id: `msg_${Date.now()}_user`, role: 'user', content: text }]);
 
     try {
       const res = await fetch('/api/chat', {
@@ -700,7 +835,7 @@ export default function ChatPage() {
           try { fullContent += JSON.parse(data).choices?.[0]?.delta?.content || ''; } catch {}
         }
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: fullContent, status: 'done' }]);
+      setMessages(prev => [...prev, { id: `msg_${Date.now()}_voice`, role: 'assistant', content: fullContent, status: 'done', animationPlayed: true }]);
       setInput('');
       setVoiceStatus('speaking');
       setLiveTranscript('');
@@ -925,6 +1060,7 @@ export default function ChatPage() {
 
   // Load history on mount or when activeProject/activeConversationId changes
   useEffect(() => {
+    isInitialLoad.current = true; // Reset flag when switching chats
     async function loadHistory() {
       try {
         if (!activeProject && !activeConversationId) {
@@ -938,7 +1074,7 @@ export default function ChatPage() {
           url = `/api/chat?conversationId=${activeConversationId}`;
         }
         
-        const localUserId = localStorage.getItem('gemma_userId') || 'anonymous-user';
+        const localUserId = userId || 'anonymous-user';
         const res = await fetch(url, {
             headers: { "x-user-id": localUserId }
         });
@@ -1006,7 +1142,7 @@ export default function ChatPage() {
         requestAnimationFrame(() => scrollToBottom("auto"));
       }
     }
-  }, [messages, isStreaming, userScrolling]);
+  }, [isStreaming, userScrolling]);
 
   // Auto scroll when user sends a NEW message
   useEffect(() => {
@@ -1019,6 +1155,14 @@ export default function ChatPage() {
       }
     }
   }, [messages]);
+
+  // Auto-resize textarea to fit content
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }, [input]);
 
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
@@ -1045,26 +1189,18 @@ export default function ChatPage() {
       setActiveConversationId(conversationIdToUse);
     }
 
-    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setMessages(prev => [...prev, { id: msgId, role: "user", content: userMessage }]);
     setInput("");
     setIsLoading(true);
     setUserScrolling(false);
     setShowScrollButton(false);
-    const searchKeywords = [
-      "latest news", "flash news", "today's news", "current news", "headlines",
-      "box office", "stock price", "share price", "weather", "score", "live score",
-      "match result", "election result", "breaking news", "usd to inr", "exchange rate",
-      "currency rate", "gold price", "silver price", "petrol price", "diesel price"
-    ];
-    const timeKeywords = [
-      "latest", "2026", "today", "current", "recent", "release date", "released",
-      "new movie", "new film", "upcoming", "just announced", "this week", "this month"
-    ];
+
     // Strictly programming keywords to avoid false positives on simple questions like "what is"
-    const isCodingQ = /\b(javascript|typescript|python|java|rust|golang|c\+\+|html|css|react|nextjs|sql|database|programming|regex|compiler|runtime|npm|pip|git|github|docker|api endpoint)\b/i.test(userMessage) && /\b(code|function|class|method|variable|debug|error|fix|implement)\b/i.test(userMessage);
+    const isCodingQ = CODING_KEYWORDS_PATTERN.test(userMessage) && CODING_ACTION_PATTERN.test(userMessage);
 
     // Terms that always indicate real-time financial, currency, weather, or political lookup
-    const hasRealTimeTerm = /\b(usd|inr|eur|gbp|currency|exchange|forex|stock|share price|ticker|nasdaq|crypto|bitcoin|btc|weather|temperature|forecast|ipl|t20|world cup|live score|elections|chief minister|prime minister|who is current|gold price|silver price|petrol price|diesel price)\b/i.test(userMessage);
+    const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(userMessage);
 
     // Detect image generation requests
     const isImageRequest = /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(userMessage);
@@ -1072,18 +1208,22 @@ export default function ChatPage() {
     const needsSearch =
       !isImageRequest && (
         hasRealTimeTerm ||
-        searchKeywords.some((w) => userMessage.toLowerCase().includes(w)) ||
-        (timeKeywords.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
+        SEARCH_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) ||
+        (TIME_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
       );
+    const assistantMsgId = `msg_${Date.now()}_assistant`;
     setMessages(prev => [...prev, { 
+      id: assistantMsgId,
       role: "assistant", 
       content: "", 
-      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing' 
+      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing',
+      animationPlayed: false
     }]);
 
     // Helper: make a single chat API call and stream it
-    const attemptChat = async (modelId: string, trimHistory: boolean) => {
+    const attemptChat = async (modelId: string, trimHistory: boolean, signal?: AbortSignal) => {
       const res = await fetch("/api/chat", {
+        signal,
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -1093,7 +1233,11 @@ export default function ChatPage() {
           prompt: userMessage,
           modelId,
           history: trimHistory ? history.slice(-4) : history,
-          files,
+          images: files.map((f, i) => ({
+            id: `img${i}`,
+            url: f,
+            mimeType: f.split(';')[0].replace('data:', '')
+          })),
           mode: selectedMode,
           plan: currentPlan,
           projectId: activeProject || "default",
@@ -1107,34 +1251,44 @@ export default function ChatPage() {
       return res;
     };
 
-    // Fallback model order: try primary → Gemini Flash → last resort empty-history
     const FALLBACK_MODELS = [
       { id: selectedModel.id, trim: false },
-      { id: "google/gemini-2.5-flash", trim: true },
-      { id: "meta-llama/llama-3.2-3b-instruct:free", trim: true },
+      { id: "mistral-small-latest", trim: true },
+      { id: "mistral-medium-latest", trim: true },
     ];
 
     try {
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+      const timeoutId = setTimeout(() => abortController.abort(), 60000);
+
       let res: Response | null = null;
 
       for (const attempt of FALLBACK_MODELS) {
-        const r = await attemptChat(attempt.id, attempt.trim);
-        if (r.ok && r.body) {
-          res = r;
-          break;
+        if (abortController.signal.aborted) break;
+        try {
+          const r = await attemptChat(attempt.id, attempt.trim, abortController.signal);
+          if (r.ok && r.body) {
+            res = r;
+            break;
+          }
+          console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
+        } catch (e) {
+          console.warn(`[Client Failover] Model ${attempt.id} error:`, e);
         }
-        // Silently log the failure and try next model
-        console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
       }
 
+      clearTimeout(timeoutId);
+
       if (!res || !res.ok || !res.body) {
-        // All models failed — show a clean, minimal message
         setMessages(prev => {
           const copy = [...prev];
           copy[copy.length - 1] = {
+            ...copy[copy.length - 1],
             role: "assistant",
-            content: "I'm temporarily overloaded. Please start a new chat and try again.",
-            status: 'done'
+            content: "All models are currently unavailable. Try again in a moment.",
+            status: 'done',
+            animationPlayed: true
           };
           return copy;
         });
@@ -1150,7 +1304,6 @@ export default function ChatPage() {
 
       // Transition the placeholder message to streaming mode smoothly
       setIsStreaming(true);
-      setStreamingMessage("");
       bufferRef.current = "";
 
       let responseBuffer = "";
@@ -1174,18 +1327,25 @@ export default function ChatPage() {
                   const copy = [...prev];
                   const lastIdx = copy.length - 1;
                   if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                    copy[lastIdx] = { role: "assistant", content: fullContent, status: 'done' };
+                    copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
                   } else {
-                    copy.push({ role: "assistant", content: fullContent, status: 'done' });
+                    copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
                   }
                   return copy;
                 });
                 setIsStreaming(false);
-                setStreamingMessage("");
                 bufferRef.current = "";
                 setFiles([]);
                 setFilePreviews([]);
                 fetchRecentConversations();
+                // Cache conversation in localStorage for offline/history fallback
+                try {
+                  const cached = JSON.parse(localStorage.getItem("likeway_recent_chats") || "[]");
+                  const idx = cached.findIndex((c: any) => c._id === conversationIdToUse);
+                  const entry = { _id: conversationIdToUse, title: userMessage.substring(0, 40), updatedAt: new Date() };
+                  if (idx >= 0) cached[idx] = entry; else cached.unshift(entry);
+                  localStorage.setItem("likeway_recent_chats", JSON.stringify(cached.slice(0, 50)));
+                } catch {}
               }
               break;
             }
@@ -1203,6 +1363,7 @@ export default function ChatPage() {
                   const lastIdx = copy.length - 1;
                   if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
                     copy[lastIdx] = { 
+                      ...copy[lastIdx],
                       role: "assistant", 
                       content: fullContent, 
                       status: 'streaming' 
@@ -1222,27 +1383,30 @@ export default function ChatPage() {
           const copy = [...prev];
           const lastIdx = copy.length - 1;
           if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-            copy[lastIdx] = { role: "assistant", content: fullContent, status: 'done' };
+            copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
           } else {
-            copy.push({ role: "assistant", content: fullContent, status: 'done' });
+            copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
           }
           return copy;
         });
         setIsStreaming(false);
-        setStreamingMessage("");
         bufferRef.current = "";
         fetchRecentConversations();
       }
     } catch (err: any) {
       console.error("Frontend Send Error:", err);
+      setIsStreaming(false);
       setMessages(prev => {
         const copy = [...prev];
-        copy[copy.length - 1] = { role: "assistant", content: "Something went wrong. Please try again.", status: 'done' };
+        copy[copy.length - 1] = { ...copy[copy.length - 1], role: "assistant", content: "All models are currently unavailable. Try again in a moment.", status: 'done', animationPlayed: true };
         return copy;
       });
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
       readerRef.current = null;
+      abortRef.current = null;
+      textareaRef.current?.focus();
     }
   }
 
@@ -1280,35 +1444,29 @@ export default function ChatPage() {
       setActiveConversationId(conversationIdToUse);
     }
 
-    const searchKeywords = [
-      "latest news", "flash news", "today's news", "current news", "headlines",
-      "box office", "stock price", "share price", "weather", "score", "live score",
-      "match result", "election result", "breaking news", "usd to inr", "exchange rate",
-      "currency rate", "gold price", "silver price", "petrol price", "diesel price"
-    ];
-    const timeKeywords = [
-      "latest", "2026", "today", "current", "recent", "release date", "released",
-      "new movie", "new film", "upcoming", "just announced", "this week", "this month"
-    ];
-    const isCodingQ = /\b(javascript|typescript|python|java|rust|golang|c\+\+|html|css|react|nextjs|sql|database|programming|regex|compiler|runtime|npm|pip|git|github|docker|api endpoint)\b/i.test(userMessage) && /\b(code|function|class|method|variable|debug|error|fix|implement)\b/i.test(userMessage);
-    const hasRealTimeTerm = /\b(usd|inr|eur|gbp|currency|exchange|forex|stock|share price|ticker|nasdaq|crypto|bitcoin|btc|weather|temperature|forecast|ipl|t20|world cup|live score|elections|chief minister|prime minister|who is current|gold price|silver price|petrol price|diesel price)\b/i.test(userMessage);
+    const isCodingQ = CODING_KEYWORDS_PATTERN.test(userMessage) && CODING_ACTION_PATTERN.test(userMessage);
+    const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(userMessage);
     const isImageRequest = /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(userMessage);
 
     const needsSearch =
       !isImageRequest && (
         hasRealTimeTerm ||
-        searchKeywords.some((w) => userMessage.toLowerCase().includes(w)) ||
-        (timeKeywords.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
+        SEARCH_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) ||
+        (TIME_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
       );
 
+    const assistantMsgId = `msg_${Date.now()}_assistant`;
     setMessages(prev => [...prev, { 
+      id: assistantMsgId,
       role: "assistant", 
       content: "", 
-      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing' 
+      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing',
+      animationPlayed: false
     }]);
 
-    const attemptChat = async (modelId: string, trimHistory: boolean) => {
+    const attemptChat = async (modelId: string, trimHistory: boolean, signal?: AbortSignal) => {
       const res = await fetch("/api/chat", {
+        signal,
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -1318,7 +1476,11 @@ export default function ChatPage() {
           prompt: userMessage,
           modelId,
           history: trimHistory ? history.slice(-4) : history,
-          files: [], // Do not carry over previous file arrays for safety unless desired
+          images: files.map((f, i) => ({
+            id: `img${i}`,
+            url: f,
+            mimeType: f.split(';')[0].replace('data:', '')
+          })),
           mode: selectedMode,
           plan: currentPlan,
           projectId: activeProject || "default",
@@ -1334,28 +1496,41 @@ export default function ChatPage() {
 
     const FALLBACK_MODELS = [
       { id: selectedModel.id, trim: false },
-      { id: "google/gemini-2.5-flash", trim: true },
-      { id: "meta-llama/llama-3.2-3b-instruct:free", trim: true },
+      { id: "mistral-small-latest", trim: true },
+      { id: "mistral-medium-latest", trim: true },
     ];
 
     try {
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+      const timeoutId = setTimeout(() => abortController.abort(), 60000);
+
       let res: Response | null = null;
       for (const attempt of FALLBACK_MODELS) {
-        const r = await attemptChat(attempt.id, attempt.trim);
-        if (r.ok && r.body) {
-          res = r;
-          break;
+        if (abortController.signal.aborted) break;
+        try {
+          const r = await attemptChat(attempt.id, attempt.trim, abortController.signal);
+          if (r.ok && r.body) {
+            res = r;
+            break;
+          }
+          console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
+        } catch (e) {
+          console.warn(`[Client Failover] Model ${attempt.id} error:`, e);
         }
-        console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
       }
+
+      clearTimeout(timeoutId);
 
       if (!res || !res.ok || !res.body) {
         setMessages(prev => {
           const copy = [...prev];
           copy[copy.length - 1] = {
+            ...copy[copy.length - 1],
             role: "assistant",
-            content: "I'm temporarily overloaded. Please start a new chat and try again.",
-            status: 'done'
+            content: "All models are currently unavailable. Try again in a moment.",
+            status: 'done',
+            animationPlayed: true
           };
           return copy;
         });
@@ -1391,7 +1566,6 @@ export default function ChatPage() {
                 return copy;
               });
               setIsStreaming(false);
-              setStreamingMessage("");
               fetchRecentConversations();
               break;
             }
@@ -1400,7 +1574,6 @@ export default function ChatPage() {
               const parsed = JSON.parse(dataStr);
               const content = parsed.choices?.[0]?.delta?.content || "";
               fullContent += content;
-              setStreamingMessage(fullContent);
 
               if (content) {
                 if (!streamingStarted) {
@@ -1412,6 +1585,7 @@ export default function ChatPage() {
                   const lastIdx = copy.length - 1;
                   if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
                     copy[lastIdx] = { 
+                      ...copy[lastIdx],
                       role: "assistant", 
                       content: fullContent, 
                       status: 'streaming' 
@@ -1431,75 +1605,73 @@ export default function ChatPage() {
           const copy = [...prev];
           const lastIdx = copy.length - 1;
           if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-            copy[lastIdx] = { role: "assistant", content: fullContent, status: 'done' };
+            copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
           } else {
-            copy.push({ role: "assistant", content: fullContent, status: 'done' });
+            copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
           }
           return copy;
         });
         setIsStreaming(false);
-        setStreamingMessage("");
       }
     } catch (err: any) {
       console.error("Frontend Edit Submit Error:", err);
+      setIsStreaming(false);
       setMessages(prev => {
         const copy = [...prev];
-        copy[copy.length - 1] = { role: "assistant", content: "Something went wrong. Please try again.", status: 'done' };
+        copy[copy.length - 1] = { ...copy[copy.length - 1], role: "assistant", content: "All models are currently unavailable. Try again in a moment.", status: 'done', animationPlayed: true };
         return copy;
       });
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
       readerRef.current = null;
+      abortRef.current = null;
+      textareaRef.current?.focus();
     }
   }
 
   return (
-    <div className={cn("flex h-screen w-full overflow-hidden font-sans transition-colors duration-300", 
-      theme === 'dark' ? "bg-[#495057] text-white" : "bg-[#e7e2ee] text-gray-900"
+    <div className={cn("flex h-screen w-full overflow-hidden font-sans",
+      theme === 'dark' ? "bg-[#212121] text-white" : "bg-[#FFFFFF] text-gray-900"
     )}>
-      {/* Sidebar - Mobile Overlay */}
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] md:hidden"
-          />
-        )}
-      </AnimatePresence>
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
-      {/* Sidebar */}
+      {/* Sidebar — fixed width, collapse via w-0, overlay on mobile */}
       <aside className={cn(
-        "fixed md:relative inset-y-0 left-0 z-[70] flex flex-col transition-all duration-300 ease-in-out flex-shrink-0",
-        isSidebarOpen 
-          ? "w-64 translate-x-0 opacity-100 p-4" 
-          : "w-0 -translate-x-full opacity-0 p-0 overflow-hidden md:w-0 md:opacity-0 md:p-0",
-        theme === 'dark' ? "bg-[#171717] text-gray-300" : "bg-[#f9f9f9] border-r border-gray-200 text-gray-700"
+        "relative z-[70] flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out overflow-hidden",
+        isSidebarOpen ? "w-64" : "w-0",
+        "fixed md:relative inset-y-0 left-0",
+        theme === 'dark' ? "bg-[#171717] text-gray-300" : "bg-[#F7F7F8] border-r border-[#E5E5E5] text-gray-700"
       )}>
-        <div className="flex items-center justify-between mb-6 px-1">
-          <button 
-            onClick={() => {
-              setActiveProject(null);
-              setActiveConversationId(null);
-              setMessages([]);
-            }}
-            className="flex flex-col leading-none hover:opacity-70 transition-opacity"
-          >
-            <span className={cn("text-base md:text-lg font-black tracking-widest uppercase", theme === 'dark' ? "text-white" : "text-gray-900")}>LIKEWAY</span>
-          </button>
-          <button onClick={() => setIsSidebarOpen(false)} className="hidden md:block p-2 hover:bg-white/10 hover:bg-black/5 rounded-xl text-gray-400 hover:text-cyan-400 transition-all" title="Close sidebar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="3"/>
-              <path d="M9 3v18"/>
-              <path d="M14 15l-3-3 3-3"/>
-            </svg>
-          </button>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1.5 hover:bg-white/10 hover:bg-black/5 rounded-lg text-gray-400">
-            <X size={18} />
-          </button>
-        </div>
+        <div className="w-64 flex flex-col h-full p-4 flex-shrink-0">
+          <div className="flex items-center justify-between mb-6 px-1">
+            <button
+              onClick={() => {
+                setActiveProject(null);
+                setActiveConversationId(null);
+                setMessages([]);
+              }}
+              className="flex flex-col leading-none hover:opacity-70 transition-opacity"
+            >
+              <span className={cn("text-base md:text-lg font-black tracking-widest uppercase", theme === 'dark' ? "text-white" : "text-gray-900")}>LIKEWAY</span>
+            </button>
+            <button onClick={() => setIsSidebarOpen(false)} className="hidden md:block p-2 hover:bg-white/10 hover:bg-black/5 rounded-xl text-gray-400 hover:text-cyan-400 transition-all" title="Close sidebar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="3"/>
+                <path d="M9 3v18"/>
+                <path d="M14 15l-3-3 3-3"/>
+              </svg>
+            </button>
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1.5 hover:bg-white/10 hover:bg-black/5 rounded-lg text-gray-400">
+              <X size={18} />
+            </button>
+          </div>
 
         <div className="flex-1 overflow-y-auto pr-1 scrollbar-hide space-y-6">
           <div className="space-y-0.5">
@@ -1533,16 +1705,15 @@ export default function ChatPage() {
               <span className="text-[10px] text-gray-500 font-mono hidden md:block">Ctrl + K</span>
             </button>
 
-            <button 
-              onClick={() => setSelectedMode("Architect")}
-
+            <a 
+              href="/learn"
               className={cn(
               "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium",
               theme === 'dark' ? "hover:bg-white/5 text-gray-200" : "hover:bg-black/5 text-gray-800"
             )}>
-              <Bot size={16} />
-              Architect
-            </button>
+              <BookOpen size={16} />
+              Learn
+            </a>
 
             <button 
               onClick={() => setIsSettingsOpen(true)}
@@ -1550,8 +1721,8 @@ export default function ChatPage() {
               "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium",
               theme === 'dark' ? "hover:bg-white/5 text-gray-200" : "hover:bg-black/5 text-gray-800"
             )}>
-              <MoreHorizontal size={16} />
-              More
+              <Settings size={16} />
+              Settings
             </button>
           </div>
 
@@ -1568,6 +1739,7 @@ export default function ChatPage() {
                 <FolderPlus size={16} />
                 New project
               </button>
+
               {projects.map((project) => (
                 <div key={project._id} className="group relative">
                   <button 
@@ -1583,18 +1755,25 @@ export default function ChatPage() {
                   </button>
                   
                   <button
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.stopPropagation();
-                      if (!confirm("Delete this project?")) return;
-                      try {
-                        const res = await fetch(`/api/projects/${project._id}`, { method: "DELETE" });
-                        if (res.ok) {
-                          setProjects(prev => prev.filter(p => p._id !== project._id));
-                          if (activeProject === project._id) setActiveProject(null);
-                        }
-                      } catch (err) {
-                        console.error("Failed to delete project", err);
-                      }
+                      setConfirmDialog({
+                        open: true,
+                        title: "Delete project?",
+                        message: `This will permanently delete "${project.name}" and all its conversations. This action cannot be undone.`,
+                        onConfirm: async () => {
+                          try {
+                            const res = await fetch(`/api/projects/${project._id}`, { method: "DELETE" });
+                            if (res.ok) {
+                              setProjects(prev => prev.filter(p => p._id !== project._id));
+                              if (activeProject === project._id) setActiveProject(null);
+                            }
+                          } catch (err) {
+                            console.error("Failed to delete project", err);
+                          }
+                          setConfirmDialog(prev => ({ ...prev, open: false }));
+                        },
+                      });
                     }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
                     title="Delete project"
@@ -1634,24 +1813,31 @@ export default function ChatPage() {
                     </button>
                     
                     <button
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.stopPropagation();
-                        if (!confirm("Delete this conversation?")) return;
-                        try {
-                          const res = await fetch(`/api/chat/history/${conv._id}`, { 
-                            method: "DELETE",
-                            headers: { "x-user-id": userId }
-                          });
-                          if (res.ok) {
-                            fetchRecentConversations(); // refresh the list
-                            if (activeConversationId === conv._id) {
-                              setActiveConversationId(null);
-                              setMessages([]);
+                        setConfirmDialog({
+                          open: true,
+                          title: "Delete conversation?",
+                          message: `This will permanently delete "${conv.title}". This action cannot be undone.`,
+                          onConfirm: async () => {
+                            try {
+                              const res = await fetch(`/api/chat/history/${conv._id}`, {
+                                method: "DELETE",
+                                headers: { "x-user-id": userId }
+                              });
+                              if (res.ok) {
+                                fetchRecentConversations();
+                                if (activeConversationId === conv._id) {
+                                  setActiveConversationId(null);
+                                  setMessages([]);
+                                }
+                              }
+                            } catch (err) {
+                              console.error("Failed to delete conversation", err);
                             }
-                          }
-                        } catch (err) {
-                          console.error("Failed to delete conversation", err);
-                        }
+                            setConfirmDialog(prev => ({ ...prev, open: false }));
+                          },
+                        });
                       }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
                       title="Delete conversation"
@@ -1665,40 +1851,28 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className={cn("mt-2 pt-2 border-t", theme === 'dark' ? "border-white/10" : "border-black/10")}>
-          <div 
-            onClick={() => {
-              setSwitchUserIdInput(userId);
-              setIsProfileModalOpen(true);
-            }}
-            className={cn(
-              "flex items-center justify-between px-2 p-2 rounded-xl cursor-pointer transition-colors group",
-              theme === 'dark' ? "hover:bg-white/5" : "hover:bg-black/5"
-            )}
-          >
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-lg shadow-cyan-500/20">
-                {userId.slice(0, 2).toUpperCase()}
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className={cn("text-sm font-bold truncate", theme === 'dark' ? "text-white" : "text-gray-900")}>{userId}</span>
-                <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 font-black border border-cyan-500/20 uppercase tracking-tighter">Pro Elite</span>
-                    <span className="text-[10px] text-gray-500 truncate">Unlimited</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className={cn("mt-2 pt-2 border-t space-y-1", theme === 'dark' ? "border-white/10" : "border-black/10")}>
+          {currentPlan === "Core" && (
+            <button
+              onClick={() => setIsPricingOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-bold bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30"
+            >
+              <Sparkles size={16} />
+              Upgrade to Pro
+            </button>
+          )}
+          <AccountMenu />
+        </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className={cn(
-        "flex-1 flex flex-col relative min-w-0 transition-colors duration-300",
-        theme === 'dark' ? "bg-[#495057] text-white" : "bg-[#e7e2ee] text-[#0d1117]"
+        "flex-1 min-w-0 flex flex-col overflow-hidden",
+        theme === 'dark' ? "bg-[#212121] text-white" : "bg-[#FFFFFF] text-[#1a1a1a]"
       )}>
-        <header className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-4 z-50 bg-transparent pointer-events-none transition-all duration-300">
-          <div className="flex items-center gap-2 md:gap-3 pointer-events-auto">
+        <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 z-50 transition-colors duration-300">
+          <div className="flex items-center gap-2 md:gap-3">
             {!isSidebarOpen && (
               <button onClick={() => setIsSidebarOpen(true)} className={cn("p-1.5 rounded-lg transition-all", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Open Sidebar">
                 <PanelLeft size={20} />
@@ -1715,18 +1889,27 @@ export default function ChatPage() {
               <ChevronDown size={12} className="text-gray-500" />
             </div>
             
-            <div className={cn(
-              "px-2.5 py-1 rounded-lg border flex items-center gap-2 cursor-pointer transition-all backdrop-blur-md",
-              theme === 'dark' ? "bg-[#212121]/50 border-white/10 text-gray-300 hover:bg-[#212121]/80" : "bg-white/50 border-black/10 text-gray-700 hover:bg-white/80"
-            )} onClick={() => setIsCommandPaletteOpen(true)}>
-              <span className={cn("text-[11px] font-bold")}>
-                {selectedMode} <span className="hidden sm:inline opacity-60">Mode</span>
-              </span>
-              <ChevronDown size={12} className="text-gray-500" />
-            </div>
+            <AgentSelector
+              selectedAgentId={selectedAgentId}
+              onSelect={(agent) => {
+                setSelectedAgentId(agent.id);
+                const modeMap: Record<string, AgentMode> = {
+                  general: "General",
+                  research: "Researcher",
+                  coding: "Architect",
+                  creative: "Creative",
+                  productivity: "General",
+                  analysis: "Researcher",
+                  automation: "General",
+                  specialized: "General",
+                };
+                setSelectedMode(modeMap[agent.category] || "General");
+              }}
+              isPremium={currentPlan !== "Core"}
+            />
           </div>
 
-          <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="flex items-center gap-2">
             {/* Theme Toggle */}
             <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className={cn("p-1.5 rounded-lg transition-colors", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Toggle Theme">
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -1982,31 +2165,51 @@ export default function ChatPage() {
         </AnimatePresence>
 
         {/* Chat Messages */}
-        <div className="flex-1 relative overflow-hidden flex flex-col min-h-0">
-          <section 
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <section
             ref={chatContainerRef}
             onScroll={handleScroll}
-            onWheel={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
+            onWheel={(e) => {
+              // Only mark as user-scrolling when scrolling UP (away from bottom)
+              // When scrolling DOWN at the bottom, let auto-scroll handle it
+              const el = chatContainerRef.current;
+              if (!el) return;
+              const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+              if (e.deltaY < 0 || !atBottom) {
+                // Scrolling up, or not at bottom yet → user is in control
+                isProgrammaticScroll.current = false;
+                setUserScrolling(true);
+                setShowScrollButton(true);
+              }
+              // If scrolling DOWN and already at bottom → don't interfere, auto-scroll will handle
+            }}
             onTouchMove={() => { isProgrammaticScroll.current = false; setUserScrolling(true); setShowScrollButton(true); }}
-            className="flex-1 overflow-y-auto overflow-x-hidden pt-16 pb-4 px-6 sm:pt-20 sm:pb-6 sm:px-10 scrollbar-hide flex flex-col custom-scrollbar"
+            className="flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-2 px-4 sm:px-8 scrollbar-hide flex flex-col custom-scrollbar"
           >
-          <div className="max-w-3xl mx-auto space-y-4 flex-1 flex flex-col w-full">
+          <div className="max-w-3xl mx-auto w-full flex flex-col min-h-full">
             {messages.length === 0 && (
-              <div className="flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                {/* Icon removed per user request */}
-
-                <h3 className={cn("text-2xl font-bold mb-2 tracking-tight", theme === 'dark' ? "text-white" : "text-[#0d1117]")}>How can I assist you today?</h3>
-                <p className={cn("text-sm max-w-sm mb-6", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>Select a specialized mode or just start typing to experience Elite reasoning.</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-center py-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="mb-6">
+                  <h1 className={cn("text-4xl font-black tracking-tight mb-2", theme === 'dark' ? "text-white" : "text-[#1a1a1a]")}>
+                    LikeWay
+                  </h1>
+                  <p className={cn("text-sm max-w-md", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
+                    How can I assist you today? Select a specialized mode or just start typing to experience Elite reasoning.
+                  </p>
+                </div>
               </div>
             )}
-            
-            <AnimatePresence mode="popLayout">
-              {messages.map((m, i) => (
+
+            <div className="space-y-4">
+            <AnimatePresence>
+              {messages.map((m, i) => {
+                const isMsgStreaming = m.status === 'streaming' || m.status === 'typing';
+                return (
                 <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, ease: "easeOut" }}
-                  key={i} 
+                  key={m.id || `msg-${i}`}
                   className={cn(
                     "flex gap-3 px-4 py-2 group/message relative",
                     m.role === "user" ? "flex-row-reverse" : "flex-row"
@@ -2128,7 +2331,7 @@ export default function ChatPage() {
                             "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown components={buildMarkdownComponents(theme)}>
+                            <ReactMarkdown components={getMarkdownComponents(isMsgStreaming)}>
                               {formatAIResponse(m.content || "Thinking...")}
                             </ReactMarkdown>
                             <span className="inline-block w-[2px] h-[1em] bg-cyan-400 ml-0.5 align-middle animate-pulse" />
@@ -2138,7 +2341,7 @@ export default function ChatPage() {
                             "prose max-w-none prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown components={buildMarkdownComponents(theme)}>
+                            <ReactMarkdown components={getMarkdownComponents(isMsgStreaming)}>
                               {formatAIResponse(m.content)}
                             </ReactMarkdown>
                           </div>
@@ -2291,59 +2494,25 @@ export default function ChatPage() {
                     {/* Metadata moved to top */}
                   </div>
                 </motion.div>
-              ))}
+              );
+              })}
             </AnimatePresence>
-
-
-
-
-
+            </div>
             {(messages.length > 0 || isStreaming) && <div ref={endRef} className="h-4" />}
           </div>
 
           </section>
-
-          {/* Floating Scroll to Bottom Button removed per user request to avoid blocking text */}
         </div>
 
         {/* Input Form */}
-        <div className={cn("px-4 py-4 sm:px-8 sm:py-6 transition-colors duration-300", theme === 'dark' ? "bg-[#495057]" : "bg-[#e7e2ee]")}>
+        <div className={cn("px-4 py-3 sm:px-8 sm:py-4 transition-colors duration-300 shrink-0", theme === 'dark' ? "bg-[#212121] border-white/5" : "bg-[#FFFFFF] border-black/5")}>
           <div className="max-w-4xl mx-auto">
-            {/* compact hints chips */}
-            {false && (
-              <div className="relative group/hints">
-                <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-hide pb-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 scroll-smooth">
-                  {[
-                    { icon: Code, text: "Write production code" },
-                    { icon: ImageIcon, text: "Generate Image" },
-                    { icon: Globe, text: "Analyze the web" },
-                    { icon: Search, text: "Deep Research" },
-
-                    { icon: Zap, text: "Turbo Mode" },
-                    { icon: MessageSquare, text: "Summarize text" },
-                    { icon: Wand2, text: "Creative writing" }
-                  ].map((hint, i) => (
-                    <button 
-                      key={i}
-                      onClick={() => setInput(hint.text)}
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-full border transition-all group shrink-0",
-                        theme === 'dark' ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-cyan-500/30" : "bg-black/5 border-black/5 hover:bg-black/10 hover:border-cyan-500/30"
-                      )}
-                    >
-                      <hint.icon size={12} className={theme === 'dark' ? "text-gray-500 group-hover:text-cyan-400" : "text-gray-600 group-hover:text-cyan-600"} />
-                      <span className={cn(
-                        "text-[11px] font-bold whitespace-nowrap",
-                        theme === 'dark' ? "text-gray-400 group-hover:text-white" : "text-gray-700 group-hover:text-black"
-                      )}>{hint.text}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <form 
-              onSubmit={handleSend} 
+              onSubmit={handleSend}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
               suppressHydrationWarning
               className="relative group max-w-3xl mx-auto"
             >
@@ -2353,9 +2522,26 @@ export default function ChatPage() {
                 <div 
                   suppressHydrationWarning 
                   className={cn(
-                  "relative flex flex-col gap-2 rounded-3xl transition-all shadow-2xl px-3 py-3",
-                  theme === 'dark' ? "bg-[#212121]" : "bg-gray-100"
+                  "relative flex flex-col gap-2 rounded-3xl shadow-2xl px-3 py-3",
+                  theme === 'dark' ? "bg-[#212121]" : "bg-[#F4F4F4]"
                 )}>
+                  {/* Drag & Drop Overlay */}
+                  <AnimatePresence>
+                    {isDragging && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 rounded-3xl border-2 border-dashed border-cyan-500/60 bg-cyan-500/10 backdrop-blur-sm z-20 flex items-center justify-center"
+                      >
+                        <div className="flex flex-col items-center gap-2 text-cyan-400">
+                          <ImageIcon size={32} className="animate-bounce" />
+                          <span className="text-sm font-bold">Drop images here</span>
+                          <span className="text-[10px] text-gray-400">PNG, JPG, WEBP</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   {settings.experimental && (
                     <div className="absolute -top-3 left-6 z-10">
                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black border border-cyan-500/50 shadow-lg shadow-cyan-500/20">
@@ -2395,14 +2581,19 @@ export default function ChatPage() {
                 {filePreviews.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2 px-1">
                     {filePreviews.map((preview, idx) => (
-                      <div key={idx} className="relative group">
-                        <img src={preview} alt="upload preview" className="w-16 h-16 object-cover rounded-lg border border-white/10" />
-                        <button 
-                          onClick={() => removeFile(idx)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X size={12} />
-                        </button>
+                      <div key={idx} className="relative group/preview">
+                        <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-white/10 bg-black/10">
+                          <img src={preview} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
+                            <button 
+                              onClick={() => removeFile(idx)}
+                              className="bg-red-500/90 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <span className="text-[9px] text-gray-500 mt-1 block truncate max-w-20">Image {idx + 1}</span>
                       </div>
                     ))}
                   </div>
@@ -2417,7 +2608,7 @@ export default function ChatPage() {
                       type="button"
                       onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
                       className={cn(
-                        "p-1.5 rounded-full transition-all",
+                        "p-1.5 rounded-full",
                         theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
                       )}
                     >
@@ -2448,7 +2639,7 @@ export default function ChatPage() {
                                { icon: Mic, label: "Create a podcast", badge: "Unlimited", locked: false, onClick: () => { setIsAttachmentMenuOpen(false); } },
                              ].map((item, i) => (
                                <button 
-                                 key={i} 
+                                 key={item.label} 
                                  disabled={item.locked} 
                                  onClick={item.onClick}
                                  className={cn("flex items-center justify-between w-full p-2.5 rounded-xl transition-all text-left", item.locked ? "opacity-50 cursor-not-allowed" : "hover:bg-white/5 group")}
@@ -2481,7 +2672,7 @@ export default function ChatPage() {
                         type="button"
                         onClick={() => setIsInputModelMenuOpen(!isInputModelMenuOpen)}
                         className={cn(
-                          "p-2 rounded-full transition-all",
+                          "p-2 rounded-full",
                           theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
                         )}
                         title="Select AI Model"
@@ -2512,20 +2703,20 @@ export default function ChatPage() {
                               <div className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-white/5 mb-1">
                                 Available Models
                               </div>
-                               {MODELS.map((model) => (
-                                 <button
-                                   key={model.id}
+                                {MODELS.map((model, modelIdx) => (
+                                  <button
+                                    key={`${model.id}-${model.provider}-${model.name}`}
                                    onClick={() => { setSelectedModel(model); setIsInputModelMenuOpen(false); }}
                                    className={cn(
                                      "flex items-center gap-3 p-2.5 rounded-xl transition-all text-left group",
-                                     selectedModel.id === model.id 
+                                     selectedModel.id === model.id && selectedModel.provider === model.provider
                                        ? (theme === 'dark' ? "bg-cyan-500/10 text-cyan-400" : "bg-cyan-50 text-cyan-600")
                                        : (theme === 'dark' ? "hover:bg-white/5 text-gray-300" : "hover:bg-black/5 text-gray-700")
                                    )}
                                  >
                                    <div className="flex-1 min-w-0">
                                       <div className={cn("text-sm font-semibold truncate", selectedModel.id === model.id ? "" : (theme === 'dark' ? "group-hover:text-white" : "group-hover:text-black"))}>{model.name}</div>
-                                      <div className="text-[10px] opacity-70 truncate mt-0.5">{model.provider} • {model.description}</div>
+                                      <div className="text-[10px] opacity-70 truncate mt-0.5">{model.description}</div>
                                    </div>
                                    {selectedModel.id === model.id && <Check size={16} />}
                                  </button>
@@ -2541,7 +2732,7 @@ export default function ChatPage() {
                       type="button"
                       onClick={toggleRecording}
                       className={cn(
-                        "p-2 rounded-full transition-all",
+                        "p-2 rounded-full",
                         isRecording 
                           ? "text-red-500 bg-red-500/10" 
                           : (theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")
@@ -2553,14 +2744,17 @@ export default function ChatPage() {
 
                     {/* Send / Voice Assistant Button (Solid Circled Icon) */}
                     <button 
-                      type={(isStreaming || !input.trim()) ? "button" : "submit"}
+                      type="button"
                       disabled={isLoading && !isStreaming}
                       onClick={() => {
                         if (isStreaming) {
+                          abortRef.current?.abort();
                           readerRef.current?.cancel();
                           setIsStreaming(false);
                           setIsLoading(false);
-                        } else if (!input.trim() && !isLoading) {
+                        } else if (input.trim() && !isLoading) {
+                          handleSend();
+                        } else if (!isLoading) {
                           startVoiceAssistant();
                         }
                       }}
@@ -2677,10 +2871,6 @@ export default function ChatPage() {
         isOpen={isCommandPaletteOpen} 
         onClose={() => setIsCommandPaletteOpen(false)} 
         actions={[
-          { id: 'general', name: 'General Mode', description: 'Switch to standard reasoning', icon: Monitor, section: 'Modes', perform: () => setSelectedMode('General') },
-          { id: 'architect', name: 'Architect Mode', description: 'Expert software engineering', icon: Code, section: 'Modes', perform: () => setSelectedMode('Architect') },
-          { id: 'research', name: 'Researcher Mode', description: 'Deep autonomous research', icon: Search, section: 'Modes', perform: () => setSelectedMode('Researcher') },
-          { id: 'vision', name: 'Visionary Mode', description: 'AI Design & Image Generation', icon: ImageIcon, section: 'Modes', perform: () => setSelectedMode('Visionary') },
           { id: 'settings', name: 'Open Settings', description: 'Configure platform parameters', icon: Settings, section: 'System', perform: () => setIsSettingsOpen(true) },
           { id: 'projects', name: 'New Project', description: 'Create a fresh workspace', icon: Briefcase, section: 'Workspace', perform: () => console.log('New Project') },
           { id: 'clear', name: 'Clear Chat', description: 'Reset the current context', icon: Trash2, section: 'System', perform: () => setMessages([]) },
@@ -2706,86 +2896,199 @@ export default function ChatPage() {
               initial={{ scale: 0.96, y: 10 }} 
               animate={{ scale: 1, y: 0 }} 
               className={cn(
-                "w-full max-w-sm border rounded-2xl p-4 shadow-2xl transition-colors",
+                "w-full max-w-md border rounded-2xl shadow-2xl transition-colors overflow-hidden max-h-[85vh] flex flex-col",
                 theme === 'dark' ? "bg-[#161b22] border-white/10" : "bg-white border-black/10"
               )}
             >
-              <div className="flex items-center justify-between mb-4">
+              {/* Header */}
+              <div className={cn("flex items-center justify-between px-5 py-4 border-b shrink-0", theme === 'dark' ? "border-white/5" : "border-black/5")}>
                 <h2 className={cn("text-base font-black", theme === 'dark' ? "text-white" : "text-gray-900")}>Settings</h2>
                 <button onClick={() => setIsSettingsOpen(false)} className={cn("p-1.5 rounded-full transition-colors", theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")}>
                   <X size={16} />
                 </button>
               </div>
-              <div className="space-y-2.5">
-                {[
-                  { id: 'experimental', name: 'Experimental Frontier Models', desc: 'Access 01-preview and experimental agents.', badge: 'ELITE' },
-                  { id: 'highVelocity', name: 'High-Velocity Reasoning', desc: 'Minimize latencies for ultra-fast Pro responses.', badge: 'PRO' },
-                  { id: 'voiceV2', name: 'Advanced Voice UI (v2)', desc: 'Enhanced visualizer and feedback systems.' }
-                ].map((s) => (
-                  <div key={s.id} className={cn(
-                    "flex items-center justify-between p-2.5 rounded-xl border transition-all",
-                    theme === 'dark' ? "bg-white/5 border-white/5" : "bg-black/5 border-black/5"
-                  )}>
-                    <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className={cn("text-xs font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>{s.name}</p>
-                        {s.badge && <span className="text-[7px] px-1 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-black">{s.badge}</span>}
+
+              {/* User Profile */}
+              <div className={cn("px-5 py-4 border-b shrink-0", theme === 'dark' ? "border-white/5" : "border-black/5")}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                    {user?.name?.charAt(0) || "U"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-sm font-bold truncate", theme === 'dark' ? "text-white" : "text-gray-900")}>{user?.name || "User"}</p>
+                    <p className={cn("text-xs truncate", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>{user?.email || "user@email.com"}</p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">{currentPlan}</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[10px] text-green-400 font-medium">Online</span>
+                </div>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1">
+                {/* Workspace */}
+                <SettingsSection title="Workspace" icon={<Briefcase size={14} />} theme={theme}>
+                  <SettingsItem label="Projects & dashboards" onClick={() => { setIsSettingsOpen(false); }} theme={theme} />
+                </SettingsSection>
+
+                {/* AI Personalization */}
+                <SettingsSection title="AI Personalization" icon={<Brain size={14} />} theme={theme}>
+                  <SettingsItem label="Memory, style & instructions" theme={theme} />
+                  <div className="mt-2">
+                    <textarea 
+                      value={customInstructions}
+                      onChange={(e) => {
+                        setCustomInstructions(e.target.value);
+                        localStorage.setItem('gemma_memory', e.target.value);
+                      }}
+                      placeholder="Add custom instructions for AI..."
+                      className={cn(
+                        "w-full h-16 border rounded-xl p-2.5 text-[11px] focus:outline-none focus:border-cyan-500/50 resize-none transition-all",
+                        theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 placeholder-gray-600" : "bg-black/5 border-black/10 text-gray-800 placeholder-gray-400"
+                      )}
+                    />
+                  </div>
+                </SettingsSection>
+
+                {/* Usage */}
+                <SettingsSection title="Usage" icon={<Zap size={14} />} theme={theme}>
+                  <SettingsItem label="Tokens, requests & storage" theme={theme} />
+                </SettingsSection>
+
+                {/* Settings */}
+                <SettingsSection title="Settings" icon={<Settings size={14} />} theme={theme}>
+                  {[
+                    { id: 'experimental', name: 'Experimental Frontier Models', badge: 'ELITE' },
+                    { id: 'highVelocity', name: 'High-Velocity Reasoning', badge: 'PRO' },
+                    { id: 'voiceV2', name: 'Advanced Voice UI (v2)' }
+                  ].map((s) => (
+                    <div key={s.id} className="flex items-center justify-between py-2">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-xs", theme === 'dark' ? "text-gray-300" : "text-gray-700")}>{s.name}</span>
+                        {s.badge && <span className="text-[7px] px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold">{s.badge}</span>}
                       </div>
-                      <p className={cn("text-[10px] mt-0.5 leading-tight", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>{s.desc}</p>
+                      <button 
+                        onClick={() => setSettings(prev => ({...prev, [s.id]: !prev[s.id as keyof typeof settings]}))} 
+                        className={cn(
+                          "w-8 h-5 rounded-full transition-all relative shrink-0", 
+                          settings[s.id as keyof typeof settings] ? "bg-cyan-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/15")
+                        )}
+                      >
+                        <motion.div 
+                          animate={{ x: settings[s.id as keyof typeof settings] ? 14 : 2 }} 
+                          className="absolute top-1 left-0 w-3 h-3 rounded-full bg-white shadow-sm" 
+                        />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("text-xs", theme === 'dark' ? "text-gray-300" : "text-gray-700")}>Extended Thinking</span>
+                      <span className="text-[7px] px-1 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-bold">BETA</span>
                     </div>
                     <button 
-                      onClick={() => setSettings(prev => ({...prev, [s.id]: !prev[s.id as keyof typeof settings]}))} 
+                      onClick={() => setIsExtendedThinking(!isExtendedThinking)} 
                       className={cn(
                         "w-8 h-5 rounded-full transition-all relative shrink-0", 
-                        settings[s.id as keyof typeof settings] ? "bg-cyan-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/15")
+                        isExtendedThinking ? "bg-purple-500" : (theme === 'dark' ? "bg-white/10" : "bg-black/15")
                       )}
                     >
                       <motion.div 
-                        animate={{ x: settings[s.id as keyof typeof settings] ? 14 : 2 }} 
+                        animate={{ x: isExtendedThinking ? 14 : 2 }} 
                         className="absolute top-1 left-0 w-3 h-3 rounded-full bg-white shadow-sm" 
                       />
                     </button>
                   </div>
-                ))}
-                
-                <div className={cn("mt-3 pt-3 border-t", theme === 'dark' ? "border-white/5" : "border-black/5")}>
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <Brain size={14} className="text-cyan-400" />
-                    <p className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-gray-900")}>Memory</p>
+                </SettingsSection>
+
+                {/* AI Models */}
+                <SettingsSection title="AI Models" icon={<Sparkles size={14} />} theme={theme}>
+                  <SettingsItem label={`${selectedModel.name}`} theme={theme} />
+                </SettingsSection>
+
+                {/* Billing */}
+                <SettingsSection title="Billing" icon={<Star size={14} />} theme={theme}>
+                  <SettingsItem label="Manage subscription & payments" onClick={() => { setIsSettingsOpen(false); setIsPricingOpen(true); }} theme={theme} />
+                </SettingsSection>
+
+                {/* Manage Sessions */}
+                <SettingsSection title="Manage Sessions" icon={<Monitor size={14} />} theme={theme}>
+                  <SettingsItem label="Active sessions & devices" theme={theme} />
+                </SettingsSection>
+
+                {/* Support */}
+                <SettingsSection title="Support" icon={<MessageSquare size={14} />} theme={theme}>
+                  <SettingsItem label="Help center & contact" theme={theme} />
+                </SettingsSection>
+
+                {/* Theme */}
+                <div className={cn("py-3 border-t", theme === 'dark' ? "border-white/5" : "border-black/5")}>
+                  <p className={cn("text-xs font-bold mb-2", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>Theme</p>
+                  <div className="flex gap-2">
+                    {["dark", "light", "system"].map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setTheme(t as any)}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
+                          theme === t
+                            ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
+                            : (theme === 'dark' ? "border-white/10 text-gray-500 hover:text-white" : "border-black/10 text-gray-500 hover:text-black")
+                        )}
+                      >
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </button>
+                    ))}
                   </div>
-                  <p className={cn("text-[9px] mb-1.5 leading-tight", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>These instructions will be applied to every new chat.</p>
-                  <textarea 
-                    value={customInstructions}
-                    onChange={(e) => {
-                      setCustomInstructions(e.target.value);
-                      localStorage.setItem('gemma_memory', e.target.value);
-                    }}
-                    placeholder="e.g. 'I am a software engineer...'"
-                    className={cn(
-                      "w-full h-16 border rounded-xl p-2.5 text-[11px] focus:outline-none focus:border-cyan-500/50 resize-none transition-all",
-                      theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 placeholder-gray-600" : "bg-black/5 border-black/10 text-gray-800 placeholder-gray-400"
-                    )}
-                  />
                 </div>
               </div>
-              <div className="mt-4 flex flex-col gap-2">
+
+              {/* Footer */}
+              <div className={cn("px-5 py-3 border-t shrink-0", theme === 'dark' ? "border-white/5" : "border-black/5")}>
                 <button 
-                  onClick={() => setIsSettingsOpen(false)}
-                  className={cn(
-                    "w-full py-2 rounded-xl font-bold transition-all shadow-md text-xs",
-                    theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-black text-white hover:bg-gray-800"
-                  )}
+                  onClick={() => { logout(); setIsSettingsOpen(false); }}
+                  className="w-full py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all"
                 >
-                  Done
+                  Sign Out
                 </button>
-                <p className="text-center text-[9px] text-gray-500 font-medium tracking-widest uppercase mt-0.5 select-none">
-                  v2.4.0
-                </p>
+                <p className="text-center text-[9px] text-gray-600 mt-2">v2.4.0</p>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+      />
+
+      {/* Pricing Modal */}
+      <PricingModal
+        open={isPricingOpen}
+        onClose={() => setIsPricingOpen(false)}
+        currentPlan={currentPlan}
+        onSelectPlan={(planId) => {
+          if (planId === "Core") {
+            setCurrentPlanState(planId);
+            localStorage.setItem("likeway_plan", planId);
+            setIsPricingOpen(false);
+          } else {
+            // Redirect to pricing page with full Razorpay payment flow
+            setIsPricingOpen(false);
+            window.location.href = `/pricing?plan=${planId}`;
+          }
+        }}
+      />
     </div>
   );
 }
