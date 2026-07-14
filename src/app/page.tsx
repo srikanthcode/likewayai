@@ -58,6 +58,7 @@ import PersonaManager from "@/components/PersonaManager";
 import CommandPalette from "@/components/CommandPalette";
 import CodeBlock from "@/components/CodeBlock";
 import VoiceOverlay from "@/components/VoiceOverlay";
+import VoiceAssistant from "@/components/VoiceAssistant";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import AgentSelector from "@/components/AgentSelector";
 import PricingModal from "@/components/PricingModal";
@@ -3012,17 +3013,23 @@ export default function ChatPage() {
       </AnimatePresence>
 
 
-      {/* Voice Assistant Overlay */}
+      {/* Voice Assistant Overlay — Orb UI */}
       <AnimatePresence>
         {isVoiceMode && (
-          <VoiceOverlay
+          <VoiceAssistant
+            isOpen={isVoiceMode}
             status={voiceStatus as any}
             transcript={liveTranscript}
-            characterName={VOICE_CHARACTERS.find(c => c.id === selectedVoiceChar)?.name || ""}
-            characterEmoji={VOICE_CHARACTERS.find(c => c.id === selectedVoiceChar)?.emoji || ""}
+            responseText={messages.length > 0 ? messages[messages.length - 1].content : ""}
+            onToggleListening={() => {
+              if (voiceStatus === "listening") {
+                stopVoiceAssistant();
+              } else {
+                startVoiceListeningCycle();
+              }
+            }}
             onInterrupt={handleVoiceOverlayTap}
             onClose={stopVoiceAssistant}
-            onChangeVoice={() => setShowVoiceCharSelector(true)}
           />
         )}
       </AnimatePresence>
