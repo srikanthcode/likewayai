@@ -1,8 +1,9 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Refund & Subscription Policy",
-  description: "LikeWay AI Refund and Subscription Policy — cancellations, refunds, and billing terms.",
+  title: "Refund & Subscription Policy — Cancellation & Billing | Likeway AI",
+  description: "Likeway AI Refund and Subscription Policy — cancellations, refunds, and billing terms for AI assistant plans.",
+  alternates: { canonical: "https://www.likeway.in/legal/refund" },
 };
 
 export default function RefundPage() {

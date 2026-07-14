@@ -10,12 +10,31 @@ export default function robots(): MetadataRoute.Robots {
           "/api/",
           "/_next/",
           "/static/",
+          "/account/",
+          "/onboarding/",
           "/success",
-          "/account",
-          "/onboarding",
+          "/login/reset-password",
         ],
       },
+      {
+        userAgent: "GPTBot",
+        allow: "/",
+        disallow: ["/api/", "/account/", "/onboarding/"],
+      },
+      {
+        userAgent: "Google-Extended",
+        allow: "/landing",
+        disallow: ["/api/", "/account/", "/onboarding/"],
+      },
+      {
+        userAgent: "CCBot",
+        disallow: "/",
+      },
+      {
+        userAgent: "anthropic-ai",
+        disallow: "/",
+      },
     ],
-    sitemap: "https://likeway.in/sitemap.xml",
+    sitemap: "https://www.likeway.in/sitemap.xml",
   };
 }

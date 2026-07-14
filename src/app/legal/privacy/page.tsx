@@ -1,8 +1,14 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Privacy Policy",
-  description: "LikeWay AI Privacy Policy — how we collect, use, and protect your data under DPDP Act 2023.",
+  title: "Privacy Policy — How We Protect Your Data | Likeway AI",
+  description: "Likeway AI Privacy Policy — how we collect, use, and protect your data under India's DPDP Act 2023. Your data is private and secure.",
+  alternates: { canonical: "https://www.likeway.in/legal/privacy" },
+  openGraph: {
+    title: "Likeway AI Privacy Policy",
+    description: "How Likeway AI collects, uses, and protects your data under DPDP Act 2023.",
+    url: "https://www.likeway.in/legal/privacy",
+  },
 };
 
 export default function PrivacyPage() {

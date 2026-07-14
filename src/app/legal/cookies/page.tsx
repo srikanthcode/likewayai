@@ -1,8 +1,9 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Cookie Policy",
-  description: "LikeWay AI Cookie Policy — how we use cookies and tracking technologies.",
+  title: "Cookie Policy — How We Use Cookies | Likeway AI",
+  description: "Likeway AI Cookie Policy — how we use cookies and tracking technologies to improve your AI assistant experience.",
+  alternates: { canonical: "https://www.likeway.in/legal/cookies" },
 };
 
 export default function CookiesPage() {

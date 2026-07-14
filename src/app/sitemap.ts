@@ -1,54 +1,99 @@
 import type { MetadataRoute } from "next";
 
+const baseUrl = "https://www.likeway.in";
+
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://likeway.in";
+  const now = new Date();
 
   return [
+    // ── High Priority Pages ──────────────────────────────────────────
     {
-      url: `${baseUrl}/landing`,
-      lastModified: new Date(),
+      url: baseUrl,
+      lastModified: now,
       changeFrequency: "daily",
       priority: 1.0,
     },
     {
-      url: baseUrl,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/pricing`,
-      lastModified: new Date(),
+      url: `${baseUrl}/landing`,
+      lastModified: now,
       changeFrequency: "weekly",
       priority: 0.9,
     },
     {
+      url: `${baseUrl}/pricing`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
+
+    // ── Medium Priority Pages ────────────────────────────────────────
+    {
+      url: `${baseUrl}/login`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/signup`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
       url: `${baseUrl}/learn`,
-      lastModified: new Date(),
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/learn/practice`,
+      lastModified: now,
       changeFrequency: "weekly",
       priority: 0.7,
     },
     {
-      url: `${baseUrl}/legal/privacy`,
-      lastModified: new Date(),
+      url: `${baseUrl}/onboarding`,
+      lastModified: now,
       changeFrequency: "monthly",
-      priority: 0.3,
+      priority: 0.5,
+    },
+
+    // ── Legal Pages ──────────────────────────────────────────────────
+    {
+      url: `${baseUrl}/legal`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.4,
+    },
+    {
+      url: `${baseUrl}/legal/privacy`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.5,
     },
     {
       url: `${baseUrl}/legal/terms`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.3,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.5,
     },
     {
       url: `${baseUrl}/legal/cookies`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
+      lastModified: now,
+      changeFrequency: "yearly",
       priority: 0.3,
     },
     {
       url: `${baseUrl}/legal/refund`,
-      lastModified: new Date(),
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
+
+    // ── Success / Account Pages ──────────────────────────────────────
+    {
+      url: `${baseUrl}/success`,
+      lastModified: now,
       changeFrequency: "monthly",
       priority: 0.3,
     },

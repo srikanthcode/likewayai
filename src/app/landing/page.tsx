@@ -2,35 +2,35 @@ import type { Metadata } from "next";
 import LandingHero from "@/components/LandingHero";
 
 export const metadata: Metadata = {
-  title: "Likeway AI — Premium Next-Gen AI Assistant & Chat Platform",
+  title: "Likeway AI — Free AI Chat Assistant, Code Generator & Deep Research Tool",
   description:
-    "Experience Likeway AI — the ultimate premium AI assistant, coding partner, and creative suite. Blazing fast responses, private chats, deep web research, and unlimited image generation.",
+    "Likeway AI is a free premium AI assistant for chat, coding, deep web research, and image generation. Use GPT-4 class models, voice commands, and 90+ slash commands. No limits. Try now.",
   alternates: {
-    canonical: "https://likeway.in/landing",
+    canonical: "https://www.likeway.in/landing",
   },
   openGraph: {
-    title: "Likeway AI — Premium Next-Gen AI Assistant",
+    title: "Likeway AI — Free AI Chat Assistant & Deep Research Platform",
     description:
-      "Blazing fast AI assistant with deep web research, coding help, and unlimited image generation. Try Likeway AI free.",
-    url: "https://likeway.in/landing",
+      "Free AI assistant with deep web research, coding help, image generation, and 90+ slash commands. GPT-4 class models. No limits. Try free at likeway.in",
+    url: "https://www.likeway.in/landing",
     siteName: "Likeway AI",
     images: [
       {
-        url: "https://likeway.in/logo-og.png",
+        url: "https://www.likeway.in/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Likeway AI Platform",
+        alt: "Likeway AI — Free AI Chat Assistant & Deep Research Platform",
       },
     ],
-    locale: "en_US",
+    locale: "en_IN",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Likeway AI — Premium Next-Gen AI Assistant",
+    title: "Likeway AI — Free AI Chat Assistant & Deep Research Tool",
     description:
-      "Blazing fast AI assistant with deep web research, coding help, and unlimited image generation.",
-    images: ["https://likeway.in/logo-og.png"],
+      "Free AI assistant with deep web research, coding help, image generation & 90+ slash commands. Try free at likeway.in",
+    images: ["https://www.likeway.in/og-image.png"],
   },
 };
 

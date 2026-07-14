@@ -1,8 +1,14 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Terms of Service",
-  description: "LikeWay AI Terms of Service — usage rules, limitations, and legal terms.",
+  title: "Terms of Service — Usage Rules & Legal Terms | Likeway AI",
+  description: "Likeway AI Terms of Service — usage rules, limitations, and legal terms for our AI assistant platform.",
+  alternates: { canonical: "https://www.likeway.in/legal/terms" },
+  openGraph: {
+    title: "Likeway AI Terms of Service",
+    description: "Usage rules, limitations, and legal terms for the Likeway AI platform.",
+    url: "https://www.likeway.in/legal/terms",
+  },
 };
 
 export default function TermsPage() {
