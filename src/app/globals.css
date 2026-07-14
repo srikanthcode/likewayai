@@ -999,7 +999,7 @@ input, textarea, select {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   VOICE ASSISTANT ORB ANIMATION
+   VOICE ASSISTANT ORB ANIMATION — Exact match
    ══════════════════════════════════════════════════════════════════════ */
 
 .orb-container {
@@ -1017,10 +1017,6 @@ input, textarea, select {
   transition: all 0.3s ease;
 }
 
-.orb-container:hover {
-  filter: drop-shadow(0 0 12px #ff3e1ccc) drop-shadow(0 0 12px #1c8cffcc);
-}
-
 .orb {
   position: absolute;
   width: 200px;
@@ -1030,13 +1026,12 @@ input, textarea, select {
   filter: blur(24px);
   transition: all 0.3s ease;
 }
-
 .orb-container:hover .orb {
   width: 220px;
-  animation: orb-rotate 6s infinite;
+  animation: rotate 6s infinite;
 }
 
-@keyframes orb-rotate {
+@keyframes rotate {
   50% {
     transform: rotate(180deg);
   }
@@ -1062,7 +1057,7 @@ input, textarea, select {
     2% 35%,
     39% 35%
   );
-  animation: orb-spin 6s linear infinite;
+  animation: rotate 6s linear infinite;
   transition: all 0.3s ease;
 }
 
@@ -1089,7 +1084,7 @@ input, textarea, select {
   );
 }
 
-@keyframes orb-spin {
+@keyframes rotate {
   0% {
     transform: rotate(0deg);
   }
@@ -1100,41 +1095,4 @@ input, textarea, select {
 
 .orb-container:hover .orb .orb-inner {
   width: 170%;
-}
-
-/* ── Orb status colors ────────────────────────────────────────────── */
-.orb-container[data-status="listening"] {
-  filter: drop-shadow(0 0 8px #06b6d488) drop-shadow(0 0 16px #06b6d444);
-}
-
-.orb-container[data-status="thinking"] {
-  filter: drop-shadow(0 0 8px #8b5cf688) drop-shadow(0 0 16px #8b5cf644);
-}
-
-.orb-container[data-status="speaking"] {
-  filter: drop-shadow(0 0 8px #f9731688) drop-shadow(0 0 16px #f9731644);
-}
-
-.orb-container[data-status="listening"] .orb-inner {
-  background: #06b6d4;
-}
-
-.orb-container[data-status="thinking"] .orb-inner {
-  background: #8b5cf6;
-}
-
-.orb-container[data-status="speaking"] .orb-inner {
-  background: #f97316;
-}
-
-.orb-container[data-status="listening"] .orb-inner:nth-child(2) {
-  background: #22d3ee;
-}
-
-.orb-container[data-status="thinking"] .orb-inner:nth-child(2) {
-  background: #a78bfa;
-}
-
-.orb-container[data-status="speaking"] .orb-inner:nth-child(2) {
-  background: #fb923c;
 }

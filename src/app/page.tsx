@@ -956,10 +956,10 @@ export default function ChatPage() {
     recognition.onerror = (e: any) => {
       console.error("Speech Recognition Error:", e.error);
 
-      // Provide helpful error messages
+      // Handle permission error gracefully — show in UI, don't alert
       if (e.error === 'not-allowed') {
-        alert("Microphone permission denied. Please allow microphone access in your browser settings and try again.");
-        stopVoiceAssistant();
+        setLiveTranscript("Microphone access denied. Please allow microphone in your browser settings.");
+        setVoiceStatus('idle');
         return;
       }
       if (e.error === 'no-speech') {
@@ -970,13 +970,13 @@ export default function ChatPage() {
         return;
       }
       if (e.error === 'audio-capture') {
-        alert("No microphone found. Please connect a microphone and try again.");
-        stopVoiceAssistant();
+        setLiveTranscript("No microphone found. Please connect a microphone.");
+        setVoiceStatus('idle');
         return;
       }
       if (e.error === 'network') {
-        alert("Speech recognition network error. Please check your internet connection.");
-        stopVoiceAssistant();
+        setLiveTranscript("Network error. Check your internet connection.");
+        setVoiceStatus('idle');
         return;
       }
 
@@ -1090,13 +1090,13 @@ export default function ChatPage() {
       console.error("Speech recognition error", event.error);
 
       if (event.error === 'not-allowed') {
-        alert("Microphone permission denied. Please allow microphone access in your browser settings.");
+        setInput("Microphone access denied. Please allow microphone in browser settings.");
       } else if (event.error === 'no-speech') {
         // No speech detected - just stop quietly
       } else if (event.error === 'audio-capture') {
-        alert("No microphone found. Please connect a microphone.");
+        setInput("No microphone found.");
       } else if (event.error === 'network') {
-        alert("Speech recognition network error. Check your connection.");
+        setInput("Network error. Check your connection.");
       }
 
       setIsRecording(false);

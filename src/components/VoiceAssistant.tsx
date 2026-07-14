@@ -87,72 +87,15 @@ export default function VoiceAssistant({
           </motion.span>
         </div>
 
-        {/* Orb Container — Main visual */}
+        {/* Orb Container — Main visual (exact structure from user) */}
         <div className="relative flex items-center justify-center mb-12">
-          <div className="orb-container" onClick={isActive ? onInterrupt : onToggleListening}>
-            {/* Outer glow ring */}
-            <div
-              className={`absolute w-[220px] h-[220px] rounded-full transition-all duration-500 ${
-                isListening
-                  ? "shadow-[0_0_60px_rgba(6,182,212,0.3)]"
-                  : isThinking
-                  ? "shadow-[0_0_60px_rgba(139,92,246,0.3)]"
-                  : isSpeaking
-                  ? "shadow-[0_0_60px_rgba(251,146,60,0.3)]"
-                  : ""
-              }`}
-            />
-
-            {/* Animated rings */}
-            {isListening && (
-              <>
-                <motion.div
-                  animate={{ scale: [1, 1.8, 1], opacity: [0.4, 0, 0.4] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute w-[200px] h-[200px] rounded-full border border-cyan-400/30"
-                />
-                <motion.div
-                  animate={{ scale: [1, 1.5, 1], opacity: [0.6, 0, 0.6] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
-                  className="absolute w-[200px] h-[200px] rounded-full border border-cyan-300/40"
-                />
-              </>
-            )}
-
-            {isThinking && (
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                className="absolute w-[200px] h-[200px] rounded-full border-2 border-transparent border-t-violet-400 border-r-violet-400/50"
-              />
-            )}
-
-            {isSpeaking && (
-              <motion.div
-                animate={{ scale: [1, 1.15, 1], rotate: [0, 180, 360] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute w-[200px] h-[200px] rounded-full border border-dashed border-orange-400/40"
-              />
-            )}
-
-            {/* Orb base */}
-            <div className="orb" />
-
-            {/* Orb inner shapes */}
-            <div className="orb-inner" />
-            <div className="orb-inner" />
-
-            {/* Center icon */}
-            <div className="relative z-10 w-20 h-20 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center border border-white/10">
-              {isListening ? (
-                <Mic size={28} className="text-cyan-400 animate-pulse" />
-              ) : isThinking ? (
-                <Brain size={28} className="text-violet-400 animate-pulse" />
-              ) : isSpeaking ? (
-                <AudioLines size={28} className="text-orange-400 animate-pulse" />
-              ) : (
-                <Mic size={28} className="text-gray-400" />
-              )}
+          <div
+            className="orb-container"
+            onClick={isActive ? onInterrupt : onToggleListening}
+          >
+            <div className="orb">
+              <div className="orb-inner" />
+              <div className="orb-inner" />
             </div>
           </div>
         </div>
