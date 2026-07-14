@@ -1995,35 +1995,40 @@ export default function ChatPage() {
                 <PanelLeft size={20} />
               </button>
             )}
-            <div className={cn(
-              "px-2.5 py-1 rounded-lg border flex items-center gap-2 cursor-pointer transition-all backdrop-blur-md",
-              theme === 'dark' ? "bg-[#212121]/50 border-white/10 text-gray-300 hover:bg-[#212121]/80" : "bg-white/50 border-black/10 text-gray-700 hover:bg-white/80"
-            )} onClick={() => setIsInputModelMenuOpen(true)}>
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-              <span className={cn("text-[11px] font-bold")}>
-                {selectedModel.name} <span className="hidden sm:inline opacity-60">Model</span>
-              </span>
-              <ChevronDown size={12} className="text-gray-500" />
-            </div>
+            {/* Model & Agent selectors — hidden when sidebar is open */}
+            {!isSidebarOpen && (
+              <>
+                <div className={cn(
+                  "px-2.5 py-1 rounded-lg border flex items-center gap-2 cursor-pointer transition-all backdrop-blur-md",
+                  theme === 'dark' ? "bg-[#212121]/50 border-white/10 text-gray-300 hover:bg-[#212121]/80" : "bg-white/50 border-black/10 text-gray-700 hover:bg-white/80"
+                )} onClick={() => setIsInputModelMenuOpen(true)}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                  <span className={cn("text-[11px] font-bold")}>
+                    {selectedModel.name} <span className="hidden sm:inline opacity-60">Model</span>
+                  </span>
+                  <ChevronDown size={12} className="text-gray-500" />
+                </div>
 
-            <AgentSelector
-              selectedAgentId={selectedAgentId}
-              onSelect={(agent) => {
-                setSelectedAgentId(agent.id);
-                const modeMap: Record<string, AgentMode> = {
-                  general: "General",
-                  research: "Researcher",
-                  coding: "Architect",
-                  creative: "Creative",
-                  productivity: "General",
-                  analysis: "Researcher",
-                  automation: "General",
-                  specialized: "General",
-                };
-                setSelectedMode(modeMap[agent.category] || "General");
-              }}
-              currentPlan={currentPlan}
-            />
+                <AgentSelector
+                  selectedAgentId={selectedAgentId}
+                  onSelect={(agent) => {
+                    setSelectedAgentId(agent.id);
+                    const modeMap: Record<string, AgentMode> = {
+                      general: "General",
+                      research: "Researcher",
+                      coding: "Architect",
+                      creative: "Creative",
+                      productivity: "General",
+                      analysis: "Researcher",
+                      automation: "General",
+                      specialized: "General",
+                    };
+                    setSelectedMode(modeMap[agent.category] || "General");
+                  }}
+                  currentPlan={currentPlan}
+                />
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
