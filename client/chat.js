@@ -103,15 +103,6 @@ function setupEventListeners() {
   if (currencySelect) {
     currencySelect.addEventListener('change', updateModalPlans);
   }
-
-  // Modal plan buttons
-  document.querySelectorAll('.modal-plan-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const plan = btn.dataset.plan;
-      const amount = parseInt(btn.dataset.amount);
-      processPayment(plan, amount);
-    });
-  });
 }
 
 /**
