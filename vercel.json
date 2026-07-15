@@ -2,27 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "client/**",
-      "use": "@vercel/static"
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
     },
     {
-      "src": "server/server.js",
-      "use": "@vercel/node"
+      "src": "client/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/server/server.js"
+      "dest": "/api/razorpay.js"
     },
     {
       "src": "/(.*)",
       "dest": "/client/$1"
     }
-  ],
-  "env": {
-    "RAZORPAY_KEY_ID": "@razorpay_key_id",
-    "RAZORPAY_KEY_SECRET": "@razorpay_key_secret",
-    "NODE_ENV": "production"
-  }
+  ]
 }

@@ -4,9 +4,10 @@
  * ⚠️ LIVE MODE - Real payments will be processed!
  */
 
-// Configuration - LIVE MODE
+// Configuration - Vercel Deployment
 const CONFIG = {
-  API_URL: 'http://localhost:3000/api',
+  // For Vercel - uses serverless function with query param
+  API_URL: '/api/razorpay',
   RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf', // LIVE KEY
   CURRENCY: 'INR',
   COMPANY_NAME: 'Your Business'
@@ -171,7 +172,7 @@ async function handlePayment() {
   
   try {
     // Create order
-    const orderRes = await fetch(`${CONFIG.API_URL}/create-order`, {
+    const orderRes = await fetch(`${CONFIG.API_URL}?method=create-order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -194,7 +195,7 @@ async function handlePayment() {
     // Verify payment
     showStatus('Verifying payment...', 'pending');
     
-    const verifyRes = await fetch(`${CONFIG.API_URL}/verify-payment`, {
+    const verifyRes = await fetch(`${CONFIG.API_URL}?method=verify-payment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
