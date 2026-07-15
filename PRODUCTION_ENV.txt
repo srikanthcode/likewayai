@@ -1,0 +1,19 @@
+# ============================================
+# PRODUCTION ENVIRONMENT VARIABLES
+# ============================================
+# Copy these to your hosting platform (Railway/Render)
+# ============================================
+
+# Razorpay LIVE Keys
+RAZORPAY_KEY_ID=rzp_live_TDeiRBQhY6iUKf
+RAZORPAY_KEY_SECRET=XLTK8K2oxZrRT1laa2PsckhP
+
+# Server
+NODE_ENV=production
+PORT=3000
+
+# Webhook (create in Razorpay Dashboard → Settings → Webhooks)
+RAZORPAY_WEBHOOK_SECRET=your_webhook_secret_here
+
+# Frontend URL (your deployed frontend URL)
+FRONTEND_URL=https://your-frontend.vercel.app
