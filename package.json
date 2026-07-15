@@ -1,54 +1,12 @@
 {
-  "name": "likeway",
-  "version": "0.1.0",
+  "name": "likeway-ai",
+  "version": "1.0.0",
   "private": true,
+  "description": "LikeWay AI - Your Intelligent AI Assistant",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "tailwind": "tailwindcss -i globals.css -o app/globals.css --minify",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "start": "echo 'Static site - no build needed'"
   },
   "dependencies": {
-    "@radix-ui/react-scroll-area": "^1.2.10",
-    "@radix-ui/react-tabs": "^1.1.13",
-    "@swc/helpers": "^0.5.23",
-    "@tavily/core": "^0.7.2",
-    "@types/react-syntax-highlighter": "^15.5.13",
-    "caniuse-lite": "^1.0.30001787",
-    "clsx": "^2.1.1",
-    "framer-motion": "^12.38.0",
-    "lucide-react": "^1.24.0",
-    "mermaid": "^11.14.0",
-    "mongodb": "^7.1.1",
-    "motion-dom": "^12.42.2",
-    "motion-utils": "^12.39.0",
-    "next": "^16.2.6",
-    "ogl": "^1.0.11",
-    "razorpay": "^2.9.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.1",
-    "rehype-katex": "^7.0.1",
-    "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
-    "rss-parser": "^3.13.0",
-    "stripe": "^22.1.0",
-    "tailwind-merge": "^3.5.0"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.3",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "razorpay": "^2.9.2"
   }
 }
