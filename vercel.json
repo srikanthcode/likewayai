@@ -13,7 +13,7 @@
     },
     {
       "src": "/",
-      "dest": "/client/index.html"
+      "dest": "/public/index.html"
     }
   ],
   "headers": [
@@ -23,10 +23,6 @@
         {
           "key": "X-Content-Type-Options",
           "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
         }
       ]
     }
