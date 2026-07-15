@@ -65,7 +65,6 @@ let isProcessing = false;
  */
 function init() {
   setupPlanSelection();
-  checkCurrentPlan();
   setupButtons();
 }
 
@@ -75,6 +74,7 @@ function init() {
 function setupPlanSelection() {
   DOM.planBtns.forEach(btn => {
     btn.addEventListener('click', () => {
+      if (isProcessing) return;
       const plan = btn.dataset.plan;
       const amount = parseInt(btn.dataset.amount);
       handlePlanSelect(plan, amount);
@@ -86,14 +86,12 @@ function setupPlanSelection() {
  * Handle plan selection
  */
 function handlePlanSelect(plan, amount) {
-  if (isProcessing) return;
-  
   // If free plan, just activate
   if (amount === 0) {
     activatePlan(plan);
     return;
   }
-  
+
   // Paid plan - open payment
   selectedPlan = plan;
   processPayment(plan, amount);
@@ -103,9 +101,8 @@ function handlePlanSelect(plan, amount) {
  * Process payment for plan
  */
 async function processPayment(plan, amount) {
-  setProcessing(true);
-  showStatus('Creating order...', 'pending');
-  
+  setProcessing(true, plan);
+
   try {
     // Create order
     const orderRes = await fetch(`${CONFIG.API_URL}?method=create-order`, {
@@ -113,21 +110,17 @@ async function processPayment(plan, amount) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount, currency: 'INR' })
     });
-    
+
     const orderData = await orderRes.json();
-    
+
     if (!orderData.success) {
       throw new Error(orderData.error || 'Order creation failed');
     }
-    
-    showStatus('Opening payment window...', 'pending');
-    
+
     // Open Razorpay
     const paymentData = await openCheckout(orderData.order, plan);
-    
+
     // Verify payment
-    showStatus('Verifying payment...', 'pending');
-    
     const verifyRes = await fetch(`${CONFIG.API_URL}?method=verify-payment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -137,19 +130,19 @@ async function processPayment(plan, amount) {
         razorpay_signature: paymentData.razorpay_signature
       })
     });
-    
+
     const verifyData = await verifyRes.json();
-    
+
     if (verifyData.success) {
-      // Activate plan
+      // Activate plan and redirect
       activatePlan(plan, orderData.order.id, paymentData.razorpay_payment_id);
     } else {
       throw new Error('Payment verification failed');
     }
-    
+
   } catch (error) {
     console.error('Payment error:', error);
-    showStatus(error.message || 'Payment failed', 'error');
+    alert(error.message || 'Payment failed. Please try again.');
   } finally {
     setProcessing(false);
   }
@@ -180,7 +173,7 @@ function openCheckout(order, plan) {
         ondismiss: () => reject(new Error('Payment cancelled'))
       }
     };
-    
+
     const rzp = new Razorpay(options);
     rzp.on('payment.failed', (response) => {
       reject(new Error(response.error.description || 'Payment failed'));
@@ -194,7 +187,7 @@ function openCheckout(order, plan) {
  */
 function activatePlan(plan, orderId = null, paymentId = null) {
   const planData = PLANS[plan];
-  
+
   // Save to localStorage
   localStorage.setItem('lw_plan', plan);
   localStorage.setItem('lw_plan_name', planData.name);
@@ -202,111 +195,64 @@ function activatePlan(plan, orderId = null, paymentId = null) {
   localStorage.setItem('lw_responses', planData.responses);
   localStorage.setItem('lw_features', JSON.stringify(planData.features));
   localStorage.setItem('lw_activated', new Date().toISOString());
-  
+
   if (orderId) localStorage.setItem('lw_order_id', orderId);
   if (paymentId) localStorage.setItem('lw_payment_id', paymentId);
-  
-  // Show success
-  showSuccess(plan, orderId, paymentId);
+
+  // Show success and redirect to chat
+  showSuccess(plan);
 }
 
 /**
  * Show success screen and redirect to chat
  */
-function showSuccess(plan, orderId = null, paymentId = null) {
+function showSuccess(plan) {
   const planData = PLANS[plan];
 
+  // Hide pricing cards
   DOM.planCards.forEach(card => card.style.display = 'none');
-  DOM.currentPlan.style.display = 'none';
-  DOM.orderCard.style.display = 'block';
 
+  // Show success card
+  DOM.orderCard.style.display = 'block';
   DOM.purchasedPlan.textContent = planData.name + ' Plan';
-  DOM.orderId.textContent = orderId || 'Free Plan';
-  DOM.paymentId.textContent = paymentId || '-';
-  DOM.paidAmount.textContent = planData.amount === 0 ? 'Free' : `₹${planData.amount}`;
+  DOM.paidAmount.textContent = planData.amount === 0 ? 'Free' : `₹${planData.amount}/month`;
   DOM.unlockText.textContent = `${planData.name} Plan Activated! 🎉`;
 
-  // Redirect to chat page after 2 seconds
+  // Redirect to chat after 2 seconds
   setTimeout(() => {
     window.location.href = '/chat';
   }, 2000);
 }
 
 /**
- * Check and display current plan
- */
-function checkCurrentPlan() {
-  const plan = localStorage.getItem('lw_plan');
-
-  if (plan) {
-    showCurrentPlan(plan);
-  }
-}
-
-/**
- * Show current plan on pricing cards
- */
-function showCurrentPlan(plan) {
-  const planData = PLANS[plan];
-
-  DOM.planCards.forEach(card => {
-    const cardPlan = card.dataset.plan;
-    if (cardPlan === plan) {
-      card.style.border = '3px solid #10b981';
-      card.querySelector('.plan-btn').textContent = '✓ Current Plan';
-      card.querySelector('.plan-btn').disabled = true;
-    }
-  });
-}
-
-/**
  * Setup button handlers
  */
 function setupButtons() {
-  DOM.continueBtn.addEventListener('click', () => {
-    // Redirect to chat page
-    window.location.href = '/chat';
-  });
+  if (DOM.continueBtn) {
+    DOM.continueBtn.addEventListener('click', () => {
+      window.location.href = '/chat';
+    });
+  }
 }
 
 /**
  * Set processing state
  */
-function setProcessing(processing) {
+function setProcessing(processing, plan = null) {
   isProcessing = processing;
-  
+
   DOM.planBtns.forEach(btn => {
-    if (!btn.disabled) {
+    if (btn.dataset.plan !== 'core') {
       btn.disabled = processing;
-      if (processing) {
+      if (processing && btn.dataset.plan === plan) {
         btn.innerHTML = '<span class="spinner"></span> Processing...';
+      } else if (!processing) {
+        // Restore original text
+        const planName = btn.dataset.plan;
+        btn.innerHTML = `Upgrade to ${planName.charAt(0).toUpperCase() + planName.slice(1)}`;
       }
     }
   });
-}
-
-/**
- * Show status message
- */
-function showStatus(message, type) {
-  // Create or update status element
-  let status = document.querySelector('.payment-status');
-  if (!status) {
-    status = document.createElement('div');
-    status.className = 'payment-status';
-    document.querySelector('.pricing-container').prepend(status);
-  }
-  
-  status.style.display = 'flex';
-  status.className = `payment-status ${type}`;
-  status.innerHTML = `
-    <span class="status-icon">${type === 'success' ? '✓' : type === 'error' ? '✕' : '⏳'}</span>
-    <span class="status-text">${message}</span>
-  `;
-  
-  if (type !== 'pending') {
-    setTimeout(() => status.style.display = 'none', 3000);
-  }
 }
 
 // Initialize
@@ -322,6 +268,8 @@ window.likeWayPay = {
     localStorage.removeItem('lw_responses');
     localStorage.removeItem('lw_features');
     localStorage.removeItem('lw_activated');
+    localStorage.removeItem('lw_order_id');
+    localStorage.removeItem('lw_payment_id');
     location.reload();
   }
 };
