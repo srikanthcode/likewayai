@@ -3,99 +3,314 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secure Payment</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <title>LikeWay AI - Your Intelligent AI Assistant</title>
+  <meta name="description" content="LikeWay AI: Get instant insights, code help, comparisons, and troubleshooting—all in one AI-powered tool. Built for professionals who demand more.">
+  <link rel="stylesheet" href="home.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="payment-container">
-    <!-- Header -->
-    <div class="payment-header">
-      <div class="logo">💳</div>
-      <h1>Secure Payment</h1>
-      <p>Powered by Razorpay</p>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="/" class="nav-logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">LikeWay</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#pricing" class="nav-link">Pricing</a>
+        <a href="/client/chat.html" class="nav-link">Chat</a>
+        <a href="/client/chat.html" class="nav-btn">Get Started Free</a>
+      </div>
+      <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
     </div>
+  </nav>
 
-    <!-- Main Payment Card -->
-    <div class="payment-card">
-      <!-- Amount Selection -->
-      <div class="section">
-        <label class="section-label">Select Amount</label>
-        <div class="amount-grid">
-          <button class="amount-btn" data-amount="100">₹100</button>
-          <button class="amount-btn" data-amount="500">₹500</button>
-          <button class="amount-btn active" data-amount="1000">₹1,000</button>
-          <button class="amount-btn" data-amount="2000">₹2,000</button>
-          <button class="amount-btn" data-amount="5000">₹5,000</button>
-          <button class="amount-btn custom" id="customBtn">Custom</button>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-container">
+      <div class="hero-badge">🚀 Trusted by 10,000+ professionals worldwide</div>
+      <h1 class="hero-title">
+        Your AI Assistant for
+        <span class="gradient-text">Smarter, Faster Decisions</span>
+      </h1>
+      <p class="hero-subtitle">
+        Get instant insights, expert code help, detailed comparisons, and step-by-step troubleshooting—all powered by advanced AI models in one intelligent platform.
+      </p>
+      <div class="hero-cta">
+        <a href="/client/chat.html" class="cta-primary">
+          Start Chatting Free
+          <span class="cta-arrow">→</span>
+        </a>
+        <a href="#features" class="cta-secondary">
+          See How It Works
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-number">10K+</span>
+          <span class="stat-label">Active Users</span>
         </div>
-        <div class="custom-amount-input" id="customInput" style="display: none;">
-          <span class="rupee">₹</span>
-          <input type="number" id="customAmount" placeholder="Enter amount" min="1">
+        <div class="stat">
+          <span class="stat-number">50M+</span>
+          <span class="stat-label">Questions Answered</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number">99.9%</span>
+          <span class="stat-label">Uptime</span>
         </div>
       </div>
-
-      <!-- Customer Details -->
-      <div class="section">
-        <label class="section-label">Your Details</label>
-        <div class="form-group">
-          <input type="text" id="customerName" placeholder="Full Name" required>
+    </div>
+    <div class="hero-visual">
+      <div class="chat-preview">
+        <div class="preview-header">
+          <div class="preview-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <span class="preview-title">LikeWay AI Chat</span>
         </div>
-        <div class="form-group">
-          <input type="email" id="customerEmail" placeholder="Email Address" required>
+        <div class="preview-messages">
+          <div class="preview-message user">
+            <span class="msg-avatar">👤</span>
+            <span class="msg-text">How do I optimize React performance?</span>
+          </div>
+          <div class="preview-message ai">
+            <span class="msg-avatar">🤖</span>
+            <span class="msg-text">Great question! Here are the top 5 ways to optimize React performance: 1. Use React.memo() 2. Implement useMemo() 3. Code splitting with lazy()...</span>
+          </div>
         </div>
-        <div class="form-group">
-          <input type="tel" id="customerPhone" placeholder="Phone Number" required>
+        <div class="preview-input">
+          <span>Ask me anything...</span>
+          <span class="send-icon">→</span>
         </div>
       </div>
+    </div>
+  </section>
 
-      <!-- Pay Button -->
-      <button class="pay-btn" id="payBtn">
-        <span class="pay-text">Pay ₹1,000</span>
-        <span class="pay-loader" style="display: none;">
-          <span class="spinner"></span> Processing...
-        </span>
-      </button>
-
-      <!-- Status Messages -->
-      <div class="status" id="status" style="display: none;">
-        <span class="status-icon"></span>
-        <span class="status-text"></span>
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="section-container">
+      <div class="section-header">
+        <h2>Everything you need in one AI platform</h2>
+        <p>LikeWay AI combines the power of multiple AI models to deliver expert-level assistance across coding, research, analysis, and creative tasks.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">💻</div>
+          <h3>Code Generation & Debugging</h3>
+          <p>Write, debug, and optimize code in 50+ programming languages with intelligent suggestions and explanations.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h3>Deep Research</h3>
+          <p>Autonomous web analysis that gathers, synthesizes, and presents information from multiple sources with citations.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Smart Comparisons</h3>
+          <p>Get detailed side-by-side comparisons of tools, technologies, products, and strategies to make informed decisions.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3>Expert Troubleshooting</h3>
+          <p>Diagnose issues, find root causes, and get step-by-step solutions for technical problems.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📝</div>
+          <h3>Content Creation</h3>
+          <p>Generate professional documents, emails, reports, and creative content tailored to your needs.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧠</div>
+          <h3>Advanced Vision</h3>
+          <p>Analyze screenshots, diagrams, and images to extract insights and provide contextual assistance.</p>
+        </div>
       </div>
     </div>
+  </section>
 
-    <!-- Order Summary (shown after payment) -->
-    <div class="order-card" id="orderCard" style="display: none;">
-      <div class="success-icon">✓</div>
-      <h2>Payment Successful!</h2>
-      <div class="order-details">
-        <div class="detail-row">
-          <span>Order ID</span>
-          <span id="orderId">-</span>
+  <!-- How It Works -->
+  <section class="how-it-works">
+    <div class="section-container">
+      <div class="section-header">
+        <h2>How LikeWay AI Works</h2>
+        <p>Three simple steps to get expert assistance</p>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">1</div>
+          <h3>Ask Your Question</h3>
+          <p>Type any question or request in natural language—no special formatting needed.</p>
         </div>
-        <div class="detail-row">
-          <span>Payment ID</span>
-          <span id="paymentId">-</span>
+        <div class="step-card">
+          <div class="step-number">2</div>
+          <h3>AI Processes & Analyzes</h3>
+          <p>Our AI selects the best models and formats to provide the most helpful response.</p>
         </div>
-        <div class="detail-row">
-          <span>Amount</span>
-          <span id="paidAmount">-</span>
-        </div>
-        <div class="detail-row">
-          <span>Status</span>
-          <span class="status-badge success">PAID</span>
+        <div class="step-card">
+          <div class="step-number">3</div>
+          <h3>Get Expert Answers</h3>
+          <p>Receive clear, actionable responses with code, explanations, and step-by-step guides.</p>
         </div>
       </div>
-      <button class="new-payment-btn" id="newPaymentBtn">Make Another Payment</button>
     </div>
+  </section>
 
-    <!-- Security Badge -->
-    <div class="security-badge">
-      <span class="lock">🔒</span>
-      <span>256-bit SSL Encrypted | PCI DSS Compliant</span>
+  <!-- Use Cases -->
+  <section class="use-cases">
+    <div class="section-container">
+      <div class="section-header">
+        <h2>Built for Every Professional</h2>
+        <p>Whether you're a developer, marketer, student, or entrepreneur</p>
+      </div>
+      <div class="use-cases-grid">
+        <div class="use-case-card">
+          <div class="use-case-icon">👨‍💻</div>
+          <h3>Developers</h3>
+          <ul>
+            <li>Code generation & review</li>
+            <li>Bug debugging & optimization</li>
+            <li>Architecture decisions</li>
+            <li>API documentation</li>
+          </ul>
+        </div>
+        <div class="use-case-card">
+          <div class="use-case-icon">📈</div>
+          <h3>Business Professionals</h3>
+          <ul>
+            <li>Market research & analysis</li>
+            <li>Strategy recommendations</li>
+            <li>Report generation</li>
+            <li>Competitor analysis</li>
+          </ul>
+        </div>
+        <div class="use-case-card">
+          <div class="use-case-icon">🎓</div>
+          <h3>Students & Learners</h3>
+          <ul>
+            <li>Concept explanations</li>
+            <li>Study guides & summaries</li>
+            <li>Research assistance</li>
+            <li>Skill development</li>
+          </ul>
+        </div>
+        <div class="use-case-card">
+          <div class="use-case-icon">✍️</div>
+          <h3>Content Creators</h3>
+          <ul>
+            <li>Writing assistance</li>
+            <li>Ideation & brainstorming</li>
+            <li>Content optimization</li>
+            <li>Social media planning</li>
+          </ul>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <script src="script.js"></script>
+  <!-- Pricing Preview -->
+  <section class="pricing-preview" id="pricing">
+    <div class="section-container">
+      <div class="section-header">
+        <h2>Simple, Transparent Pricing</h2>
+        <p>Start free, upgrade when you need more power</p>
+      </div>
+      <div class="pricing-cards">
+        <div class="pricing-card">
+          <div class="pricing-badge">Free</div>
+          <h3>Core</h3>
+          <div class="pricing-amount">₹0</div>
+          <div class="pricing-period">Free forever</div>
+          <ul class="pricing-features">
+            <li>✓ 2 AI models</li>
+            <li>✓ 200 responses/day</li>
+            <li>✓ Basic chat</li>
+            <li>✓ Web search</li>
+          </ul>
+          <a href="/client/chat.html" class="pricing-btn">Get Started</a>
+        </div>
+        <div class="pricing-card popular">
+          <div class="pricing-badge">Most Popular</div>
+          <h3>Plus</h3>
+          <div class="pricing-amount">₹799</div>
+          <div class="pricing-period">per month</div>
+          <ul class="pricing-features">
+            <li>✓ 10 AI models</li>
+            <li>✓ Unlimited messages</li>
+            <li>✓ Deep Research</li>
+            <li>✓ Image generation</li>
+            <li>✓ Code Agent</li>
+          </ul>
+          <a href="/client/chat.html" class="pricing-btn primary">Upgrade to Plus</a>
+        </div>
+        <div class="pricing-card">
+          <div class="pricing-badge">Best Value</div>
+          <h3>Pro</h3>
+          <div class="pricing-amount">₹1,999</div>
+          <div class="pricing-period">per month</div>
+          <ul class="pricing-features">
+            <li>✓ All 12 AI models</li>
+            <li>✓ Unlimited everything</li>
+            <li>✓ Early access features</li>
+            <li>✓ Priority support</li>
+            <li>✓ Custom instructions</li>
+          </ul>
+          <a href="/client/chat.html" class="pricing-btn">Upgrade to Pro</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="section-container">
+      <h2>Ready to work smarter?</h2>
+      <p>Join thousands of professionals using LikeWay AI to boost their productivity.</p>
+      <a href="/client/chat.html" class="cta-primary large">
+        Start Free Today
+        <span class="cta-arrow">→</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <div class="footer-logo">
+          <span class="logo-icon">⚡</span>
+          <span class="logo-text">LikeWay</span>
+        </div>
+        <p>Your AI assistant for smarter, faster decisions.</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="/client/chat.html">Chat</a>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <a href="#">About</a>
+          <a href="#">Blog</a>
+          <a href="#">Careers</a>
+        </div>
+        <div class="footer-col">
+          <h4>Support</h4>
+          <a href="#">Help Center</a>
+          <a href="#">Contact</a>
+          <a href="#">Status</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 LikeWay AI. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="home.js"></script>
 </body>
 </html>
