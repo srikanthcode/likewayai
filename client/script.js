@@ -47,17 +47,13 @@ const PLANS = {
 const DOM = {
   planCards: document.querySelectorAll('.pricing-card'),
   planBtns: document.querySelectorAll('.plan-btn'),
-  currentPlan: document.getElementById('currentPlan'),
-  currentPlanName: document.getElementById('currentPlanName'),
-  planSince: document.getElementById('planSince'),
   orderCard: document.getElementById('orderCard'),
   purchasedPlan: document.getElementById('purchasedPlan'),
   orderId: document.getElementById('orderId'),
   paymentId: document.getElementById('paymentId'),
   paidAmount: document.getElementById('paidAmount'),
   unlockText: document.getElementById('unlockText'),
-  continueBtn: document.getElementById('continueBtn'),
-  manageBtn: document.getElementById('manageBtn')
+  continueBtn: document.getElementById('continueBtn')
 };
 
 // State
@@ -215,26 +211,25 @@ function activatePlan(plan, orderId = null, paymentId = null) {
 }
 
 /**
- * Show success screen
+ * Show success screen and redirect to chat
  */
 function showSuccess(plan, orderId = null, paymentId = null) {
   const planData = PLANS[plan];
-  
+
   DOM.planCards.forEach(card => card.style.display = 'none');
   DOM.currentPlan.style.display = 'none';
   DOM.orderCard.style.display = 'block';
-  
+
   DOM.purchasedPlan.textContent = planData.name + ' Plan';
   DOM.orderId.textContent = orderId || 'Free Plan';
   DOM.paymentId.textContent = paymentId || '-';
   DOM.paidAmount.textContent = planData.amount === 0 ? 'Free' : `₹${planData.amount}`;
-  DOM.unlockText.textContent = `${planData.name} Plan Activated!`;
-  
-  // Update current plan display
+  DOM.unlockText.textContent = `${planData.name} Plan Activated! 🎉`;
+
+  // Redirect to chat page after 2 seconds
   setTimeout(() => {
-    DOM.orderCard.style.display = 'none';
-    showCurrentPlan();
-  }, 3000);
+    window.location.href = '/chat';
+  }, 2000);
 }
 
 /**
@@ -242,20 +237,18 @@ function showSuccess(plan, orderId = null, paymentId = null) {
  */
 function checkCurrentPlan() {
   const plan = localStorage.getItem('lw_plan');
-  
+
   if (plan) {
-    showCurrentPlan();
+    showCurrentPlan(plan);
   }
 }
 
 /**
- * Show current plan section
+ * Show current plan on pricing cards
  */
-function showCurrentPlan() {
-  const plan = localStorage.getItem('lw_plan') || 'core';
+function showCurrentPlan(plan) {
   const planData = PLANS[plan];
-  const activated = localStorage.getItem('lw_activated');
-  
+
   DOM.planCards.forEach(card => {
     const cardPlan = card.dataset.plan;
     if (cardPlan === plan) {
@@ -264,10 +257,6 @@ function showCurrentPlan() {
       card.querySelector('.plan-btn').disabled = true;
     }
   });
-  
-  DOM.currentPlan.style.display = 'block';
-  DOM.currentPlanName.textContent = planData.name;
-  DOM.planSince.textContent = activated ? new Date(activated).toLocaleDateString() : 'Today';
 }
 
 /**
@@ -275,12 +264,8 @@ function showCurrentPlan() {
  */
 function setupButtons() {
   DOM.continueBtn.addEventListener('click', () => {
-    // Redirect to main app
-    window.location.href = '/';
-  });
-  
-  DOM.manageBtn.addEventListener('click', () => {
-    alert('Manage subscription coming soon!');
+    // Redirect to chat page
+    window.location.href = '/chat';
   });
 }
 
