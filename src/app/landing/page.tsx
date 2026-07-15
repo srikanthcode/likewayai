@@ -4,14 +4,14 @@ import LandingHero from "@/components/LandingHero";
 export const metadata: Metadata = {
   title: "Likeway AI — Free AI Chat Assistant, Code Generator & Deep Research Tool",
   description:
-    "Likeway AI is a free premium AI assistant for chat, coding, deep web research, and image generation. Use GPT-4 class models, voice commands, and 90+ slash commands. No limits. Try now.",
+    "Likeway AI is a free premium AI assistant for chat, coding, deep web research, and image generation. Powered by advanced AI models, voice commands, and 90+ slash commands. No limits. Try now.",
   alternates: {
     canonical: "https://www.likeway.in/landing",
   },
   openGraph: {
     title: "Likeway AI — Free AI Chat Assistant & Deep Research Platform",
     description:
-      "Free AI assistant with deep web research, coding help, image generation, and 90+ slash commands. GPT-4 class models. No limits. Try free at likeway.in",
+      "Free AI assistant with deep web research, coding help, image generation, and 90+ slash commands. Powered by advanced AI models. No limits. Try free at likeway.in",
     url: "https://www.likeway.in/landing",
     siteName: "Likeway AI",
     images: [

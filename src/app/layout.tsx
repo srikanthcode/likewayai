@@ -21,16 +21,15 @@ export const metadata: Metadata = {
     template: "%s | Likeway AI"
   },
   description:
-    "Likeway AI is a free premium AI assistant for chat, coding, deep web research, and image generation. Use GPT-4 class models, voice commands, and 90+ slash commands. No limits. Try now at likeway.in.",
+    "Likeway AI is a free premium AI assistant for chat, coding, deep web research, and image generation. Powered by advanced AI models, voice commands, and 90+ slash commands. No limits. Try now at likeway.in.",
   keywords: [
     "likeway ai", "ai chat", "free ai assistant", "ai coding assistant",
-    "deep research ai", "ai image generator", "gpt-4 free", "ai chatbot",
+    "deep research ai", "ai image generator", "ai chatbot",
     "code generator ai", "ai writing assistant", "voice ai assistant",
     "ai research tool", "free ai tool", "likeway.in", "aixphonic",
     "ai assistant india", "best ai chat", "ai tool 2024", "ai tool 2025",
-    "chatgpt alternative", "claude alternative", "ai for developers",
-    "ai programming help", "deep web research tool", "ai creative suite",
-    "slash commands ai", "ai productivity tool", "free chatgpt",
+    "ai for developers", "ai programming help", "deep web research tool",
+    "ai creative suite", "slash commands ai", "ai productivity tool",
     "ai summarizer", "ai translator", "ai code review"
   ],
   authors: [{ name: "Srikanth M", url: "https://www.linkedin.com/in/srikanth-m-75a86235a" }],
@@ -52,7 +51,7 @@ export const metadata: Metadata = {
     siteName: "Likeway AI — Free AI Chat Assistant & Deep Research Tool",
     title: "Likeway AI — Free AI Chat Assistant, Code Generator & Deep Research",
     description:
-      "Likeway AI: Free premium AI assistant for chat, coding, deep research & image generation. GPT-4 class models, 90+ slash commands, voice input. No limits. Try free.",
+      "Likeway AI: Free premium AI assistant for chat, coding, deep research & image generation. Advanced AI models, 90+ slash commands, voice input. No limits. Try free.",
     images: [
       {
         url: "/og-image.png",
@@ -67,7 +66,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Likeway AI — Free AI Chat Assistant & Deep Research Tool",
     description:
-      "Free premium AI assistant for chat, coding, deep research & image generation. GPT-4 class models, 90+ slash commands. Try free at likeway.in",
+      "Free premium AI assistant for chat, coding, deep research & image generation. Advanced AI models, 90+ slash commands. Try free at likeway.in",
     images: ["/og-image.png"],
     creator: "@srikanthcodes",
   },
@@ -117,7 +116,7 @@ export default function RootLayout({
     name: "Likeway AI",
     url: SITE_URL,
     description:
-      "Free premium AI assistant for chat, coding, deep web research, and image generation with GPT-4 class models.",
+      "Free premium AI assistant for chat, coding, deep web research, and image generation powered by advanced AI models.",
     applicationCategory: "UtilityApplication",
     operatingSystem: "Web",
     offers: {
