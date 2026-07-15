@@ -1,174 +1,112 @@
 /**
- * Razorpay Real-Time Payment - Production Script
+ * LikeWay AI - Pricing & Payment Script
  * 
- * ⚠️ LIVE MODE - Real payments will be processed!
+ * Handles plan selection, payment, and feature unlock
  */
 
-// Configuration - Vercel Deployment
+// Configuration
 const CONFIG = {
-  // For Vercel - uses serverless function with query param
   API_URL: '/api/razorpay',
-  RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf', // LIVE KEY
-  CURRENCY: 'INR',
-  COMPANY_NAME: 'Your Business'
+  RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf',
+  COMPANY_NAME: 'LikeWay AI'
+};
+
+// Plan Details
+const PLANS = {
+  core: {
+    name: 'Core',
+    amount: 0,
+    models: 2,
+    responses: '200/day',
+    features: ['Basic AI models', 'Web search', 'Voice input', 'Code snippets']
+  },
+  go: {
+    name: 'Go',
+    amount: 299,
+    models: 5,
+    responses: 'Unlimited',
+    features: ['5 advanced models', 'Unlimited messages', 'Tool execution', 'File upload']
+  },
+  plus: {
+    name: 'Plus',
+    amount: 799,
+    models: 10,
+    responses: 'Unlimited',
+    features: ['10 elite models', 'Deep Research', 'Image generation', 'Custom instructions']
+  },
+  pro: {
+    name: 'Pro',
+    amount: 1999,
+    models: 12,
+    responses: 'Unlimited',
+    features: ['All 12 models', 'Early access', 'Voice Assistant', 'Priority support']
+  }
 };
 
 // DOM Elements
 const DOM = {
-  amountBtns: document.querySelectorAll('.amount-btn:not(.custom)'),
-  customBtn: document.getElementById('customBtn'),
-  customInput: document.getElementById('customInput'),
-  customAmount: document.getElementById('customAmount'),
-  name: document.getElementById('customerName'),
-  email: document.getElementById('customerEmail'),
-  phone: document.getElementById('customerPhone'),
-  payBtn: document.getElementById('payBtn'),
-  payText: document.querySelector('.pay-text'),
-  payLoader: document.querySelector('.pay-loader'),
-  status: document.getElementById('status'),
-  statusIcon: document.querySelector('.status-icon'),
-  statusText: document.querySelector('.status-text'),
-  paymentCard: document.querySelector('.payment-card'),
+  planCards: document.querySelectorAll('.pricing-card'),
+  planBtns: document.querySelectorAll('.plan-btn'),
+  currentPlan: document.getElementById('currentPlan'),
+  currentPlanName: document.getElementById('currentPlanName'),
+  planSince: document.getElementById('planSince'),
   orderCard: document.getElementById('orderCard'),
+  purchasedPlan: document.getElementById('purchasedPlan'),
   orderId: document.getElementById('orderId'),
   paymentId: document.getElementById('paymentId'),
   paidAmount: document.getElementById('paidAmount'),
-  newPaymentBtn: document.getElementById('newPaymentBtn'),
-  proStatus: document.getElementById('proStatus'),
-  proSince: document.getElementById('proSince')
+  unlockText: document.getElementById('unlockText'),
+  continueBtn: document.getElementById('continueBtn'),
+  manageBtn: document.getElementById('manageBtn')
 };
 
 // State
-let selectedAmount = 1000;
+let selectedPlan = null;
 let isProcessing = false;
 
 /**
  * Initialize
  */
 function init() {
-  setupAmountSelection();
-  setupFormValidation();
-  setupPaymentButton();
-  updatePayButton();
+  setupPlanSelection();
+  checkCurrentPlan();
+  setupButtons();
 }
 
 /**
- * Setup amount selection
+ * Setup plan selection
  */
-function setupAmountSelection() {
-  // Preset amounts
-  DOM.amountBtns.forEach(btn => {
+function setupPlanSelection() {
+  DOM.planBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      DOM.amountBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedAmount = parseInt(btn.dataset.amount);
-      DOM.customInput.style.display = 'none';
-      updatePayButton();
+      const plan = btn.dataset.plan;
+      const amount = parseInt(btn.dataset.amount);
+      handlePlanSelect(plan, amount);
     });
   });
-
-  // Custom amount
-  DOM.customBtn.addEventListener('click', () => {
-    DOM.amountBtns.forEach(b => b.classList.remove('active'));
-    DOM.customBtn.classList.add('active');
-    DOM.customInput.style.display = 'flex';
-    DOM.customAmount.focus();
-    updatePayButton();
-  });
-
-  // Custom amount input
-  DOM.customAmount.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    if (value > 0) {
-      selectedAmount = value;
-      updatePayButton();
-    }
-  });
 }
 
 /**
- * Setup form validation
+ * Handle plan selection
  */
-function setupFormValidation() {
-  [DOM.name, DOM.email, DOM.phone].forEach(input => {
-    input.addEventListener('blur', validateField);
-    input.addEventListener('input', clearError);
-  });
-}
-
-/**
- * Validate single field
- */
-function validateField(e) {
-  const input = e.target;
-  const value = input.value.trim();
+function handlePlanSelect(plan, amount) {
+  if (isProcessing) return;
   
-  let valid = true;
-  let msg = '';
-  
-  if (input === DOM.name && value.length < 2) {
-    valid = false;
-    msg = 'Enter your name';
-  } else if (input === DOM.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    valid = false;
-    msg = 'Enter valid email';
-  } else if (input === DOM.phone && !/^[6-9]\d{9}$/.test(value)) {
-    valid = false;
-    msg = 'Enter 10-digit phone';
+  // If free plan, just activate
+  if (amount === 0) {
+    activatePlan(plan);
+    return;
   }
   
-  if (!valid && value) {
-    input.style.borderColor = '#ef4444';
-    input.setAttribute('data-error', msg);
-  } else {
-    input.style.borderColor = '#e5e7eb';
-    input.removeAttribute('data-error');
-  }
-  
-  return valid;
+  // Paid plan - open payment
+  selectedPlan = plan;
+  processPayment(plan, amount);
 }
 
 /**
- * Clear error on input
+ * Process payment for plan
  */
-function clearError(e) {
-  e.target.style.borderColor = '#e5e7eb';
-  e.target.removeAttribute('data-error');
-}
-
-/**
- * Validate all fields
- */
-function validateForm() {
-  const nameValid = validateField({ target: DOM.name });
-  const emailValid = validateField({ target: DOM.email });
-  const phoneValid = validateField({ target: DOM.phone });
-  
-  return nameValid && emailValid && phoneValid && selectedAmount > 0;
-}
-
-/**
- * Update pay button text
- */
-function updatePayButton() {
-  const formatted = new Intl.NumberFormat('en-IN').format(selectedAmount);
-  DOM.payText.textContent = `Pay ₹${formatted}`;
-}
-
-/**
- * Setup payment button
- */
-function setupPaymentButton() {
-  DOM.payBtn.addEventListener('click', handlePayment);
-  DOM.newPaymentBtn.addEventListener('click', resetForm);
-}
-
-/**
- * Handle payment
- */
-async function handlePayment() {
-  if (isProcessing || !validateForm()) return;
-  
+async function processPayment(plan, amount) {
   setProcessing(true);
   showStatus('Creating order...', 'pending');
   
@@ -177,10 +115,7 @@ async function handlePayment() {
     const orderRes = await fetch(`${CONFIG.API_URL}?method=create-order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: selectedAmount,
-        currency: CONFIG.CURRENCY
-      })
+      body: JSON.stringify({ amount, currency: 'INR' })
     });
     
     const orderData = await orderRes.json();
@@ -192,7 +127,7 @@ async function handlePayment() {
     showStatus('Opening payment window...', 'pending');
     
     // Open Razorpay
-    const paymentData = await openCheckout(orderData.order);
+    const paymentData = await openCheckout(orderData.order, plan);
     
     // Verify payment
     showStatus('Verifying payment...', 'pending');
@@ -210,7 +145,8 @@ async function handlePayment() {
     const verifyData = await verifyRes.json();
     
     if (verifyData.success) {
-      showSuccess(orderData.order.id, paymentData.razorpay_payment_id);
+      // Activate plan
+      activatePlan(plan, orderData.order.id, paymentData.razorpay_payment_id);
     } else {
       throw new Error('Payment verification failed');
     }
@@ -226,20 +162,20 @@ async function handlePayment() {
 /**
  * Open Razorpay checkout
  */
-function openCheckout(order) {
+function openCheckout(order, plan) {
   return new Promise((resolve, reject) => {
     const options = {
       key: CONFIG.RAZORPAY_KEY_ID,
       amount: order.amount,
       currency: order.currency,
       name: CONFIG.COMPANY_NAME,
-      description: `Payment of ₹${selectedAmount}`,
+      description: `${PLANS[plan].name} Plan - ₹${PLANS[plan].amount}/month`,
       order_id: order.id,
       handler: (response) => resolve(response),
       prefill: {
-        name: DOM.name.value.trim(),
-        email: DOM.email.value.trim(),
-        contact: DOM.phone.value.trim()
+        name: '',
+        email: '',
+        contact: ''
       },
       theme: {
         color: '#667eea'
@@ -258,104 +194,94 @@ function openCheckout(order) {
 }
 
 /**
- * Show success screen and unlock pro features
+ * Activate plan after payment
  */
-function showSuccess(orderId, paymentId) {
-  // Save payment status to localStorage
-  localStorage.setItem('payment_status', 'paid');
-  localStorage.setItem('order_id', orderId);
-  localStorage.setItem('payment_id', paymentId);
-  localStorage.setItem('payment_date', new Date().toISOString());
+function activatePlan(plan, orderId = null, paymentId = null) {
+  const planData = PLANS[plan];
   
-  // Show success card
-  DOM.paymentCard.style.display = 'none';
+  // Save to localStorage
+  localStorage.setItem('lw_plan', plan);
+  localStorage.setItem('lw_plan_name', planData.name);
+  localStorage.setItem('lw_models', planData.models);
+  localStorage.setItem('lw_responses', planData.responses);
+  localStorage.setItem('lw_features', JSON.stringify(planData.features));
+  localStorage.setItem('lw_activated', new Date().toISOString());
+  
+  if (orderId) localStorage.setItem('lw_order_id', orderId);
+  if (paymentId) localStorage.setItem('lw_payment_id', paymentId);
+  
+  // Show success
+  showSuccess(plan, orderId, paymentId);
+}
+
+/**
+ * Show success screen
+ */
+function showSuccess(plan, orderId = null, paymentId = null) {
+  const planData = PLANS[plan];
+  
+  DOM.planCards.forEach(card => card.style.display = 'none');
+  DOM.currentPlan.style.display = 'none';
   DOM.orderCard.style.display = 'block';
   
-  DOM.orderId.textContent = orderId;
-  DOM.paymentId.textContent = paymentId;
-  DOM.paidAmount.textContent = `₹${new Intl.NumberFormat('en-IN').format(selectedAmount)}`;
+  DOM.purchasedPlan.textContent = planData.name + ' Plan';
+  DOM.orderId.textContent = orderId || 'Free Plan';
+  DOM.paymentId.textContent = paymentId || '-';
+  DOM.paidAmount.textContent = planData.amount === 0 ? 'Free' : `₹${planData.amount}`;
+  DOM.unlockText.textContent = `${planData.name} Plan Activated!`;
   
-  // Unlock pro features
-  unlockProFeatures();
+  // Update current plan display
+  setTimeout(() => {
+    DOM.orderCard.style.display = 'none';
+    showCurrentPlan();
+  }, 3000);
 }
 
 /**
- * Unlock pro features after payment
+ * Check and display current plan
  */
-function unlockProFeatures() {
-  // Add 'pro-active' class to body
-  document.body.classList.add('pro-active');
+function checkCurrentPlan() {
+  const plan = localStorage.getItem('lw_plan');
   
-  // Unlock all pro features
-  document.querySelectorAll('.pro-locked').forEach(el => {
-    el.classList.remove('pro-locked');
-    el.classList.add('pro-unlocked');
-  });
-  
-  // Enable pro buttons
-  document.querySelectorAll('.pro-btn').forEach(btn => {
-    btn.disabled = false;
-    btn.classList.add('unlocked');
-  });
-  
-  console.log('🔓 Pro features unlocked!');
-}
-
-/**
- * Check if user is pro on page load
- */
-function checkProStatus() {
-  const paymentStatus = localStorage.getItem('payment_status');
-  const paymentDate = localStorage.getItem('payment_date');
-  const proStatus = document.getElementById('proStatus');
-  const proSince = document.getElementById('proSince');
-
-  if (paymentStatus === 'paid') {
-    document.body.classList.add('pro-active');
-
-    document.querySelectorAll('.pro-locked').forEach(el => {
-      el.classList.remove('pro-locked');
-      el.classList.add('pro-unlocked');
-    });
-
-    document.querySelectorAll('.pro-btn').forEach(btn => {
-      btn.disabled = false;
-      btn.classList.add('unlocked');
-    });
-
-    // Show pro status
-    if (proStatus) {
-      proStatus.style.display = 'flex';
-      if (proSince && paymentDate) {
-        proSince.textContent = 'Since: ' + new Date(paymentDate).toLocaleDateString();
-      }
-    }
-
-    console.log('✅ Pro status: Active');
-  } else {
-    console.log('❌ Pro status: Inactive');
+  if (plan) {
+    showCurrentPlan();
   }
 }
 
 /**
- * Reset form
+ * Show current plan section
  */
-function resetForm() {
-  DOM.paymentCard.style.display = 'block';
-  DOM.orderCard.style.display = 'none';
+function showCurrentPlan() {
+  const plan = localStorage.getItem('lw_plan') || 'core';
+  const planData = PLANS[plan];
+  const activated = localStorage.getItem('lw_activated');
   
-  DOM.name.value = '';
-  DOM.email.value = '';
-  DOM.phone.value = '';
-  DOM.customAmount.value = '';
-  DOM.customInput.style.display = 'none';
+  DOM.planCards.forEach(card => {
+    const cardPlan = card.dataset.plan;
+    if (cardPlan === plan) {
+      card.style.border = '3px solid #10b981';
+      card.querySelector('.plan-btn').textContent = '✓ Current Plan';
+      card.querySelector('.plan-btn').disabled = true;
+    }
+  });
   
-  DOM.amountBtns.forEach(b => b.classList.remove('active'));
-  document.querySelector('[data-amount="1000"]').classList.add('active');
-  selectedAmount = 1000;
+  DOM.currentPlan.style.display = 'block';
+  DOM.currentPlanName.textContent = planData.name;
+  DOM.planSince.textContent = activated ? new Date(activated).toLocaleDateString() : 'Today';
+}
+
+/**
+ * Setup button handlers
+ */
+function setupButtons() {
+  DOM.continueBtn.addEventListener('click', () => {
+    // Redirect to main app
+    window.location.href = '/';
+  });
   
-  updatePayButton();
-  hideStatus();
+  DOM.manageBtn.addEventListener('click', () => {
+    alert('Manage subscription coming soon!');
+  });
 }
 
 /**
@@ -363,30 +289,54 @@ function resetForm() {
  */
 function setProcessing(processing) {
   isProcessing = processing;
-  DOM.payBtn.disabled = processing;
-  DOM.payText.style.display = processing ? 'none' : 'inline';
-  DOM.payLoader.style.display = processing ? 'inline-flex' : 'none';
+  
+  DOM.planBtns.forEach(btn => {
+    if (!btn.disabled) {
+      btn.disabled = processing;
+      if (processing) {
+        btn.innerHTML = '<span class="spinner"></span> Processing...';
+      }
+    }
+  });
 }
 
 /**
  * Show status message
  */
 function showStatus(message, type) {
-  DOM.status.style.display = 'flex';
-  DOM.status.className = `status ${type}`;
-  DOM.statusText.textContent = message;
-  DOM.statusIcon.textContent = type === 'success' ? '✓' : type === 'error' ? '✕' : '⏳';
+  // Create or update status element
+  let status = document.querySelector('.payment-status');
+  if (!status) {
+    status = document.createElement('div');
+    status.className = 'payment-status';
+    document.querySelector('.pricing-container').prepend(status);
+  }
+  
+  status.style.display = 'flex';
+  status.className = `payment-status ${type}`;
+  status.innerHTML = `
+    <span class="status-icon">${type === 'success' ? '✓' : type === 'error' ? '✕' : '⏳'}</span>
+    <span class="status-text">${message}</span>
+  `;
+  
+  if (type !== 'pending') {
+    setTimeout(() => status.style.display = 'none', 3000);
+  }
 }
 
-/**
- * Hide status
- */
-function hideStatus() {
-  DOM.status.style.display = 'none';
-}
+// Initialize
+document.addEventListener('DOMContentLoaded', init);
 
-// Initialize on load
-document.addEventListener('DOMContentLoaded', () => {
-  init();
-  checkProStatus(); // Check if user is already pro
-});
+// Export for debugging
+window.likeWayPay = {
+  getCurrentPlan: () => localStorage.getItem('lw_plan'),
+  clearPlan: () => {
+    localStorage.removeItem('lw_plan');
+    localStorage.removeItem('lw_plan_name');
+    localStorage.removeItem('lw_models');
+    localStorage.removeItem('lw_responses');
+    localStorage.removeItem('lw_features');
+    localStorage.removeItem('lw_activated');
+    location.reload();
+  }
+};
