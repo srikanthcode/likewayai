@@ -86,7 +86,56 @@
           <span class="status-badge success">PAID</span>
         </div>
       </div>
+      <div class="pro-unlock-message">
+        <span class="unlock-icon">🔓</span>
+        <span>Pro Features Unlocked!</span>
+      </div>
       <button class="new-payment-btn" id="newPaymentBtn">Make Another Payment</button>
+    </div>
+
+    <!-- PRO FEATURES SECTION -->
+    <div class="pro-features-section">
+      <div class="pro-header">
+        <span class="pro-badge">⭐ PRO</span>
+        <h2>Premium Features</h2>
+      </div>
+
+      <!-- Locked Features (shown when not pro) -->
+      <div class="features-grid pro-locked" id="proFeatures">
+        <div class="feature-card locked">
+          <div class="feature-icon">🤖</div>
+          <h3>AI Assistant</h3>
+          <p>Get unlimited AI responses</p>
+          <button class="pro-btn" disabled>🔒 Locked</button>
+        </div>
+
+        <div class="feature-card locked">
+          <div class="feature-icon">📊</div>
+          <h3>Advanced Analytics</h3>
+          <p>Detailed insights & reports</p>
+          <button class="pro-btn" disabled>🔒 Locked</button>
+        </div>
+
+        <div class="feature-card locked">
+          <div class="feature-icon">🎯</div>
+          <h3>Priority Support</h3>
+          <p>24/7 dedicated support</p>
+          <button class="pro-btn" disabled>🔒 Locked</button>
+        </div>
+
+        <div class="feature-card locked">
+          <div class="feature-icon">🚀</div>
+          <h3>Early Access</h3>
+          <p>Try new features first</p>
+          <button class="pro-btn" disabled>🔒 Locked</button>
+        </div>
+      </div>
+
+      <!-- Pro Status Badge -->
+      <div class="pro-status" id="proStatus" style="display: none;">
+        <span class="status-active">✅ Pro Active</span>
+        <span class="pro-since" id="proSince"></span>
+      </div>
     </div>
 
     <!-- Security Badge -->

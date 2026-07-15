@@ -33,7 +33,9 @@ const DOM = {
   orderId: document.getElementById('orderId'),
   paymentId: document.getElementById('paymentId'),
   paidAmount: document.getElementById('paidAmount'),
-  newPaymentBtn: document.getElementById('newPaymentBtn')
+  newPaymentBtn: document.getElementById('newPaymentBtn'),
+  proStatus: document.getElementById('proStatus'),
+  proSince: document.getElementById('proSince')
 };
 
 // State
@@ -256,15 +258,83 @@ function openCheckout(order) {
 }
 
 /**
- * Show success screen
+ * Show success screen and unlock pro features
  */
 function showSuccess(orderId, paymentId) {
+  // Save payment status to localStorage
+  localStorage.setItem('payment_status', 'paid');
+  localStorage.setItem('order_id', orderId);
+  localStorage.setItem('payment_id', paymentId);
+  localStorage.setItem('payment_date', new Date().toISOString());
+  
+  // Show success card
   DOM.paymentCard.style.display = 'none';
   DOM.orderCard.style.display = 'block';
   
   DOM.orderId.textContent = orderId;
   DOM.paymentId.textContent = paymentId;
   DOM.paidAmount.textContent = `₹${new Intl.NumberFormat('en-IN').format(selectedAmount)}`;
+  
+  // Unlock pro features
+  unlockProFeatures();
+}
+
+/**
+ * Unlock pro features after payment
+ */
+function unlockProFeatures() {
+  // Add 'pro-active' class to body
+  document.body.classList.add('pro-active');
+  
+  // Unlock all pro features
+  document.querySelectorAll('.pro-locked').forEach(el => {
+    el.classList.remove('pro-locked');
+    el.classList.add('pro-unlocked');
+  });
+  
+  // Enable pro buttons
+  document.querySelectorAll('.pro-btn').forEach(btn => {
+    btn.disabled = false;
+    btn.classList.add('unlocked');
+  });
+  
+  console.log('🔓 Pro features unlocked!');
+}
+
+/**
+ * Check if user is pro on page load
+ */
+function checkProStatus() {
+  const paymentStatus = localStorage.getItem('payment_status');
+  const paymentDate = localStorage.getItem('payment_date');
+  const proStatus = document.getElementById('proStatus');
+  const proSince = document.getElementById('proSince');
+
+  if (paymentStatus === 'paid') {
+    document.body.classList.add('pro-active');
+
+    document.querySelectorAll('.pro-locked').forEach(el => {
+      el.classList.remove('pro-locked');
+      el.classList.add('pro-unlocked');
+    });
+
+    document.querySelectorAll('.pro-btn').forEach(btn => {
+      btn.disabled = false;
+      btn.classList.add('unlocked');
+    });
+
+    // Show pro status
+    if (proStatus) {
+      proStatus.style.display = 'flex';
+      if (proSince && paymentDate) {
+        proSince.textContent = 'Since: ' + new Date(paymentDate).toLocaleDateString();
+      }
+    }
+
+    console.log('✅ Pro status: Active');
+  } else {
+    console.log('❌ Pro status: Inactive');
+  }
 }
 
 /**
@@ -316,4 +386,7 @@ function hideStatus() {
 }
 
 // Initialize on load
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+  init();
+  checkProStatus(); // Check if user is already pro
+});

@@ -347,8 +347,185 @@ body {
   .amount-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .payment-card {
     padding: 20px;
   }
+}
+
+/* ============================================
+   PRO FEATURES SECTION
+   ============================================ */
+
+/* Pro Unlock Message in Success Card */
+.pro-unlock-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.unlock-icon {
+  font-size: 20px;
+}
+
+/* Pro Features Section */
+.pro-features-section {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 24px;
+  margin-top: 20px;
+}
+
+.pro-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.pro-badge {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #92400e;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pro-header h2 {
+  font-size: 18px;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+/* Features Grid */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.feature-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.feature-card.locked {
+  opacity: 0.6;
+  filter: grayscale(50%);
+}
+
+.feature-card.unlocked {
+  opacity: 1;
+  filter: none;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 2px solid #10b981;
+}
+
+.feature-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.feature-card h3 {
+  font-size: 14px;
+  color: #1a1a2e;
+  margin: 0 0 4px 0;
+}
+
+.feature-card p {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 12px 0;
+}
+
+/* Pro Buttons */
+.pro-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pro-btn:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.pro-btn.unlocked {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+}
+
+.pro-btn.unlocked:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* Pro Status */
+.pro-status {
+  margin-top: 16px;
+  padding: 12px;
+  background: #ecfdf5;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-active {
+  color: #059669;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.pro-since {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* Pro Active Body State */
+body.pro-active .pro-locked {
+  opacity: 1;
+  filter: none;
+}
+
+body.pro-active .feature-card.locked {
+  opacity: 1;
+  filter: none;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 2px solid #10b981;
+}
+
+body.pro-active .pro-btn:disabled {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  cursor: pointer;
+}
+
+/* Animations */
+@keyframes unlock {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.pro-unlocked .feature-card {
+  animation: unlock 0.5s ease;
 }
