@@ -1,134 +1,36 @@
-# Razorpay Live Payment Integration
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## ⚠️ LIVE MODE - Real Payments
+## Getting Started
 
-This integration is configured for **LIVE MODE**. Real payments will be processed!
-
----
-
-## 🚀 Quick Start
-
-### Option 1: Double-click start.bat
-Just run `start.bat` and open http://localhost:3000
-
-### Option 2: Manual Setup
+First, run the development server:
 
 ```bash
-# 1. Go to server folder
-cd razorpay-integration/server
-
-# 2. Install dependencies
-npm install
-
-# 3. Start server
-node server.js
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-### Option 3: Using npm
-```bash
-cd razorpay-integration/server
-npm start
-```
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
----
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## 📁 Project Structure
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-```
-razorpay-integration/
-├── start.bat          ← Double-click to run!
-├── .env               ← API keys (DO NOT SHARE)
-├── server/
-│   ├── server.js      ← Backend API
-│   └── package.json
-├── client/
-│   ├── index.html     ← Payment page
-│   ├── script.js      ← Payment logic
-│   └── style.css      ← Styling
-└── verify/
-    └── verify-payment.js
-```
+## Learn More
 
----
+To learn more about Next.js, take a look at the following resources:
 
-## 🔑 API Keys Configured
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-| Key | Status |
-|-----|--------|
-| RAZORPAY_KEY_ID | ✅ Live Mode |
-| RAZORPAY_KEY_SECRET | ✅ Live Mode |
-| NODE_ENV | ✅ Production |
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
----
+## Deploy on Vercel
 
-## 💳 Payment Flow
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-1. User enters amount and details
-2. Click "Pay" → Opens Razorpay popup
-3. User completes payment
-4. Payment verified server-side
-5. Success screen shown
-
----
-
-## 🧪 Test Before Going Live
-
-If you want to test first, use these test cards:
-
-| Card | Result |
-|------|--------|
-| 4111 1111 1111 1111 | ✅ Success |
-| 4000 0000 0000 0002 | ❌ Declined |
-
-**To switch to test mode:**
-1. Get test keys from Razorpay Dashboard
-2. Update `.env` file with test keys
-3. Update `RAZORPAY_KEY_ID` in `client/script.js`
-
----
-
-## 📊 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/create-order | Create new order |
-| POST | /api/verify-payment | Verify payment |
-| GET | /api/payment/:id | Get payment details |
-| GET | /api/health | Health check |
-
----
-
-## 🔒 Security
-
-- ✅ API keys stored in `.env` (not in code)
-- ✅ Payment signature verification
-- ✅ Server-side validation
-- ✅ HTTPS ready (add SSL for production)
-
----
-
-## 🚀 Production Deployment
-
-Before going live:
-
-1. **Add SSL Certificate** (HTTPS required)
-2. **Set up Webhooks** in Razorpay Dashboard
-3. **Use Environment Variables** on server
-4. **Add Database** for order storage
-5. **Enable Rate Limiting**
-
----
-
-## 📞 Support
-
-- Razorpay Docs: https://razorpay.com/docs/
-- API Reference: https://razorpay.com/docs/api/
-
----
-
-## ⚠️ Important Notes
-
-- **LIVE MODE**: Real money will be charged
-- **Keep keys secret**: Never share `.env` file
-- **Test first**: Use test mode before going live
-- **Webhooks**: Set up for production notifications
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

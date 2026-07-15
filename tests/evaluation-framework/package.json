@@ -1,0 +1,33 @@
+{
+  "name": "likeway-evaluation-framework",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated evaluation framework for Likeway AI assistant",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "evaluate": "tsx src/index.ts",
+    "evaluate:all": "tsx src/index.ts --all",
+    "evaluate:functional": "tsx src/index.ts --suite functional",
+    "evaluate:accuracy": "tsx src/index.ts --suite accuracy",
+    "evaluate:reasoning": "tsx src/index.ts --suite reasoning",
+    "evaluate:coding": "tsx src/index.ts --suite coding",
+    "evaluate:conversation": "tsx src/index.ts --suite conversation",
+    "evaluate:performance": "tsx src/index.ts --suite performance",
+    "evaluate:safety": "tsx src/index.ts --suite safety",
+    "evaluate:ux": "tsx src/index.ts --suite ux",
+    "evaluate:quick": "tsx src/index.ts --suite functional,accuracy,safety",
+    "evaluate:full": "tsx src/index.ts --all --iterations 3",
+    "report": "tsx src/index.ts --all --report-only",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
