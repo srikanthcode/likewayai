@@ -99,16 +99,31 @@
       <button class="modal-close" id="closeModal">&times;</button>
       <h2>Upgrade Your Plan</h2>
       <p>Unlock 200+ response patterns</p>
-      <div class="modal-plans">
-        <button class="modal-plan-btn" data-plan="go" data-amount="299">
-          Go - ₹299/mo
-        </button>
-        <button class="modal-plan-btn" data-plan="plus" data-amount="799">
-          Plus - ₹799/mo
-        </button>
-        <button class="modal-plan-btn" data-plan="pro" data-amount="1999">
-          Pro - ₹1,999/mo
-        </button>
+      
+      <!-- Currency Selector -->
+      <div class="currency-selector">
+        <label>Currency:</label>
+        <select id="currencySelect">
+          <option value="INR">₹ INR - Indian Rupee</option>
+          <option value="USD">$ USD - US Dollar</option>
+          <option value="EUR">€ EUR - Euro</option>
+          <option value="GBP">£ GBP - British Pound</option>
+          <option value="AED">د.إ AED - UAE Dirham</option>
+          <option value="SGD">S$ SGD - Singapore Dollar</option>
+          <option value="AUD">A$ AUD - Australian Dollar</option>
+          <option value="CAD">C$ CAD - Canadian Dollar</option>
+          <option value="MYR">RM MYR - Malaysian Ringgit</option>
+          <option value="PHP">₱ PHP - Philippine Peso</option>
+          <option value="BRL">R$ BRL - Brazilian Real</option>
+          <option value="JPY">¥ JPY - Japanese Yen</option>
+          <option value="KRW">₩ KRW - Korean Won</option>
+          <option value="THB">฿ THB - Thai Baht</option>
+          <option value="IDR">Rp IDR - Indonesian Rupiah</option>
+        </select>
+      </div>
+
+      <div class="modal-plans" id="modalPlans">
+        <!-- Plans will be dynamically loaded based on currency -->
       </div>
     </div>
   </div>

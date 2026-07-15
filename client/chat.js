@@ -6,7 +6,25 @@
 const CONFIG = {
   API_URL: '/api/razorpay',
   RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf',
-  COMPANY_NAME: 'LikeWay AI'
+  COMPANY_NAME: 'LikeWay AI',
+  // Multi-currency support
+  CURRENCIES: {
+    INR: { symbol: '₹', name: 'Indian Rupee', country: 'India' },
+    USD: { symbol: '$', name: 'US Dollar', country: 'United States' },
+    EUR: { symbol: '€', name: 'Euro', country: 'Europe' },
+    GBP: { symbol: '£', name: 'British Pound', country: 'United Kingdom' },
+    AED: { symbol: 'د.إ', name: 'UAE Dirham', country: 'UAE' },
+    SGD: { symbol: 'S$', name: 'Singapore Dollar', country: 'Singapore' },
+    AUD: { symbol: 'A$', name: 'Australian Dollar', country: 'Australia' },
+    CAD: { symbol: 'C$', name: 'Canadian Dollar', country: 'Canada' },
+    MYR: { symbol: 'RM', name: 'Malaysian Ringgit', country: 'Malaysia' },
+    PHP: { symbol: '₱', name: 'Philippine Peso', country: 'Philippines' },
+    BRL: { symbol: 'R$', name: 'Brazilian Real', country: 'Brazil' },
+    JPY: { symbol: '¥', name: 'Japanese Yen', country: 'Japan' },
+    KRW: { symbol: '₩', name: 'Korean Won', country: 'South Korea' },
+    THB: { symbol: '฿', name: 'Thai Baht', country: 'Thailand' },
+    IDR: { symbol: 'Rp', name: 'Indonesian Rupiah', country: 'Indonesia' }
+  }
 };
 
 // DOM Elements
@@ -73,11 +91,18 @@ function setupEventListeners() {
   // Upgrade modal
   DOM.upgradeBtn.addEventListener('click', () => {
     DOM.upgradeModal.style.display = 'flex';
+    updateModalPlans(); // Update plans when modal opens
   });
 
   DOM.closeModal.addEventListener('click', () => {
     DOM.upgradeModal.style.display = 'none';
   });
+
+  // Currency selector
+  const currencySelect = document.getElementById('currencySelect');
+  if (currencySelect) {
+    currencySelect.addEventListener('change', updateModalPlans);
+  }
 
   // Modal plan buttons
   document.querySelectorAll('.modal-plan-btn').forEach(btn => {
@@ -345,15 +370,66 @@ function checkUserPlan() {
 }
 
 /**
+ * Get user's currency based on location
+ */
+async function getUserCurrency() {
+  try {
+    // Try to detect currency from browser timezone
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    const currencyMap = {
+      'Asia/Kolkata': 'INR',
+      'Asia/Calcutta': 'INR',
+      'America/New_York': 'USD',
+      'America/Los_Angeles': 'USD',
+      'America/Chicago': 'USD',
+      'Europe/London': 'GBP',
+      'Europe/Paris': 'EUR',
+      'Europe/Berlin': 'EUR',
+      'Asia/Dubai': 'AED',
+      'Asia/Singapore': 'SGD',
+      'Australia/Sydney': 'AUD',
+      'America/Toronto': 'CAD',
+      'Asia/Kuala_Lumpur': 'MYR',
+      'Asia/Manila': 'PHP',
+      'America/Sao_Paulo': 'BRL',
+      'Asia/Tokyo': 'JPY',
+      'Asia/Seoul': 'KRW',
+      'Asia/Bangkok': 'THB',
+      'Asia/Jakarta': 'IDR'
+    };
+
+    return currencyMap[timezone] || 'INR';
+  } catch {
+    return 'INR';
+  }
+}
+
+/**
+ * Format price with currency symbol
+ */
+function formatPrice(amount, currency = 'INR') {
+  const curr = CONFIG.CURRENCIES[currency] || CONFIG.CURRENCIES.INR;
+  return `${curr.symbol}${amount.toLocaleString()}`;
+}
+
+/**
  * Process payment
  */
-async function processPayment(plan, amount) {
+async function processPayment(plan, amount, currency = 'INR') {
   try {
-    // Create order
+    // Detect user's currency
+    const userCurrency = await getUserCurrency();
+    const selectedCurrency = currency || userCurrency;
+
+    // Create order with user's currency
     const orderRes = await fetch(`${CONFIG.API_URL}?method=create-order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, currency: 'INR' })
+      body: JSON.stringify({ 
+        amount, 
+        currency: selectedCurrency 
+      })
     });
 
     const orderData = await orderRes.json();
@@ -362,8 +438,8 @@ async function processPayment(plan, amount) {
       throw new Error(orderData.error);
     }
 
-    // Open Razorpay
-    const paymentData = await openCheckout(orderData.order, plan);
+    // Open Razorpay with currency
+    const paymentData = await openCheckout(orderData.order, plan, selectedCurrency);
 
     // Verify payment
     const verifyRes = await fetch(`${CONFIG.API_URL}?method=verify-payment`, {
@@ -379,15 +455,16 @@ async function processPayment(plan, amount) {
     const verifyData = await verifyRes.json();
 
     if (verifyData.success) {
-      // Save plan
+      // Save plan with currency info
       localStorage.setItem('lw_plan', plan);
       localStorage.setItem('lw_plan_name', plan.charAt(0).toUpperCase() + plan.slice(1));
+      localStorage.setItem('lw_currency', selectedCurrency);
       localStorage.setItem('lw_activated', new Date().toISOString());
       
       // Close modal and refresh
       DOM.upgradeModal.style.display = 'none';
       checkUserPlan();
-      alert('Plan activated successfully!');
+      alert(`${plan.charAt(0).toUpperCase() + plan.slice(1)} plan activated successfully!`);
     }
 
   } catch (error) {
@@ -399,18 +476,47 @@ async function processPayment(plan, amount) {
 /**
  * Open Razorpay checkout
  */
-function openCheckout(order, plan) {
+function openCheckout(order, plan, currency = 'INR') {
   return new Promise((resolve, reject) => {
+    const curr = CONFIG.CURRENCIES[currency] || CONFIG.CURRENCIES.INR;
+    
     const options = {
       key: CONFIG.RAZORPAY_KEY_ID,
       amount: order.amount,
-      currency: order.currency,
+      currency: currency,
       name: CONFIG.COMPANY_NAME,
-      description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
+      description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - ${curr.symbol}${(order.amount / 100).toLocaleString()}`,
       order_id: order.id,
       handler: (response) => resolve(response),
+      prefill: {
+        name: '',
+        email: '',
+        contact: ''
+      },
       theme: { color: '#10a37f' },
-      modal: { ondismiss: () => reject(new Error('Payment cancelled')) }
+      modal: { 
+        ondismiss: () => reject(new Error('Payment cancelled')),
+        confirm_close: true
+      },
+      config: {
+        display: {
+          blocks: {
+            utib: {
+              name: `Pay using ${currency}`,
+              instruments: [
+                { method: 'upi' },
+                { method: 'card' },
+                { method: 'netbanking' },
+                { method: 'wallet' }
+              ]
+            }
+          },
+          sequence: 1,
+          preferences: {
+            show_default_blocks: true
+          }
+        }
+      }
     };
 
     const rzp = new Razorpay(options);
@@ -418,6 +524,74 @@ function openCheckout(order, plan) {
       reject(new Error(response.error.description || 'Payment failed'));
     });
     rzp.open();
+  });
+}
+
+/**
+ * Update modal plans based on selected currency
+ */
+function updateModalPlans() {
+  const currencySelect = document.getElementById('currencySelect');
+  const modalPlans = document.getElementById('modalPlans');
+  
+  if (!currencySelect || !modalPlans) return;
+  
+  const currency = currencySelect.value;
+  const curr = CONFIG.CURRENCIES[currency] || CONFIG.CURRENCIES.INR;
+  
+  // Price conversion rates (approximate)
+  const rates = {
+    INR: 1,
+    USD: 0.012,
+    EUR: 0.011,
+    GBP: 0.0095,
+    AED: 0.044,
+    SGD: 0.016,
+    AUD: 0.018,
+    CAD: 0.016,
+    MYR: 0.056,
+    PHP: 0.67,
+    BRL: 0.06,
+    JPY: 1.8,
+    KRW: 16,
+    THB: 0.42,
+    IDR: 190
+  };
+  
+  const basePrices = {
+    go: 299,
+    plus: 799,
+    pro: 1999
+  };
+  
+  // Calculate prices in selected currency
+  const prices = {
+    go: Math.round(basePrices.go * rates[currency]),
+    plus: Math.round(basePrices.plus * rates[currency]),
+    pro: Math.round(basePrices.pro * rates[currency])
+  };
+  
+  // Update modal HTML
+  modalPlans.innerHTML = `
+    <button class="modal-plan-btn" data-plan="go" data-amount="${prices.go}" data-currency="${currency}">
+      Go - ${curr.symbol}${prices.go.toLocaleString()}/mo
+    </button>
+    <button class="modal-plan-btn" data-plan="plus" data-amount="${prices.plus}" data-currency="${currency}">
+      Plus - ${curr.symbol}${prices.plus.toLocaleString()}/mo
+    </button>
+    <button class="modal-plan-btn" data-plan="pro" data-amount="${prices.pro}" data-currency="${currency}">
+      Pro - ${curr.symbol}${prices.pro.toLocaleString()}/mo
+    </button>
+  `;
+  
+  // Reattach event listeners
+  modalPlans.querySelectorAll('.modal-plan-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const plan = btn.dataset.plan;
+      const amount = parseInt(btn.dataset.amount);
+      const curr = btn.dataset.currency;
+      processPayment(plan, amount, curr);
+    });
   });
 }
 
