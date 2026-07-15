@@ -3,6 +3,16 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
+  "routes": [
+    {
+      "src": "/api/razorpay",
+      "dest": "/api/razorpay.js"
+    },
+    {
+      "src": "/client/(.*)",
+      "dest": "/client/$1"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -22,10 +32,6 @@
         {
           "key": "Referrer-Policy",
           "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=()"
         }
       ]
     }

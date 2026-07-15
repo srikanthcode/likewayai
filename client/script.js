@@ -4,12 +4,12 @@
  * ⚠️ LIVE MODE - Real payments will be processed!
  */
 
-// Configuration - LIVE MODE
+// Configuration - LIVE MODE (Vercel)
 const CONFIG = {
-  API_URL: 'http://localhost:3000/api',
-  RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf', // LIVE KEY
+  API_URL: '/api/razorpay',
+  RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf',
   CURRENCY: 'INR',
-  COMPANY_NAME: 'Your Business'
+  COMPANY_NAME: 'LikeWay AI'
 };
 
 // DOM Elements
