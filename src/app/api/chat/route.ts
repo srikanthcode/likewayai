@@ -18,7 +18,8 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
-import { runBrowserEngine } from "@/lib/automation/browser-engine";
+// Lazy import — browser-engine has heavy deps that crash on Vercel serverless
+let runBrowserEngine: any = null;
 
 export const maxDuration = 120;
 
@@ -179,6 +180,10 @@ export async function POST(req: NextRequest) {
     // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
     const isBrowserAgent = mode === "Browser";
     if (isBrowserAgent) {
+      if (!runBrowserEngine) {
+        const mod = await import("@/lib/automation/browser-engine");
+        runBrowserEngine = mod.runBrowserEngine;
+      }
       const browserModelId = modelId || "meta-llama/llama-3.3-70b-instruct";
       const browserProvider = getProviderForModel(browserModelId);
 
@@ -249,6 +254,10 @@ export async function POST(req: NextRequest) {
     // ── Automation Mode (v6 — uses unified engine) ───────────────────
     const isAutomation = mode === "Automation";
     if (isAutomation) {
+      if (!runBrowserEngine) {
+        const mod = await import("@/lib/automation/browser-engine");
+        runBrowserEngine = mod.runBrowserEngine;
+      }
       const automationModelId = modelId || (MODELS.find(m => m.fast) || MODELS[0]).id;
       const automationProvider = getProviderForModel(automationModelId);
 
