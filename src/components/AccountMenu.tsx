@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import {
-  User, Settings, LogOut, Sparkles, Folder, CreditCard, HelpCircle,
+  User, Settings, LogOut, Folder, CreditCard, HelpCircle,
   Monitor, Sun, Moon, ChevronRight, Palette, Cpu, Briefcase, BarChart3,
   BookOpen, Code, MessageSquare, Zap, Shield, Check,
 } from "lucide-react";
@@ -13,6 +13,8 @@ import { useAuth, UserInfo } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { getCurrentPlan, PLANS, PlanType } from "@/lib/plans";
+
+import { useToast } from "@/components/Toast";
 
 type ThemeMode = "dark" | "light" | "system";
 
@@ -34,14 +36,14 @@ interface MenuItem {
 
 const quickActions: QuickAction[] = [
   { id: "workspace", icon: Briefcase, title: "Workspace", desc: "Projects & dashboards", href: "/account?tab=workspace" },
-  { id: "personalization", icon: Palette, title: "AI Personalization", desc: "Memory, style & instructions", href: "/account?tab=personalization" },
+  { id: "personalization", icon: Palette, title: "Personalization", desc: "Memory, style & instructions", href: "/account?tab=personalization" },
   { id: "usage", icon: BarChart3, title: "Usage", desc: "Tokens, requests & storage", href: "/account?tab=usage" },
 ];
 
 const menuItems: MenuItem[] = [
   { id: "profile", icon: User, label: "Profile", href: "/account" },
   { id: "settings", icon: Settings, label: "Settings", href: "/account?tab=settings" },
-  { id: "models", icon: Cpu, label: "AI Models", href: "/account?tab=models" },
+  { id: "models", icon: Cpu, label: "Models", href: "/account?tab=models" },
   { id: "projects", icon: Folder, label: "Projects", href: "/account?tab=projects" },
   { id: "billing", icon: CreditCard, label: "Billing", href: "/account?tab=billing" },
   { id: "sessions", icon: Shield, label: "Manage Sessions", href: "/account/sessions" },
@@ -340,13 +342,12 @@ export default function AccountMenu() {
                           href="/account?tab=billing"
                           onClick={closeMenu}
                           className={cn(
-                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold border transition-all duration-200",
+                            "inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border transition-all duration-200",
                             "bg-gradient-to-r text-white border-transparent",
                             planDisplay.color,
                             "hover:opacity-90"
                           )}
                         >
-                          <Sparkles size={8} />
                           {planDisplay.label}
                         </Link>
                         {isAuthenticated && (

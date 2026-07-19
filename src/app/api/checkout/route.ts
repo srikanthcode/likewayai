@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { PLANS, PlanType } from "@/lib/plans";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, planId } = await req.json();
+    const { planId } = await req.json();
 
-    if (!userId || !planId) {
-      return NextResponse.json({ error: "Missing userId or planId" }, { status: 400 });
+    if (!planId) {
+      return NextResponse.json({ error: "Missing planId" }, { status: 400 });
     }
+
+    // Get userId from session cookie, not client body
+    const tokens = getTokenFromCookies(req);
+    const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
 
     const plan = PLANS[planId as PlanType];
 
@@ -43,8 +52,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ url: session.url });
     } catch (stripeErr: any) {
       console.warn("Stripe creation failed, using sandbox fallback:", stripeErr);
-      return NextResponse.json({ 
-        url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id=mock_stripe_${Math.random().toString(36).substring(2, 11)}&planId=${planId}` 
+      return NextResponse.json({
+        url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id=mock_stripe_${Math.random().toString(36).substring(2, 11)}&planId=${planId}`
       });
     }
   } catch (error: any) {

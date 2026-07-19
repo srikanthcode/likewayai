@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, X, RotateCcw, Award, Brain, Zap, BookOpen, ChevronRight, Trophy, Star, Mic, Send, Keyboard, Loader2, Sparkles } from "lucide-react";
 import { getCourseById, Course, Module, Question, Difficulty } from "@/lib/learn/subjects";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 
 type PracticeState = "select" | "practice" | "result" | "loading";
 
@@ -19,6 +20,7 @@ export default function PracticePage() {
 }
 
 function PracticeContent() {
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const courseId = searchParams.get("course");
 
@@ -129,7 +131,7 @@ function PracticeContent() {
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Voice input is not supported in this browser.");
+      toast("Voice input is not supported in this browser.", "warning");
       return;
     }
 

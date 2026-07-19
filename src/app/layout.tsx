@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthInit from "@/components/auth-init";
 import { AuthProvider } from "@/components/AuthProvider";
+import { ToastProvider } from "@/components/Toast";
+
 
 const SITE_URL = "https://www.likeway.in";
 
@@ -171,7 +173,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
         <AuthProvider>
           <AuthInit />
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

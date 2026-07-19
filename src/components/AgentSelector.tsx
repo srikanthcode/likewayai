@@ -74,12 +74,12 @@ export default function AgentSelector({ selectedAgentId, onSelect, currentPlan }
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-all hover:bg-white/10 border border-white/10 hover:border-white/20"
+        className="h-7 px-2 rounded-full flex items-center gap-1.5 text-[10px] font-semibold border border-white/10 hover:border-white/20 transition-all duration-200"
         style={{ borderColor: `${selectedAgent.color}30` }}
       >
-        <span className="text-base">{selectedAgent.icon}</span>
-        <span className="hidden sm:inline">{selectedAgent.name}</span>
-        <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        <span className="text-xs">{selectedAgent.icon}</span>
+        <span className="hidden sm:inline max-w-[80px] truncate">{selectedAgent.name}</span>
+        <ChevronDown size={10} className={`text-gray-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {/* Dropdown */}

@@ -51,7 +51,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import ReactMarkdown from "react-markdown";
 import { MODELS } from "@/lib/models";
-import { PLANS, getCurrentPlan, PlanType, isFeatureUnlocked } from "@/lib/plans";
+import { PLANS, getCurrentPlan, PlanType, isFeatureUnlocked, isBrowserTrialActive, getBrowserAutomationRemaining, startBrowserTrial } from "@/lib/plans";
 import { AgentMode } from "@/lib/agents";
 import ArtifactPanel, { ArtifactType } from "@/components/ArtifactPanel";
 import PersonaManager from "@/components/PersonaManager";
@@ -59,12 +59,14 @@ import CommandPalette from "@/components/CommandPalette";
 import CodeBlock from "@/components/CodeBlock";
 import VoiceOverlay from "@/components/VoiceOverlay";
 import VoiceAssistant from "@/components/VoiceAssistant";
+import PremiumVoiceInput from "@/components/PremiumVoiceInput";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import AgentSelector from "@/components/AgentSelector";
 import PricingModal from "@/components/PricingModal";
 import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
 import AccountMenu from "@/components/AccountMenu";
 import SlashCommandMenu from "@/components/SlashCommandMenu";
+import SupportModal from "@/components/SupportModal";
 import { cn } from "@/lib/utils";
 import { type SlashCommand } from "@/lib/commands";
 import {
@@ -522,6 +524,24 @@ export default function ChatPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showVoiceInput, setShowVoiceInput] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [isBrowserMode, setIsBrowserMode] = useState(false);
+  const [isAutomationMode, setIsAutomationMode] = useState(false);
+  const toggleBrowserMode = useCallback(() => {
+    setIsBrowserMode(p => {
+      const next = !p;
+      setSelectedMode(next ? "Browser" : "General");
+      return next;
+    });
+  }, []);
+  const toggleAutomationMode = useCallback(() => {
+    setIsAutomationMode(p => {
+      const next = !p;
+      setSelectedMode(next ? "Automation" : "General");
+      return next;
+    });
+  }, []);
   const recognitionRef = useRef<any>(null);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
@@ -1142,6 +1162,8 @@ export default function ChatPage() {
     voiceV2: false
   });
   const [currentPlan, setCurrentPlanState] = useState<PlanType>("Core");
+  const [showBrowserTrialBanner, setShowBrowserTrialBanner] = useState(false);
+  const [browserTrialInfo, setBrowserTrialInfo] = useState<{ remaining: number; trialDaysLeft?: number }>({ remaining: 0 });
 
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -1150,6 +1172,19 @@ export default function ChatPage() {
     const handlePlanUpdate = () => setCurrentPlanState(getCurrentPlan());
     window.addEventListener("plan_updated", handlePlanUpdate);
     return () => window.removeEventListener("plan_updated", handlePlanUpdate);
+  }, []);
+
+  // Check browser automation trial status
+  useEffect(() => {
+    const plan = getCurrentPlan();
+    if (plan === "Core") {
+      const info = getBrowserAutomationRemaining();
+      setBrowserTrialInfo(info);
+      if (info.reason === "trial" && info.trialDaysLeft && info.trialDaysLeft > 0) {
+        setShowBrowserTrialBanner(true);
+        startBrowserTrial(); // Ensure trial is tracked
+      }
+    }
   }, []);
 
   // Dynamically adjust input textbox height based on content size
@@ -1373,9 +1408,39 @@ export default function ChatPage() {
     ];
 
     try {
+      // Check browser automation limits before sending
+      if (selectedMode === "Browser" || selectedMode === "Automation") {
+        const browserInfo = getBrowserAutomationRemaining();
+        if (!browserInfo.allowed) {
+          const messages: Record<string, string> = {
+            trial_expired: "Your 2-day free browser automation trial has ended. Upgrade to Go (50/day), Plus, or Pro (unlimited) to continue.",
+            quota_exceeded: "You've used all your browser automation requests for today. Upgrade for more or try again tomorrow.",
+            no_access: "Browser automation requires a paid plan. Upgrade to Go, Plus, or Pro.",
+          };
+          setMessages(prev => {
+            const copy = [...prev];
+            copy[copy.length - 1] = {
+              ...copy[copy.length - 1],
+              role: "assistant",
+              content: messages[browserInfo.reason] || "Browser automation not available.",
+              status: 'done',
+              animationPlayed: true
+            };
+            return copy;
+          });
+          return;
+        }
+        // Track usage
+        const { trackBrowserAutomationUse } = await import("@/lib/plans");
+        trackBrowserAutomationUse();
+      }
+
       const abortController = new AbortController();
       abortRef.current = abortController;
-      const timeoutId = setTimeout(() => abortController.abort(), 60000);
+      // Browser/automation mode needs longer timeout (up to 5 min)
+      const isLongRunningMode = selectedMode === "Browser" || selectedMode === "Automation";
+      const timeoutMs = isLongRunningMode ? 300000 : 60000;
+      const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
       let res: Response | null = null;
 
@@ -1422,73 +1487,80 @@ export default function ChatPage() {
       bufferRef.current = "";
 
       let responseBuffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        responseBuffer += decoder.decode(value, { stream: true });
-        
-        let newlineIndex;
-        while ((newlineIndex = responseBuffer.indexOf("\n")) !== -1) {
-          const line = responseBuffer.slice(0, newlineIndex).trim();
-          responseBuffer = responseBuffer.slice(newlineIndex + 1);
-          
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              if (!didFinalize) {
-                didFinalize = true;
-                // Replace streaming message with final done message
-                setMessages(prev => {
-                  const copy = [...prev];
-                  const lastIdx = copy.length - 1;
-                  if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                    copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
-                  } else {
-                    copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
-                  }
-                  return copy;
-                });
-                setIsStreaming(false);
-                bufferRef.current = "";
-                setFiles([]);
-                setFilePreviews([]);
-                fetchRecentConversations();
-                // Cache conversation in localStorage for offline/history fallback
-                try {
-                  const cached = JSON.parse(localStorage.getItem("likeway_recent_chats") || "[]");
-                  const idx = cached.findIndex((c: any) => c._id === conversationIdToUse);
-                  const entry = { _id: conversationIdToUse, title: userMessage.substring(0, 40), updatedAt: new Date() };
-                  if (idx >= 0) cached[idx] = entry; else cached.unshift(entry);
-                  localStorage.setItem("likeway_recent_chats", JSON.stringify(cached.slice(0, 50)));
-                } catch {}
-              }
-              break;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              const delta = parsed.choices?.[0]?.delta?.content || "";
-              if (delta) {
-                fullContent += delta;
-                bufferRef.current += delta;
-                if (!streamingStarted) {
-                  streamingStarted = true;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          responseBuffer += decoder.decode(value, { stream: true });
+
+          let newlineIndex;
+          while ((newlineIndex = responseBuffer.indexOf("\n")) !== -1) {
+            const line = responseBuffer.slice(0, newlineIndex).trim();
+            responseBuffer = responseBuffer.slice(newlineIndex + 1);
+
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data === "[DONE]") {
+                if (!didFinalize) {
+                  didFinalize = true;
+                  setMessages(prev => {
+                    const copy = [...prev];
+                    const lastIdx = copy.length - 1;
+                    if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+                      copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
+                    } else {
+                      copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
+                    }
+                    return copy;
+                  });
+                  setIsStreaming(false);
+                  bufferRef.current = "";
+                  setFiles([]);
+                  setFilePreviews([]);
+                  fetchRecentConversations();
+                  try {
+                    const cached = JSON.parse(localStorage.getItem("likeway_recent_chats") || "[]");
+                    const idx = cached.findIndex((c: any) => c._id === conversationIdToUse);
+                    const entry = { _id: conversationIdToUse, title: userMessage.substring(0, 40), updatedAt: new Date() };
+                    if (idx >= 0) cached[idx] = entry; else cached.unshift(entry);
+                    localStorage.setItem("likeway_recent_chats", JSON.stringify(cached.slice(0, 50)));
+                  } catch {}
                 }
-                setMessages(prev => {
-                  const copy = [...prev];
-                  const lastIdx = copy.length - 1;
-                  if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                    copy[lastIdx] = { 
-                      ...copy[lastIdx],
-                      role: "assistant", 
-                      content: fullContent, 
-                      status: 'streaming' 
-                    };
-                  }
-                  return copy;
-                });
+                break;
               }
-            } catch {}
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta?.content || "";
+                if (delta) {
+                  fullContent += delta;
+                  bufferRef.current += delta;
+                  if (!streamingStarted) {
+                    streamingStarted = true;
+                  }
+                  setMessages(prev => {
+                    const copy = [...prev];
+                    const lastIdx = copy.length - 1;
+                    if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+                      copy[lastIdx] = {
+                        ...copy[lastIdx],
+                        role: "assistant",
+                        content: fullContent,
+                        status: 'streaming'
+                      };
+                    }
+                    return copy;
+                  });
+                }
+              } catch {}
+            }
           }
+        }
+      } catch (readErr: any) {
+        // Catch reader errors (abort, network, etc.)
+        if (readErr.name === "AbortError" || readErr.message?.includes("aborted") || readErr.message?.includes("BodyStreamBuffer")) {
+          console.log("Stream reader aborted");
+        } else {
+          console.error("Stream read error:", readErr);
         }
       }
 
@@ -1509,13 +1581,26 @@ export default function ChatPage() {
         fetchRecentConversations();
       }
     } catch (err: any) {
-      console.error("Frontend Send Error:", err);
-      setIsStreaming(false);
-      setMessages(prev => {
-        const copy = [...prev];
-        copy[copy.length - 1] = { ...copy[copy.length - 1], role: "assistant", content: "All models are currently unavailable. Try again in a moment.", status: 'done', animationPlayed: true };
-        return copy;
-      });
+      // Gracefully handle abort (user clicked stop or timeout)
+      if (err.name === "AbortError" || err.message?.includes("aborted") || err.message?.includes("BodyStreamBuffer")) {
+        console.log("Request aborted by user or timeout");
+        setMessages(prev => {
+          const copy = [...prev];
+          const lastIdx = copy.length - 1;
+          if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+            const content = copy[lastIdx].content || "Request was stopped.";
+            copy[lastIdx] = { ...copy[lastIdx], content, status: 'done', animationPlayed: true };
+          }
+          return copy;
+        });
+      } else {
+        console.error("Frontend Send Error:", err);
+        setMessages(prev => {
+          const copy = [...prev];
+          copy[copy.length - 1] = { ...copy[copy.length - 1], role: "assistant", content: "All models are currently unavailable. Try again in a moment.", status: 'done', animationPlayed: true };
+          return copy;
+        });
+      }
     } finally {
       isSendingRef.current = false;
       setIsLoading(false);
@@ -1619,7 +1704,10 @@ export default function ChatPage() {
     try {
       const abortController = new AbortController();
       abortRef.current = abortController;
-      const timeoutId = setTimeout(() => abortController.abort(), 60000);
+      // Browser/automation mode needs longer timeout (up to 5 min)
+      const isLongRunningMode = selectedMode === "Browser" || selectedMode === "Automation";
+      const timeoutMs = isLongRunningMode ? 300000 : 60000;
+      const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
       let res: Response | null = null;
       for (const attempt of FALLBACK_MODELS) {
@@ -1730,13 +1818,26 @@ export default function ChatPage() {
         setIsStreaming(false);
       }
     } catch (err: any) {
-      console.error("Frontend Edit Submit Error:", err);
-      setIsStreaming(false);
-      setMessages(prev => {
-        const copy = [...prev];
-        copy[copy.length - 1] = { ...copy[copy.length - 1], role: "assistant", content: "All models are currently unavailable. Try again in a moment.", status: 'done', animationPlayed: true };
-        return copy;
-      });
+      // Gracefully handle abort
+      if (err.name === "AbortError" || err.message?.includes("aborted") || err.message?.includes("BodyStreamBuffer")) {
+        console.log("Edit request aborted");
+        setMessages(prev => {
+          const copy = [...prev];
+          const lastIdx = copy.length - 1;
+          if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+            const content = copy[lastIdx].content || "Request was stopped.";
+            copy[lastIdx] = { ...copy[lastIdx], content, status: 'done', animationPlayed: true };
+          }
+          return copy;
+        });
+      } else {
+        console.error("Frontend Edit Submit Error:", err);
+        setMessages(prev => {
+          const copy = [...prev];
+          copy[copy.length - 1] = { ...copy[copy.length - 1], role: "assistant", content: "All models are currently unavailable. Try again in a moment.", status: 'done', animationPlayed: true };
+          return copy;
+        });
+      }
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
@@ -1758,11 +1859,13 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Sidebar — overlay on mobile, fixed on desktop */}
+      {/* Sidebar — overlay on mobile, pushes content on desktop (ChatGPT-style) */}
       <aside className={cn(
-        "z-[70] flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out overflow-hidden",
+        "flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out overflow-hidden",
         isSidebarOpen ? "w-64" : "w-0",
-        "fixed inset-y-0 left-0",
+        /* Mobile: fixed overlay; Desktop: in-flow flex child that pushes main */
+        "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-[70]",
+        "md:relative",
         theme === 'dark' ? "bg-[#171717] text-gray-300" : "bg-[#F7F7F8] border-r border-[#E5E5E5] text-gray-700"
       )}>
         <div className="w-64 flex flex-col h-full p-4 flex-shrink-0">
@@ -1977,6 +2080,16 @@ export default function ChatPage() {
               Upgrade to Pro
             </button>
           )}
+          <button
+            onClick={() => setShowSupportModal(true)}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium",
+              theme === 'dark' ? "hover:bg-white/5 text-gray-400" : "hover:bg-black/5 text-gray-500"
+            )}
+          >
+            <MessageSquare size={16} />
+            Support
+          </button>
           <AccountMenu />
         </div>
         </div>
@@ -1988,16 +2101,19 @@ export default function ChatPage() {
         theme === 'dark' ? "bg-[#212121] text-white" : "bg-[#FFFFFF] text-[#1a1a1a]"
       )}>
         {/* ChatGPT-style 56px header */}
-        <header className="chat-header h-14 sm:h-12 flex-shrink-0 flex items-center justify-between px-3 sm:px-4 z-50 transition-colors duration-300 safe-area-top">
+        <header className="chat-header h-12 sm:h-11 flex-shrink-0 flex items-center justify-between px-3 sm:px-4 z-50 transition-colors duration-300 safe-area-top">
           <div className="flex items-center gap-2 md:gap-3">
-            {!isSidebarOpen && (
-              <button onClick={() => setIsSidebarOpen(true)} className={cn("chat-menu-btn rounded-lg transition-all", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Open Sidebar">
-                <PanelLeft size={20} />
-              </button>
-            )}
-            {/* Model & Agent selectors — hidden when sidebar is open */}
-            {!isSidebarOpen && (
-              <>
+            {/* Hamburger: always on desktop; on mobile, hide when sidebar overlay is open */}
+            <button onClick={() => setIsSidebarOpen(true)} className={cn(
+              "chat-menu-btn rounded-lg transition-all",
+              isSidebarOpen && "max-md:hidden",
+              theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
+            )} title="Open Sidebar">
+              <PanelLeft size={20} />
+            </button>
+            {/* Model & Agent selectors — always on desktop; on mobile, hide when sidebar is open */}
+            <div className={cn(isSidebarOpen && "max-md:hidden")}>
+              <div className="flex items-center gap-2 md:gap-3">
                 <div className={cn(
                   "px-2.5 py-1 rounded-lg border flex items-center gap-2 cursor-pointer transition-all backdrop-blur-md",
                   theme === 'dark' ? "bg-[#212121]/50 border-white/10 text-gray-300 hover:bg-[#212121]/80" : "bg-white/50 border-black/10 text-gray-700 hover:bg-white/80"
@@ -2027,8 +2143,8 @@ export default function ChatPage() {
                   }}
                   currentPlan={currentPlan}
                 />
-              </>
-            )}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -2626,10 +2742,9 @@ export default function ChatPage() {
           </section>
         </div>
 
-        {/* Input Form — ChatGPT-style responsive layout */}
-        <div className={cn("chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom", theme === 'dark' ? "bg-[#212121] border-t border-white/5" : "bg-[#FFFFFF] border-t border-black/5")}>
+        {/* ── Input Area ───────────────────────────────────── */}
+        <div className="chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom">
           <div className="chat-container">
-
             <form
               onSubmit={handleSend}
               onDragOver={handleDragOver}
@@ -2638,88 +2753,121 @@ export default function ChatPage() {
               suppressHydrationWarning
               className="relative group max-w-3xl mx-auto"
             >
-                {/* Focus Glow Effect */}
-                <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 blur-xl rounded-[32px] opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
-
-                {/* Slash Command Menu */}
-                <SlashCommandMenu
-                  isOpen={isSlashMenuOpen}
-                  query={slashQuery}
-                  theme={theme}
-                  onClose={() => { setIsSlashMenuOpen(false); setSlashQuery(""); }}
-                  onSelect={(cmd: SlashCommand) => {
-                    if (cmd.needsInput) {
-                      // Keep the /command text, user types after it
-                      setInput(cmd.label + " ");
+              {/* Slash Command Menu */}
+              <SlashCommandMenu
+                isOpen={isSlashMenuOpen}
+                query={slashQuery}
+                theme={theme}
+                onClose={() => { setIsSlashMenuOpen(false); setSlashQuery(""); }}
+                onSelect={(cmd: SlashCommand) => {
+                  if (cmd.needsInput) {
+                    setInput(cmd.label + " ");
+                  } else {
+                    setInput(cmd.label);
+                    if (cmd.id === "new") {
+                      setActiveConversationId(null);
+                      setMessages([]);
+                    } else if (cmd.id === "help") {
+                      setInput("Show me all available slash commands");
+                    } else if (cmd.id === "think") {
+                      setIsExtendedThinking(true);
+                      setInput("Enable extended thinking mode for this conversation");
+                    } else if (cmd.id === "code") {
+                      setSelectedMode("Architect");
+                      setInput("");
+                    } else if (cmd.id === "deepresearch" || cmd.id === "research") {
+                      setSelectedMode("Researcher");
+                      setInput("");
+                    } else if (cmd.id === "settings") {
+                      setIsSettingsOpen(true);
+                      setInput("");
+                    } else if (cmd.id === "models") {
+                      setIsInputModelMenuOpen(true);
+                      setInput("");
                     } else {
-                      // Execute immediately - set input and send
-                      setInput(cmd.label);
-                      // For commands that need no input, trigger the action
-                      if (cmd.id === "new") {
-                        setActiveConversationId(null);
-                        setMessages([]);
-                      } else if (cmd.id === "help") {
-                        // Show help - just keep the text
-                        setInput("Show me all available slash commands");
-                      } else if (cmd.id === "think") {
-                        setIsExtendedThinking(true);
-                        setInput("Enable extended thinking mode for this conversation");
-                      } else if (cmd.id === "code") {
-                        setSelectedMode("Architect");
-                        setInput("");
-                      } else if (cmd.id === "deepresearch" || cmd.id === "research") {
-                        setSelectedMode("Researcher");
-                        setInput("");
-                      } else if (cmd.id === "settings") {
-                        setIsSettingsOpen(true);
-                        setInput("");
-                      } else if (cmd.id === "models") {
-                        setIsInputModelMenuOpen(true);
-                        setInput("");
-                      } else {
-                        // For action commands, set the text and let user add context
-                        setInput(cmd.label + " ");
-                      }
+                      setInput(cmd.label + " ");
                     }
-                    setIsSlashMenuOpen(false);
-                    setSlashQuery("");
-                    setTimeout(() => textareaRef.current?.focus(), 50);
-                  }}
-                />
+                  }
+                  setIsSlashMenuOpen(false);
+                  setSlashQuery("");
+                  setTimeout(() => textareaRef.current?.focus(), 50);
+                }}
+              />
 
+              {/* ── Input Area ──────────────────────────────── */}
+              <div>
+                {/* Smart Suggestion Chips — only on empty chat */}
+                {messages.length === 0 && !isLoading && (
+                  <div className={cn("premium-suggestion-chips", theme === 'light' && "premium-suggestion-chips-light")}>
+                    {[
+                      { icon: "✦", label: "Write code", prompt: "Write a Python script to " },
+                      { icon: "⟡", label: "Analyze data", prompt: "Analyze this data and " },
+                      { icon: "⊕", label: "Search web", prompt: "Search the web for " },
+                      { icon: "◈", label: "Create image", prompt: "Generate an image of " },
+                      { icon: "◎", label: "Summarize", prompt: "Summarize the following: " },
+                      { icon: "⚡", label: "Brainstorm", prompt: "Brainstorm ideas for " },
+                    ].map((chip) => (
+                      <button
+                        key={chip.label}
+                        type="button"
+                        onClick={() => { setInput(chip.prompt); setTimeout(() => textareaRef.current?.focus(), 50); }}
+                      >
+                        <span className="opacity-60">{chip.icon}</span> {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Premium Input Box ─────────────────────── */}
                 <div
                   suppressHydrationWarning
                   className={cn(
-                  "chat-input-box relative flex flex-col gap-2 shadow-2xl",
-                  theme === 'dark' ? "bg-[#2f2f2f]" : "bg-[#F4F4F4]"
-                )}>
-                  {/* Drag & Drop Overlay */}
-                  <AnimatePresence>
-                    {isDragging && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute inset-0 rounded-3xl border-2 border-dashed border-cyan-500/60 bg-cyan-500/10 backdrop-blur-sm z-20 flex items-center justify-center"
-                      >
-                        <div className="flex flex-col items-center gap-2 text-cyan-400">
-                          <ImageIcon size={32} className="animate-bounce" />
-                          <span className="text-sm font-bold">Drop images here</span>
-                          <span className="text-[10px] text-gray-400">PNG, JPG, WEBP</span>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  {settings.experimental && (
-                    <div className="absolute -top-3 left-6 z-10">
-                       <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black border border-cyan-500/50 shadow-lg shadow-cyan-500/20">
-                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-                          <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest">Elite Reasoning Active</span>
-                       </div>
-                    </div>
+                    "premium-input-box",
+                    theme === 'light' && "premium-input-box-light"
                   )}
-                  
-                  {/* Input Field — 16px font prevents iOS zoom */}
+                >
+                {/* Drag & Drop Overlay */}
+                <AnimatePresence>
+                  {isDragging && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 rounded-[22px] border-2 border-dashed border-violet-500/60 bg-violet-500/8 backdrop-blur-sm z-20 flex items-center justify-center"
+                    >
+                      <div className="flex flex-col items-center gap-2 text-violet-400">
+                        <ImageIcon size={28} className="animate-bounce" />
+                        <span className="text-sm font-semibold">Drop to attach</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Active Mode Pills */}
+                {(settings.experimental || isBrowserMode || isAutomationMode) && (
+                  <div className="absolute -top-3 left-4 z-10 flex gap-2">
+                    {settings.experimental && (
+                      <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-md text-[9px] font-black uppercase tracking-widest", theme === 'dark' ? "bg-[#0d0d0f] border-cyan-500/40 text-cyan-400 shadow-cyan-500/15" : "bg-white border-cyan-500/30 text-cyan-600 shadow-cyan-500/10")}>
+                        <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+                        Elite Reasoning
+                      </div>
+                    )}
+                    {isBrowserMode && (
+                      <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-md text-[9px] font-black uppercase tracking-widest", theme === 'dark' ? "bg-[#0d0d0f] border-emerald-500/40 text-emerald-400 shadow-emerald-500/15" : "bg-white border-emerald-500/30 text-emerald-600 shadow-emerald-500/10")}>
+                        <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                        <Monitor size={9} /> Browser
+                      </div>
+                    )}
+                    {isAutomationMode && (
+                      <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-md text-[9px] font-black uppercase tracking-widest", theme === 'dark' ? "bg-[#0d0d0f] border-purple-500/40 text-purple-400 shadow-purple-500/15" : "bg-white border-purple-500/30 text-purple-600 shadow-purple-500/10")}>
+                        <div className="w-1 h-1 rounded-full bg-purple-400 animate-pulse" />
+                        <Cpu size={9} /> Automation
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Textarea */}
                 <textarea
                   ref={textareaRef}
                   suppressHydrationWarning={true}
@@ -2728,8 +2876,6 @@ export default function ChatPage() {
                   onChange={e => {
                     const val = e.target.value;
                     setInput(val);
-
-                    // Slash command detection
                     if (val.startsWith("/")) {
                       setIsSlashMenuOpen(true);
                       setSlashQuery(val);
@@ -2739,217 +2885,203 @@ export default function ChatPage() {
                     }
                   }}
                   onKeyDown={(e) => {
-                    // Let SlashCommandMenu handle its own keyboard when open
                     if (isSlashMenuOpen) {
-                      if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
-                        // Don't prevent default for Enter if slash menu needs input
-                        return;
-                      }
+                      if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) return;
                     }
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      if (isRecording) {
-                         recognitionRef.current?.stop();
-                         setIsRecording(false);
-                      }
+                      if (isRecording) { recognitionRef.current?.stop(); setIsRecording(false); }
                       handleSend();
                     }
                   }}
                   onPaste={handlePaste}
-                  placeholder={isRecording ? "Listening..." : "Message AI Assistant..."}
+                  placeholder={isRecording ? "Listening..." : "Message…"}
                   className={cn(
-                    "chat-input w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-1 py-1 resize-none placeholder-gray-500",
-                    theme === 'dark' ? "text-white" : "text-gray-900"
+                    "w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 resize-none px-2 pt-1.5 pb-0",
+                    theme === 'dark' ? "text-[15px] text-white placeholder-gray-500" : "text-[15px] text-gray-900 placeholder-gray-400"
                   )}
-                  style={{ boxShadow: 'none', fontSize: '16px', minHeight: '24px', maxHeight: '180px' }}
+                  style={{ boxShadow: 'none', minHeight: '22px', maxHeight: '140px', lineHeight: '1.4', resize: 'none' }}
                 />
 
                 {/* File Previews */}
                 {filePreviews.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2 px-1">
+                  <div className="flex flex-wrap gap-2 pt-3 px-3">
                     {filePreviews.map((preview, idx) => (
                       <div key={idx} className="relative group/preview">
-                        <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-white/10 bg-black/10">
+                        <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-black/10">
                           <img src={preview} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
-                            <button 
-                              onClick={() => removeFile(idx)}
-                              className="bg-red-500/90 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => removeFile(idx)}
+                            className="absolute inset-0 bg-black/60 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center"
+                          >
+                            <X size={14} className="text-white" />
+                          </button>
                         </div>
-                        <span className="text-[9px] text-gray-500 mt-1 block truncate max-w-20">Image {idx + 1}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Bottom Icons Row — 44x44px touch targets */}
-                <div className="flex items-center justify-between mt-1">
+                {/* Toolbar Row */}
+                <div className="flex items-center justify-between px-1.5 pb-1 pt-0">
+                  {/* Left: Attach + secondary tools */}
+                  <div className="flex items-center gap-0.5">
+                    {/* Attach */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+                        title="Attach"
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200",
+                          theme === 'dark'
+                            ? "text-gray-500 hover:text-gray-200"
+                            : "text-gray-400 hover:text-gray-700"
+                        )}
+                      >
+                        <Plus size={16} strokeWidth={2} />
+                      </button>
+                      <AnimatePresence>
+                        {isAttachmentMenuOpen && (
+                          <>
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40" onClick={() => setIsAttachmentMenuOpen(false)} />
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.94, y: -6 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                              transition={{ duration: 0.15 }}
+                              className={cn("absolute bottom-full left-0 mb-3 w-60 p-1.5 border rounded-2xl shadow-2xl z-50 flex flex-col gap-0.5 origin-bottom-left", theme === 'dark' ? "bg-[#1e1e20] border-white/10" : "bg-white border-black/8")}
+                            >
+                              {[
+                                { icon: Paperclip, label: "Attach image or file", onClick: () => fileInputRef.current?.click() },
+                                { icon: ImageIcon, label: "Generate image", onClick: () => { setInput("Generate an image of "); setIsAttachmentMenuOpen(false); } },
+                                { icon: Globe, label: "Deep research", onClick: () => { setSelectedMode("Researcher"); setIsAttachmentMenuOpen(false); } },
+                                { icon: Mic, label: "Create podcast", onClick: () => setIsAttachmentMenuOpen(false) },
+                              ].map(item => (
+                                <button key={item.label} type="button" onClick={item.onClick} className={cn("flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-left group", theme === 'dark' ? "hover:bg-white/6 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-500 hover:text-gray-900")}>
+                                  <item.icon size={15} />
+                                  <span className="text-[13px] font-medium">{item.label}</span>
+                                </button>
+                              ))}
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                      <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,application/pdf,.txt,.doc,.docx" suppressHydrationWarning />
+                    </div>
 
-                  {/* Left + Icon & Menu */}
-                  <div className="relative">
+                    {/* Browser Mode */}
                     <button
                       type="button"
-                      onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+                      onClick={toggleBrowserMode}
+                      title="Browser mode"
                       className={cn(
-                        "chat-attach-btn rounded-full",
-                        theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200",
+                        isBrowserMode
+                          ? "text-emerald-400 bg-emerald-500/12 border border-emerald-500/25"
+                          : (theme === 'dark' ? "text-gray-500 hover:text-gray-200 hover:bg-white/8" : "text-gray-400 hover:text-gray-700 hover:bg-black/6")
                       )}
                     >
-                      <Plus size={22} />
+                      <Monitor size={14} strokeWidth={2} />
                     </button>
 
-                    {/* Attachment Menu */}
-                    <AnimatePresence>
-                      {isAttachmentMenuOpen && (
-                        <>
-                          <motion.div 
-                            initial={{ opacity: 0 }} 
-                            animate={{ opacity: 1 }} 
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-40" 
-                            onClick={() => setIsAttachmentMenuOpen(false)} 
-                          />
-                          <motion.div 
-                            initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                            className="absolute bottom-full left-0 mb-4 w-64 p-2 bg-[#2A2A2A] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col gap-1 origin-bottom-left"
-                          >
-                             {[
-                               { icon: Paperclip, label: "Add images or files", locked: false, onClick: () => fileInputRef.current?.click() },
-                               { icon: ImageIcon, label: "Generate image", locked: false, onClick: () => { setInput("Generate an image of "); setIsAttachmentMenuOpen(false); } },
-                               { icon: Globe, label: "Start deep research", badge: "Unlimited", locked: false, onClick: () => { setSelectedMode("Researcher"); setIsAttachmentMenuOpen(false); } },
-                               { icon: Mic, label: "Create a podcast", badge: "Unlimited", locked: false, onClick: () => { setIsAttachmentMenuOpen(false); } },
-                             ].map((item, i) => (
-                               <button 
-                                 key={item.label} 
-                                 disabled={item.locked} 
-                                 onClick={item.onClick}
-                                 className={cn("flex items-center justify-between w-full p-2.5 rounded-xl transition-all text-left", item.locked ? "opacity-50 cursor-not-allowed" : "hover:bg-white/5 group")}
-                               >
-                                 <div className="flex items-center gap-2.5">
-                                   <item.icon size={16} className={cn(item.locked ? "text-gray-600" : "text-gray-500 group-hover:text-cyan-400")} />
-                                   <span className={cn("text-xs font-bold", item.locked ? "text-gray-500" : "text-gray-300 group-hover:text-white")}>{item.label}</span>
-                                 </div>
-                                  {item.badge && <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-white/5 text-gray-500">{item.badge}</span>}
-                               </button>
-                             ))}
-                          </motion.div>
-                        </>
+                    {/* Automation Mode */}
+                    <button
+                      type="button"
+                      onClick={toggleAutomationMode}
+                      title="Automation mode"
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200",
+                        isAutomationMode
+                          ? "text-purple-400 bg-purple-500/12 border border-purple-500/25"
+                          : (theme === 'dark' ? "text-gray-500 hover:text-gray-200 hover:bg-white/8" : "text-gray-400 hover:text-gray-700 hover:bg-black/6")
                       )}
-                    </AnimatePresence>
-                    <input 
-                      type="file" 
-                      multiple 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      onChange={handleFileUpload}
-                      accept="image/*,application/pdf,.txt,.doc,.docx"
-                    />
+                    >
+                      <Cpu size={14} strokeWidth={2} />
+                    </button>
+
                   </div>
 
-                  {/* Right Icons Container — 44x44px touch targets */}
-                  <div className="flex items-center gap-1 sm:gap-2">
+                  {/* Right: Model selector + Mic + Send */}
+                  <div className="flex items-center gap-1">
+                    {/* Model Selector */}
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setIsInputModelMenuOpen(!isInputModelMenuOpen)}
+                        title="Select model"
                         className={cn(
-                          "chat-menu-btn rounded-full",
-                          theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5"
+                          "h-7 px-2 rounded-full flex items-center gap-1 text-[10px] font-semibold border transition-all duration-200",
+                          theme === 'dark'
+                            ? "bg-white/5 border-white/8 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/15"
+                            : "bg-black/4 border-black/8 text-gray-500 hover:text-gray-900 hover:bg-black/8"
                         )}
-                        title="Select AI Model"
                       >
-                        <MessageSquarePlus size={20} />
+                        <Sparkles size={10} />
+                        <span className="max-w-[70px] truncate hidden sm:block">{selectedModel.name.split(' ')[0]}</span>
+                        <ChevronDown size={10} className="opacity-60" />
                       </button>
-
-                      {/* Models Popup Menu */}
                       <AnimatePresence>
                         {isInputModelMenuOpen && (
                           <>
-                            <motion.div 
-                              initial={{ opacity: 0 }} 
-                              animate={{ opacity: 1 }} 
-                              exit={{ opacity: 0 }}
-                              className="fixed inset-0 z-40" 
-                              onClick={() => setIsInputModelMenuOpen(false)} 
-                            />
-                            <motion.div 
-                              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40" onClick={() => setIsInputModelMenuOpen(false)} />
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.95, y: 8 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                              className={cn(
-                                "absolute bottom-full right-0 mb-4 w-72 max-h-[60vh] overflow-y-auto p-2 border rounded-2xl shadow-2xl z-50 flex flex-col gap-1 origin-bottom-right scrollbar-hide",
-                                theme === 'dark' ? "bg-[#2A2A2A] border-white/10" : "bg-white border-black/10"
-                              )}
+                              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                              transition={{ duration: 0.15 }}
+                              className={cn("absolute bottom-full left-0 mb-3 w-72 max-h-[55vh] overflow-y-auto p-1.5 border rounded-2xl shadow-2xl z-50 flex flex-col gap-0.5 origin-bottom-left scrollbar-hide", theme === 'dark' ? "bg-[#1e1e20] border-white/10" : "bg-white border-black/8")}
                             >
-                              <div className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-white/5 mb-1">
-                                Available Models
-                              </div>
-                                {MODELS.map((model, modelIdx) => {
-                                  const planConfig = PLANS[currentPlan];
-                                  const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
-                                  return (
+                              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-500 border-b border-white/5 mb-1">Models</div>
+                              {MODELS.map(model => {
+                                const planConfig = PLANS[currentPlan];
+                                const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
+                                return (
                                   <button
                                     key={`${model.id}-${model.provider}-${model.name}`}
                                     onClick={() => { if (isAllowed) { setSelectedModel(model); setIsInputModelMenuOpen(false); } }}
                                     disabled={!isAllowed}
                                     className={cn(
-                                      "flex items-center gap-3 p-2.5 rounded-xl transition-all text-left group",
+                                      "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group",
                                       !isAllowed ? "opacity-40 cursor-not-allowed" : "",
                                       selectedModel.id === model.id && selectedModel.provider === model.provider
-                                        ? (theme === 'dark' ? "bg-cyan-500/10 text-cyan-400" : "bg-cyan-50 text-cyan-600")
-                                        : (theme === 'dark' ? "hover:bg-white/5 text-gray-300" : "hover:bg-black/5 text-gray-700")
+                                        ? (theme === 'dark' ? "bg-violet-500/10 text-violet-300" : "bg-violet-50 text-violet-700")
+                                        : (theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")
                                     )}
                                   >
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2">
-                                        <div className={cn("text-sm font-semibold truncate", selectedModel.id === model.id ? "" : (theme === 'dark' ? "group-hover:text-white" : "group-hover:text-black"))}>{model.name}</div>
-                                        {!isAllowed && (
-                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                                            <Lock size={8} />
-                                            {model.plan}
-                                          </span>
-                                        )}
-                                        {isAllowed && model.plan !== "Core" && model.plan !== currentPlan && (
-                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">
-                                            <Sparkles size={8} />
-                                            {model.plan}
-                                          </span>
-                                        )}
+                                        <span className="text-[13px] font-semibold truncate">{model.name}</span>
+                                        {!isAllowed && <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/12 text-amber-400 border border-amber-500/20"><Lock size={7} />{model.plan}</span>}
                                       </div>
-                                      <div className="text-[10px] opacity-70 truncate mt-0.5">{model.description}</div>
+                                      <div className="text-[11px] opacity-60 truncate mt-0.5">{model.description}</div>
                                     </div>
-                                    {selectedModel.id === model.id && <Check size={16} />}
+                                    {selectedModel.id === model.id && selectedModel.provider === model.provider && <Check size={14} className="flex-shrink-0" />}
                                   </button>
-                                  );
-                                })}
+                                );
+                              })}
                             </motion.div>
                           </>
                         )}
                       </AnimatePresence>
                     </div>
-                    
-                    {/* Voice to Text Converter — 44x44px touch target */}
+
+                    {/* Mic */}
                     <button
                       type="button"
-                      onClick={toggleRecording}
+                      onClick={() => setShowVoiceInput(true)}
+                      title="Voice input"
                       className={cn(
-                        "chat-menu-btn rounded-full",
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200",
                         isRecording
-                          ? "text-red-500 bg-red-500/10"
-                          : (theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")
+                          ? "text-red-400 bg-red-500/12 border border-red-500/25"
+                          : (theme === 'dark' ? "text-gray-500 hover:text-gray-200 hover:bg-white/8" : "text-gray-400 hover:text-gray-700 hover:bg-black/6")
                       )}
-                      title="Voice to text"
                     >
-                      <Mic size={20} />
+                      <Mic size={14} strokeWidth={2} />
                     </button>
 
-                    {/* Send / Voice Assistant Button — 44x44px touch target */}
+                    {/* Send / Stop Button */}
                     <button
                       type="button"
                       disabled={isLoading && !isStreaming}
@@ -2965,30 +3097,82 @@ export default function ChatPage() {
                           startVoiceAssistant();
                         }
                       }}
+                      title={isStreaming ? "Stop" : input.trim() ? "Send" : "Voice assistant"}
                       className={cn(
-                        "chat-send-btn flex-shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-full items-center justify-center transition-all ml-1",
-                        theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-black text-white hover:bg-gray-800"
+                        "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-200 disabled:opacity-40",
+                        isStreaming
+                          ? "bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25"
+                          : input.trim()
+                            ? "text-white shadow-[0_0_12px_rgba(139,92,246,0.4)] hover:shadow-[0_0_18px_rgba(139,92,246,0.55)] hover:scale-105 active:scale-95"
+                            : (theme === 'dark' ? "text-gray-500 hover:text-gray-200 hover:bg-white/8" : "text-gray-400 hover:text-gray-700 hover:bg-black/6")
                       )}
-                      title={isStreaming ? "Stop generation" : input.trim() ? "Send message" : "Start Voice Assistant"}
+                      style={input.trim() && !isStreaming ? { background: 'linear-gradient(135deg,#7c3aed,#06b6d4)' } : {}}
                     >
                       {isLoading && !isStreaming ? (
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       ) : isStreaming ? (
-                        <div className="w-3 h-3 bg-current rounded-[2px]" />
+                        <div className="w-2.5 h-2.5 bg-current rounded-sm" />
                       ) : input.trim() ? (
-                        <ArrowUp size={18} strokeWidth={3} />
+                        <ArrowUp size={14} strokeWidth={2.5} />
                       ) : (
-                        <AudioLines size={18} />
+                        <AudioLines size={14} />
                       )}
                     </button>
                   </div>
                 </div>
+                </div>
               </div>
             </form>
           </div>
-          <p className="text-center text-[10px] text-gray-600 mt-4">
-            AI can make mistakes. Check important info. v2.4.0
+          <p className={cn("text-center text-[10px] mt-3 pb-1", theme === 'dark' ? "text-gray-700" : "text-gray-400")}>
+            AI can make mistakes. Always verify important info.
           </p>
+
+          {/* Browser Automation Trial Banner */}
+          <AnimatePresence>
+            {showBrowserTrialBanner && browserTrialInfo.trialDaysLeft && browserTrialInfo.trialDaysLeft > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className={cn(
+                  "mx-auto max-w-3xl mb-2 px-4 py-2.5 rounded-xl border flex items-center justify-between gap-3",
+                  theme === 'dark'
+                    ? "bg-gradient-to-r from-violet-500/10 to-cyan-500/10 border-violet-500/20"
+                    : "bg-gradient-to-r from-violet-50 to-cyan-50 border-violet-200"
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="text-lg">🤖</span>
+                  <div>
+                    <p className={cn("text-xs font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>
+                      Free Browser Automation Trial
+                    </p>
+                    <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
+                      {browserTrialInfo.trialDaysLeft} day{browserTrialInfo.trialDaysLeft > 1 ? 's' : ''} left — Try autonomous browsing, form filling, and web tasks
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSelectedMode("Browser");
+                      setShowBrowserTrialBanner(false);
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-gradient-to-r from-violet-600 to-cyan-500 text-white hover:opacity-90 transition-opacity"
+                  >
+                    Try Now
+                  </button>
+                  <button
+                    onClick={() => setShowBrowserTrialBanner(false)}
+                    className={cn("p-1 rounded-lg transition-colors", theme === 'dark' ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900")}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
 
@@ -3062,6 +3246,34 @@ export default function ChatPage() {
             }}
             onInterrupt={handleVoiceOverlayTap}
             onClose={stopVoiceAssistant}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Premium Voice Input Overlay */}
+      <AnimatePresence>
+        {showVoiceInput && (
+          <PremiumVoiceInput
+            theme={theme}
+            onTranscript={(text, isFinal) => {
+              setInput(text);
+              if (isFinal) {
+                // Auto-send on final transcript
+                setTimeout(() => {
+                  handleSend();
+                  setShowVoiceInput(false);
+                }, 300);
+              }
+            }}
+            onCancel={() => {
+              setShowVoiceInput(false);
+              setIsRecording(false);
+            }}
+            onSend={(text) => {
+              setInput(text);
+              setShowVoiceInput(false);
+              setTimeout(() => handleSend(), 100);
+            }}
           />
         )}
       </AnimatePresence>
@@ -3371,6 +3583,14 @@ export default function ChatPage() {
             window.location.href = `/pricing?plan=${planId}`;
           }
         }}
+      />
+
+      {/* Support Modal */}
+      <SupportModal
+        isOpen={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
+        theme={theme}
+        userId={userId}
       />
     </div>
   );

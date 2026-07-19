@@ -18,8 +18,26 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { runBrowserEngine } from "@/lib/automation/browser-engine";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
+
+// ── Formatting Cleanup: Clean up messy output while keeping tables ──────
+function cleanFormatting(text: string): string {
+  if (!text) return text;
+
+  return text
+    // Clean up flowchart arrows
+    .replace(/(\n\s*[│┌┐└┘├┤┬┴┼─▼↑↓→←]+\s*\n)/g, "\n")
+    // Remove excessive blank lines
+    .replace(/\n{3,}/g, "\n\n")
+    // Clean up broken table formats (extra dashes)
+    .replace(/\|[\s]*-{3,}[\s]*\|/g, "|---|")
+    // Ensure table header separator is clean
+    .replace(/(\|[^\n]+\|)\n[\s]*\|[-| :]+\|/g, "$1\n|---|---|---|")
+    // Remove leading/trailing whitespace on lines
+    .replace(/\n[ \t]+/g, "\n");
+}
 
 // Input validation for chat prompts
 function validatePrompt(prompt: string): { valid: boolean; error?: string } {
@@ -91,7 +109,9 @@ export async function POST(req: NextRequest) {
     // Get plan from JWT token
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    const plan = (tokenPayload?.plan as PlanType) || "Core";
+    let plan = (tokenPayload?.plan as PlanType) || "Core";
+    // Dev bypass: force Pro for this user ID
+    if (userId === "6a53aa11ae01dde8fdacf81d") plan = "Pro";
 
     // Validate prompt
     const validation = validatePrompt(prompt);
@@ -154,6 +174,135 @@ export async function POST(req: NextRequest) {
         extendedThinking
       );
       return deepRes;
+    }
+
+    // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
+    const isBrowserAgent = mode === "Browser";
+    if (isBrowserAgent) {
+      const browserModelId = modelId || "meta-llama/llama-3.3-70b-instruct";
+      const browserProvider = getProviderForModel(browserModelId);
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (text: string) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+          };
+
+          send(`> **LikeWay Browser v6** — Launching autonomous browser agent...\n\n`);
+          send(`> Task: ${prompt}\n\n`);
+
+          try {
+            let lastSubGoal = "";
+            const result = await runBrowserEngine(prompt, {
+              provider: browserProvider,
+              modelId: browserModelId,
+              fetchAI,
+              headless: false,
+              maxIterations: 25,
+              onStep: (step) => {
+                // Show sub-goal changes
+                if (step.subGoal && step.subGoal !== lastSubGoal) {
+                  lastSubGoal = step.subGoal;
+                  send(`\n> **Sub-goal:** ${step.subGoal}\n\n`);
+                }
+                const status = step.success ? (step.verified ? "OK✓" : "OK") : "FAIL";
+                let msg = `> Step ${step.iteration}: ${step.action.action}`;
+                if (step.action.ref) msg += ` ref=${step.action.ref}`;
+                if (step.action.text) msg += ` "${step.action.text.slice(0, 30)}"`;
+                if (step.action.value) msg += ` val="${step.action.value.slice(0, 30)}"`;
+                if (step.action.key) msg += ` key=${step.action.key}`;
+                msg += ` — ${status}`;
+                if (step.error) msg += ` (${step.error.slice(0, 40)})`;
+                msg += "\n";
+                send(msg);
+              },
+            });
+
+            send("\n---\n\n");
+            if (result.success && result.answer) {
+              send(`**Result:** ${result.answer}\n\n`);
+            } else if (result.error) {
+              send(`**Error:** ${result.error}\n\n`);
+            } else {
+              send(`**Completed** ${result.steps.length} steps in ${((result.duration || 0) / 1000).toFixed(1)}s\n\n`);
+            }
+            send(`> Steps: ${result.steps.length} | Duration: ${((result.duration || 0) / 1000).toFixed(1)}s\n`);
+          } catch (err: any) {
+            send(`\n> **Browser agent error:** ${err.message}\n`);
+          }
+
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
+    // ── Automation Mode (v6 — uses unified engine) ───────────────────
+    const isAutomation = mode === "Automation";
+    if (isAutomation) {
+      const automationModelId = modelId || (MODELS.find(m => m.fast) || MODELS[0]).id;
+      const automationProvider = getProviderForModel(automationModelId);
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (text: string) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+          };
+
+          send(`> **Automation Mode** — Launching browser agent...\n\n`);
+          send(`> Task: ${prompt}\n\n`);
+
+          try {
+            let lastSubGoal = "";
+            const result = await runBrowserEngine(prompt, {
+              provider: automationProvider,
+              modelId: automationModelId,
+              fetchAI,
+              headless: false,
+              maxIterations: 25,
+              onStep: (step) => {
+                if (step.subGoal && step.subGoal !== lastSubGoal) {
+                  lastSubGoal = step.subGoal;
+                  send(`\n> **Sub-goal:** ${step.subGoal}\n\n`);
+                }
+                const status = step.success ? "OK" : "FAIL";
+                send(`> Step ${step.iteration}: ${step.action.action} — ${status}${step.error ? ` (${step.error.slice(0, 40)})` : ""}\n`);
+              },
+            });
+
+            send("\n---\n\n");
+            if (result.success && result.answer) {
+              send(`**Result:** ${result.answer}\n\n`);
+            } else if (result.error) {
+              send(`**Error:** ${result.error}\n\n`);
+            } else {
+              send(`**Completed** ${result.steps.length} steps in ${((result.duration || 0) / 1000).toFixed(1)}s\n\n`);
+            }
+            send(`> Steps: ${result.steps.length} | Duration: ${((result.duration || 0) / 1000).toFixed(1)}s\n`);
+          } catch (err: any) {
+            send(`\n> **Error:** ${err.message}\nTry again or describe the task differently.`);
+          }
+
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+
+      saveMessage(userId, { role: "assistant", content: `Automation: ${prompt}` }, projectId, conversationId).catch(() => {});
+
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
     }
 
     // ── Multimodal Intent Detection ──────────────────────────────────────
@@ -338,6 +487,59 @@ export async function POST(req: NextRequest) {
     const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     systemPrompt += `\n\nCurrent date: ${dateStr}`;
 
+    // CRITICAL: Force clean formatting — prepend formatting override
+    const FORMATTING_OVERRIDE = `
+## 📝 FORMATTING RULES — GPT-STYLE, CLEAN, SCANNABLE
+
+### CRITICAL:
+1. Start with a 1-sentence summary
+2. Use ## for sections
+3. Keep responses SHORT — 300-500 words max
+4. Use **bold** for key terms
+5. Tables for rankings (clean pipes only)
+6. Bullet points for lists (max 5-7 items)
+7. Numbered steps for roadmaps (max 4 phases)
+8. End with **Key Takeaways** (2-3 bullets max)
+
+### TABLE FORMAT (use exactly this):
+| Rank | Company | Focus |
+|------|---------|-------|
+| 1 | TCS | IT Services |
+| 2 | Infosys | Consulting |
+
+### ROADMAP FORMAT:
+**Phase 1: Title** (3-6 months)
+- Learn X
+- Practice Y
+
+**Phase 2: Title** (6-12 months)
+- Master Z
+
+### RESPONSE STRUCTURE:
+1. Opening sentence
+2. Main content (table/steps/explanation)
+3. Key Takeaways (2-3 bullets)
+
+### EXAMPLE:
+**Top 5 IT Companies in India**
+
+| Rank | Company | Focus |
+|------|---------|-------|
+| 1 | TCS | IT Services |
+| 2 | Infosys | Consulting |
+| 3 | Wipro | Cloud |
+
+**How to get in:**
+1. **Learn DSA** — Solve 200+ problems
+2. **Build projects** — 2-3 portfolio apps
+
+**Key Takeaways:**
+- Focus on fundamentals
+- Build real projects
+- Practice daily
+`;
+    systemPrompt = FORMATTING_OVERRIDE + "\n\n" + systemPrompt;
+
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
     ];
@@ -391,17 +593,34 @@ export async function POST(req: NextRequest) {
 
     const transformStream = new TransformStream({
       transform(chunk, controller) {
-        controller.enqueue(chunk);
         const text = decoder.decode(chunk, { stream: true });
         const lines = text.split("\n");
+        const cleanChunks: string[] = [];
+
         for (const line of lines) {
-          if (line.startsWith("data: ") && line.slice(6) !== "[DONE]") {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              cleanChunks.push(`data: [DONE]\n`);
+              continue;
+            }
             try {
-              const parsed = JSON.parse(line.slice(6));
+              const parsed = JSON.parse(data);
               const delta = parsed.choices?.[0]?.delta?.content || "";
-              fullContent += delta;
-            } catch {}
+              if (delta) {
+                fullContent += delta;
+                // Clean the delta before sending
+                const cleanDelta = cleanFormatting(delta);
+                cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleanDelta } }] })}\n`);
+              }
+            } catch {
+              cleanChunks.push(line + "\n");
+            }
           }
+        }
+
+        if (cleanChunks.length > 0) {
+          controller.enqueue(encoder.encode(cleanChunks.join("")));
         }
       },
       flush() {

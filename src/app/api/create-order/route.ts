@@ -34,8 +34,6 @@ export async function POST(req: NextRequest) {
       key_secret: razorpayKeySecret,
     });
 
-    console.log("Creating Razorpay order with options:", { amount, currency, receipt });
-
     // Razorpay receipt max 40 chars — truncate to avoid 400 error
     const shortReceipt = (receipt || `r_${Date.now()}`).slice(0, 40);
 

@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
-import { MongoClient } from "mongodb";
+import clientPromise from "@/lib/mongodb";
 
-const MONGODB_URI = process.env.MONGODB_URI || "";
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
 
 async function getDb() {
-  const client = new MongoClient(MONGODB_URI);
-  await client.connect();
+  const client = await clientPromise;
   return client.db(MONGODB_DB_NAME);
 }
 

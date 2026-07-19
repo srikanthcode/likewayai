@@ -1,18 +1,51 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Sparkles, Zap, ArrowLeft, Shield, Globe, Code, Search, CreditCard, Smartphone, Bot, Wand2, Mic, Brain, Eye, Star, Lock, Rocket, Layers } from "lucide-react";
+import { Check, Sparkles, Zap, ArrowLeft, Shield, Globe, Code, Wand2, Mic, Brain, Eye, Star, Lock, Rocket, Layers, Search, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PLANS, setCurrentPlan, getCurrentPlan, PlanType } from "@/lib/plans";
 import { MODELS } from "@/lib/models";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useAuth } from "@/components/AuthProvider";
+import { useToast } from "@/components/Toast";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+// ── Currency Support ──────────────────────────────────────────────────
+const CURRENCIES = [
+  { code: "INR", symbol: "₹", name: "Indian Rupee", rate: 1 },
+  { code: "USD", symbol: "$", name: "US Dollar", rate: 0.012 },
+  { code: "EUR", symbol: "€", name: "Euro", rate: 0.011 },
+  { code: "GBP", symbol: "£", name: "British Pound", rate: 0.0095 },
+  { code: "JPY", symbol: "¥", name: "Japanese Yen", rate: 1.8 },
+  { code: "BRL", symbol: "R$", name: "Brazilian Real", rate: 0.059 },
+  { code: "AUD", symbol: "A$", name: "Australian Dollar", rate: 0.018 },
+  { code: "CAD", symbol: "C$", name: "Canadian Dollar", rate: 0.016 },
+  { code: "KRW", symbol: "₩", name: "South Korean Won", rate: 16.5 },
+  { code: "AED", symbol: "د.إ", name: "UAE Dirham", rate: 0.044 },
+  { code: "SGD", symbol: "S$", name: "Singapore Dollar", rate: 0.016 },
+  { code: "NGN", symbol: "₦", name: "Nigerian Naira", rate: 19.5 },
+];
+
+const PLAN_PRICES_INR: Record<string, number> = {
+  Core: 0,
+  Go: 299,
+  Plus: 799,
+  Pro: 1999,
+};
+
+function convertPrice(amountINR: number, currency: typeof CURRENCIES[0]): string {
+  if (amountINR === 0) return "Free";
+  const converted = Math.round(amountINR * currency.rate);
+  if (currency.code === "JPY" || currency.code === "KRW" || currency.code === "NGN") {
+    return `${currency.symbol}${converted.toLocaleString()}`;
+  }
+  return `${currency.symbol}${converted}`;
 }
 
 function getPlanModels(planId: PlanType): number {
@@ -22,6 +55,7 @@ function getPlanModels(planId: PlanType): number {
 }
 
 export default function PricingPage() {
+  const { toast } = useToast();
   const { user, isLoading, refreshUser } = useAuth();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -30,6 +64,9 @@ export default function PricingPage() {
   const [checkoutStep, setCheckoutStep] = useState<"method" | "processing" | "success">("method");
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [hoveredPlan, setHoveredPlan] = useState<PlanType | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState(CURRENCIES[0]);
+  const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
+  const currencyMenuRef = useRef<HTMLDivElement>(null);
 
   // Auto-select plan from URL after auth is loaded
   useEffect(() => {
@@ -69,6 +106,17 @@ export default function PricingPage() {
     return () => window.removeEventListener("nativePurchaseSuccess", handleNativePurchase);
   }, [isLoading]);
 
+  // Close currency menu on click outside
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (currencyMenuRef.current && !currencyMenuRef.current.contains(e.target as Node)) {
+        setShowCurrencyMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   const handleSelectPlan = async (planId: PlanType) => {
     if (!user) {
       router.push(`/login?next=/pricing`);
@@ -93,7 +141,7 @@ export default function PricingPage() {
     try {
       const loaded = await loadRazorpayScript();
       if (!loaded) {
-        alert("Failed to load Razorpay. Please check your internet connection and try again.");
+        toast("Failed to load Razorpay. Please check your internet connection and try again.", "error");
         setIsCheckoutOpen(false);
         return;
       }
@@ -112,7 +160,7 @@ export default function PricingPage() {
       const orderData = await orderResponse.json();
       
       if (orderData.error) {
-        alert("Order creation failed: " + orderData.error);
+        toast("Order creation failed: " + orderData.error, "error");
         setIsCheckoutOpen(false);
         return;
       }
@@ -161,14 +209,13 @@ export default function PricingPage() {
             await refreshUser();
             setCheckoutStep("success");
           } catch (err: any) {
-            alert("Payment verification failed: " + err.message);
+            toast("Payment verification failed: " + err.message, "error");
             setIsCheckoutOpen(false);
           }
         },
         prefill: {
           name: user.name || "",
           email: user.email || "",
-          contact: "9000000000",
         },
         theme: {
           color: "#8b5cf6",
@@ -183,13 +230,13 @@ export default function PricingPage() {
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on('payment.failed', function (response: any) {
-        alert(`Payment failed: ${response.error.description}`);
+        toast(`Payment failed: ${response.error.description}`, "error");
         setIsCheckoutOpen(false);
       });
       rzp.open();
     } catch (error: any) {
       console.error("Razorpay Error:", error);
-      alert("Payment system error: " + (error.message || "Please try again."));
+      toast("Payment system error: " + (error.message || "Please try again."), "error");
       setIsCheckoutOpen(false);
     }
   };
@@ -208,9 +255,6 @@ export default function PricingPage() {
       document.body.appendChild(script);
     });
   };
-
-
-  const handleCompletePayment = async () => {};
 
   if (!mounted) return null;
 
@@ -234,15 +278,15 @@ export default function PricingPage() {
         </header>
 
         {/* Hero Section */}
-        <div className="text-center mb-16 space-y-4">
-          <motion.h1 
+        <div className="text-center mb-8 space-y-4">
+          <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-2xl sm:text-3xl md:text-6xl font-black tracking-tight"
           >
             Elevate your <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-400 bg-clip-text text-transparent">Intelligence</span>
           </motion.h1>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -250,6 +294,56 @@ export default function PricingPage() {
           >
             Built for professionals who demand more. Unlock elite reasoning, coding agents, vision models, and deep research — all in one platform.
           </motion.p>
+        </div>
+
+        {/* Currency Selector */}
+        <div className="flex justify-center mb-8">
+          <div className="relative" ref={currencyMenuRef}>
+            <button
+              onClick={() => setShowCurrencyMenu(!showCurrencyMenu)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-sm"
+            >
+              <Globe size={14} className="text-gray-400" />
+              <span className="text-gray-300 font-medium">{selectedCurrency.symbol} {selectedCurrency.code}</span>
+              <span className="text-gray-500 text-xs">— {selectedCurrency.name}</span>
+              <ChevronDown size={12} className={cn("text-gray-500 transition-transform", showCurrencyMenu && "rotate-180")} />
+            </button>
+
+            <AnimatePresence>
+              {showCurrencyMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 max-h-[320px] overflow-y-auto bg-[#1a1d27] border border-white/10 rounded-xl shadow-2xl z-50 p-1.5 scrollbar-hide"
+                >
+                  {CURRENCIES.map((currency) => (
+                    <button
+                      key={currency.code}
+                      onClick={() => {
+                        setSelectedCurrency(currency);
+                        setShowCurrencyMenu(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left",
+                        selectedCurrency.code === currency.code
+                          ? "bg-violet-500/15 text-violet-300"
+                          : "hover:bg-white/5 text-gray-400 hover:text-white"
+                      )}
+                    >
+                      <span className="text-lg w-8 text-center">{currency.symbol}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold">{currency.code}</div>
+                        <div className="text-[10px] opacity-60">{currency.name}</div>
+                      </div>
+                      {selectedCurrency.code === currency.code && <Check size={14} className="text-violet-400" />}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* Pricing Grid */}
@@ -307,11 +401,11 @@ export default function PricingPage() {
                   </div>
 
                   <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-black">{plan.price}</span>
+                    <span className="text-4xl font-black">{convertPrice(PLAN_PRICES_INR[plan.id], selectedCurrency)}</span>
                     {plan.price !== "Free" && (
                       <div className="flex flex-col ml-1">
-                          <span className="text-gray-500 text-[10px] font-bold">INR / month</span>
-                          <span className="text-gray-600 text-[8px] font-medium uppercase tracking-tighter">Inclusive of GST</span>
+                          <span className="text-gray-500 text-[10px] font-bold">{selectedCurrency.code} / month</span>
+                          <span className="text-gray-600 text-[8px] font-medium uppercase tracking-tighter">Inclusive of tax</span>
                       </div>
                     )}
                   </div>
@@ -400,7 +494,7 @@ export default function PricingPage() {
         {/* Additional Features Grid */}
         <div className="mt-12 md:mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           {[
-            { icon: Bot, label: "Multiple AI Models", desc: "Switch between 12 specialized engines" },
+            { icon: Layers, label: "Multiple Models", desc: "Switch between 12 specialized engines" },
             { icon: Wand2, label: "Image Generation", desc: "FLUX.1 Schnell & SDXL powered" },
             { icon: Mic, label: "Voice Assistant", desc: "Natural speech conversations" },
             { icon: Globe, label: "Web Browsing", desc: "Real-time search & data fetch" },

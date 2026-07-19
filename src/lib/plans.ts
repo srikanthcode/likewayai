@@ -13,6 +13,8 @@ export interface Plan {
     tools: boolean;
     deepResearch: boolean;
     imageGen: boolean;
+    browserAutomation: number; // -1 = unlimited, 0 = none, >0 = daily limit
+    browserAutomationDays: number; // Free trial days for new users (0 = no trial)
   };
   features: string[];
   modelCount: number;
@@ -29,6 +31,8 @@ export const PLANS: Record<PlanType, Plan> = {
       tools: false,
       deepResearch: false,
       imageGen: false,
+      browserAutomation: 0,
+      browserAutomationDays: 2,
     },
     features: [
       "200 responses/day",
@@ -37,6 +41,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Web search capabilities",
       "Voice input support",
       "Code snippet formatting",
+      "2-day free browser automation trial",
     ],
     modelCount: 2,
   },
@@ -58,6 +63,8 @@ export const PLANS: Record<PlanType, Plan> = {
       tools: true,
       deepResearch: false,
       imageGen: false,
+      browserAutomation: 50,
+      browserAutomationDays: 0,
     },
     features: [
       "Unlimited messages",
@@ -66,6 +73,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Code generation & debugging",
       "File upload & analysis",
       "Priority response speed",
+      "50 browser automation requests/day",
     ],
     modelCount: 5,
   },
@@ -86,13 +94,15 @@ export const PLANS: Record<PlanType, Plan> = {
         "google/gemini-2.5-flash",
         "llama-3.3-70b-versatile",
         "google/gemini-2.5-pro",
-        "anthropic/claude-3.5-sonnet",
-        "anthropic/claude-sonnet-4",
+        "deepseek/deepseek-chat",
+        "deepseek/deepseek-r1",
         "openai/gpt-4o",
       ],
       tools: true,
       deepResearch: true,
       imageGen: true,
+      browserAutomation: -1,
+      browserAutomationDays: 0,
     },
     features: [
       "Unlimited messages",
@@ -103,6 +113,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "AI-powered image generation",
       "Custom instructions & persistent memory",
       "Priority response queue",
+      "Unlimited browser automation",
     ],
     modelCount: 10,
   },
@@ -119,6 +130,8 @@ export const PLANS: Record<PlanType, Plan> = {
       tools: true,
       deepResearch: true,
       imageGen: true,
+      browserAutomation: -1,
+      browserAutomationDays: 0,
     },
     features: [
       "Unlimited messages",
@@ -129,6 +142,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Architect Coding Agent — 50+ languages",
       "Voice Assistant with natural speech",
       "Priority support & feature requests",
+      "Unlimited browser automation",
     ],
     modelCount: 12,
   },
@@ -151,4 +165,85 @@ export function isFeatureUnlocked(plan: PlanType, feature: keyof Plan["limits"])
   const planConfig = PLANS[plan];
   if (!planConfig) return false;
   return !!planConfig.limits[feature];
+}
+
+// ── Browser Automation Tracking ──────────────────────────────────────
+
+export function getBrowserAutomationUsage(): { count: number; date: string; trialStart: string | null } {
+  if (typeof window === "undefined") return { count: 0, date: "", trialStart: null };
+  try {
+    const data = JSON.parse(localStorage.getItem("likeway_browser_usage") || "{}");
+    const today = new Date().toDateString();
+    if (data.date !== today) {
+      return { count: 0, date: today, trialStart: data.trialStart || null };
+    }
+    return data;
+  } catch {
+    return { count: 0, date: new Date().toDateString(), trialStart: null };
+  }
+}
+
+export function trackBrowserAutomationUse(): void {
+  if (typeof window === "undefined") return;
+  const data = getBrowserAutomationUsage();
+  const today = new Date().toDateString();
+  localStorage.setItem("likeway_browser_usage", JSON.stringify({
+    count: data.date === today ? data.count + 1 : 1,
+    date: today,
+    trialStart: data.trialStart,
+  }));
+}
+
+export function startBrowserTrial(): void {
+  if (typeof window === "undefined") return;
+  const data = getBrowserAutomationUsage();
+  if (!data.trialStart) {
+    localStorage.setItem("likeway_browser_usage", JSON.stringify({
+      ...data,
+      trialStart: new Date().toISOString(),
+    }));
+  }
+}
+
+export function isBrowserTrialActive(): boolean {
+  const data = getBrowserAutomationUsage();
+  if (!data.trialStart) return false;
+  const trialStart = new Date(data.trialStart);
+  const now = new Date();
+  const diffDays = (now.getTime() - trialStart.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays < 2;
+}
+
+export function getBrowserAutomationRemaining(): { allowed: boolean; remaining: number; reason: string; trialDaysLeft?: number } {
+  const plan = getCurrentPlan();
+  const planConfig = PLANS[plan];
+  const usage = getBrowserAutomationUsage();
+  const today = new Date().toDateString();
+  const todayCount = usage.date === today ? usage.count : 0;
+
+  // Check trial first (Core plan only)
+  if (planConfig.limits.browserAutomationDays > 0) {
+    if (isBrowserTrialActive()) {
+      const trialStart = new Date(usage.trialStart!);
+      const now = new Date();
+      const trialDaysLeft = Math.ceil(2 - (now.getTime() - trialStart.getTime()) / (1000 * 60 * 60 * 24));
+      return { allowed: true, remaining: 999, reason: "trial", trialDaysLeft };
+    }
+    // Trial expired — no browser automation on Core
+    return { allowed: false, remaining: 0, reason: "trial_expired" };
+  }
+
+  // Unlimited (Plus, Pro)
+  if (planConfig.limits.browserAutomation === -1) {
+    return { allowed: true, remaining: 999, reason: "unlimited" };
+  }
+
+  // Limited (Go — 50/day)
+  if (planConfig.limits.browserAutomation > 0) {
+    const remaining = planConfig.limits.browserAutomation - todayCount;
+    return { allowed: remaining > 0, remaining, reason: remaining > 0 ? "quota" : "quota_exceeded" };
+  }
+
+  // No access (Core after trial)
+  return { allowed: false, remaining: 0, reason: "no_access" };
 }
