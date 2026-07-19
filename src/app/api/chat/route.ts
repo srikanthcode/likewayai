@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
               fetchAI,
               headless: false,
               maxIterations: 25,
-              onStep: (step) => {
+              onStep: (step: any) => {
                 // Show sub-goal changes
                 if (step.subGoal && step.subGoal !== lastSubGoal) {
                   lastSubGoal = step.subGoal;
@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
               fetchAI,
               headless: false,
               maxIterations: 25,
-              onStep: (step) => {
+              onStep: (step: any) => {
                 if (step.subGoal && step.subGoal !== lastSubGoal) {
                   lastSubGoal = step.subGoal;
                   send(`\n> **Sub-goal:** ${step.subGoal}\n\n`);
