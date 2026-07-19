@@ -58,9 +58,10 @@ export const keyPool = new KeyPool();
 // ── Provider Health Check ─────────────────────────────────────────────────
 // Logs active key pools on server startup so missing env vars are immediately visible
 const _providerStatus = (["mistral", "groq", "openrouter"] as const).map(p => {
+  const envVar = p === "mistral" ? "MISTRAL_API_KEY" : p === "groq" ? "GROQ_KEYS" : "OPENROUTER_KEYS";
   const keys = API_KEYS[p as keyof typeof API_KEYS];
   const count = Array.isArray(keys) ? keys.filter(Boolean).length : 0;
-  return `${p}: ${count > 0 ? `✅ ${count} key(s)` : "❌ NO KEYS — set env var"}`;
+  return `${p}: ${count > 0 ? `✅ ${count} key(s)` : `❌ MISSING — set ${envVar}`}`;
 });
 console.log("[LikeWay API] Provider pool status:\n" + _providerStatus.join("\n"));
 
@@ -159,5 +160,14 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
     console.warn("Provider " + currentProvider + " exhausted. Trying fallback...");
   }
 
-  throw new Error("Critical: All AI providers and keys are currently unavailable. Please try again in a moment.");
+  const hasAnyKey = ["mistral", "groq", "openrouter"].some(p => {
+    const keys = API_KEYS[p as keyof typeof API_KEYS];
+    return Array.isArray(keys) && keys.length > 0;
+  });
+
+  if (!hasAnyKey) {
+    throw new Error("No API keys configured. Set MISTRAL_API_KEY, GROQ_KEYS, and OPENROUTER_KEYS in your Vercel environment variables.");
+  }
+
+  throw new Error("All AI providers and keys are currently unavailable. Try again in a moment.");
 }
