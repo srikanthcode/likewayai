@@ -2569,7 +2569,7 @@ export default function ChatPage() {
                             "prose max-w-none overflow-hidden break-words prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
+                            <ReactMarkdown allowedElements={["p","h1","h2","h3","h4","h5","h6","strong","em","a","img","ul","ol","li","pre","code","blockquote","hr","table","thead","tbody","tr","th","td","br","span","div","del","sup","sub","details","summary"]} components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
                               {formatAIResponse(m.content || "Thinking...")}
                             </ReactMarkdown>
                             <span className="inline-block w-[2px] h-[1em] bg-cyan-400 ml-0.5 align-middle animate-pulse" />
@@ -2579,7 +2579,7 @@ export default function ChatPage() {
                             "prose max-w-none overflow-hidden break-words prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
+                            <ReactMarkdown allowedElements={["p","h1","h2","h3","h4","h5","h6","strong","em","a","img","ul","ol","li","pre","code","blockquote","hr","table","thead","tbody","tr","th","td","br","span","div","del","sup","sub","details","summary"]} components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
                               {formatAIResponse(m.content)}
                             </ReactMarkdown>
                           </div>
