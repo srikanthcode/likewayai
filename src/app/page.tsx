@@ -1947,7 +1947,12 @@ export default function ChatPage() {
 
           
           <div>
-            <h3 className="px-3 text-xs font-semibold text-gray-500 mb-1">Projects</h3>
+            <h3 className="px-3 text-xs font-semibold text-gray-500 mb-1 flex items-center justify-between">
+              <span>Projects</span>
+              {projects.length > 0 && (
+                <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded-full">{projects.length}</span>
+              )}
+            </h3>
             <div className="space-y-0.5">
               <button 
                 onClick={() => setIsNewProjectModalOpen(true)}
@@ -2080,16 +2085,6 @@ export default function ChatPage() {
               Upgrade to Pro
             </button>
           )}
-          <button
-            onClick={() => setShowSupportModal(true)}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium",
-              theme === 'dark' ? "hover:bg-white/5 text-gray-400" : "hover:bg-black/5 text-gray-500"
-            )}
-          >
-            <MessageSquare size={16} />
-            Support
-          </button>
           <AccountMenu />
         </div>
         </div>
@@ -3292,14 +3287,30 @@ export default function ChatPage() {
         theme={theme}
       />
 
-      <CommandPalette 
-        isOpen={isCommandPaletteOpen} 
-        onClose={() => setIsCommandPaletteOpen(false)} 
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
         actions={[
+          ...recentConversations.map(conv => ({
+            id: `conv-${conv._id}`,
+            name: conv.title,
+            description: `Conversation`,
+            icon: MessageSquare,
+            section: 'Recent Chats',
+            perform: () => { setActiveProject(null); setActiveConversationId(conv._id); setMessages([]); setIsSidebarOpen(false); }
+          })),
+          ...projects.map(proj => ({
+            id: `proj-${proj._id}`,
+            name: `${proj.emoji || "📁"} ${proj.name}`,
+            description: proj.desc || 'Project',
+            icon: Briefcase,
+            section: 'Projects',
+            perform: () => { setActiveProject(proj._id); setActiveConversationId(null); setMessages([]); setIsSidebarOpen(false); }
+          })),
           { id: 'settings', name: 'Open Settings', description: 'Configure platform parameters', icon: Settings, section: 'System', perform: () => setIsSettingsOpen(true) },
-          { id: 'projects', name: 'New Project', description: 'Create a fresh workspace', icon: Briefcase, section: 'Workspace', perform: () => console.log('New Project') },
+          { id: 'new-project', name: 'New Project', description: 'Create a fresh workspace', icon: Briefcase, section: 'Workspace', perform: () => setIsNewProjectModalOpen(true) },
           { id: 'clear', name: 'Clear Chat', description: 'Reset the current context', icon: Trash2, section: 'System', perform: () => setMessages([]) },
-        ]} 
+        ]}
       />
 
       <PersonaManager 
