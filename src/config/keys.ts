@@ -24,17 +24,16 @@ export const API_KEYS = {
 // Helper function to get user-specific API keys
 export async function getUserApiKeys(userId: string): Promise<Record<string, string>> {
   try {
-    const { MongoClient, ObjectId } = await import("mongodb");
-    const MONGODB_URI = process.env.MONGODB_URI || "";
+    const clientPromise = (await import("@/lib/mongodb")).default;
+    const { ObjectId } = await import("mongodb");
     const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
 
-    const client = new MongoClient(MONGODB_URI);
-    await client.connect();
+    const client = await clientPromise;
     const db = client.db(MONGODB_DB_NAME);
 
-    const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
-    await client.close();
-    
+    const oid = new ObjectId(userId);
+    const user = await db.collection("users").findOne({ _id: oid });
+
     return user?.apiKeys || {};
   } catch (error) {
     console.error("Error fetching user API keys:", error);

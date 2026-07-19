@@ -331,37 +331,62 @@ export async function tavilySearch(query: string): Promise<string> {
 
 /**
  * Generates an image using the Image Router.
- * Route: Pollinations FLUX.1 Schnell (fast) → Pollinations SDXL (quality) → OpenRouter FLUX Dev → HuggingFace FLUX → Stability AI
+ * Route: ComfyUI (self-hosted, free) → Pollinations FLUX.1 Schnell → Pollinations SDXL → OpenRouter FLUX Dev → HuggingFace FLUX → Stability AI
  */
 export async function generateImage(prompt: string): Promise<string> {
   const seed = Math.floor(Math.random() * 1000000);
   const encodedPrompt = encodeURIComponent(prompt);
 
+  // 0th Route: ComfyUI (self-hosted, free, no API cost)
+  try {
+    const { generateWithComfyUI, checkComfyUIHealth, enhancePrompt, selectModel } = await import("@/lib/comfyui");
+    const comfyAvailable = await checkComfyUIHealth();
+    if (comfyAvailable) {
+      const enhancedPrompt = enhancePrompt(prompt);
+      const { checkpoint, modelType } = selectModel(prompt);
+      const result = await generateWithComfyUI({ prompt: enhancedPrompt });
+      if (result.success && result.imageBase64) {
+        console.log(`Image Router: ComfyUI ${modelType.toUpperCase()} succeeded.`);
+        return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
+          `![Generated Image](${result.imageBase64})\n` +
+          "Prompt: " + prompt + "\n" +
+          `Model: ComfyUI / ${modelType.toUpperCase()}\n` +
+          "</artifact>";
+      }
+    }
+  } catch { /* fall through to cloud */ }
+
   // 1st Route: Pollinations FLUX.1 Schnell — free, fast, no key
   try {
-    const schnellUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux-schnell&enhance=true`;
+    const schnellUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux-schnell`;
     const schnellRes = await fetch(schnellUrl, { method: "HEAD" });
     if (schnellRes.ok) {
-      console.log("Image Router: Pollinations FLUX.1 Schnell succeeded.");
-      return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-        `![Generated Image](${schnellUrl})\n` +
-        "Prompt: " + prompt + "\n" +
-        "Model: FLUX.1 Schnell (fast)\n" +
-        "</artifact>";
+      const contentLength = schnellRes.headers.get("content-length");
+      if (contentLength && parseInt(contentLength) > 100) {
+        console.log("Image Router: Pollinations FLUX.1 Schnell succeeded.");
+        return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
+          `![Generated Image](${schnellUrl})\n` +
+          "Prompt: " + prompt + "\n" +
+          "Model: FLUX.1 Schnell (fast)\n" +
+          "</artifact>";
+      }
     }
   } catch { /* fall through */ }
 
   // 2nd Route: Pollinations SDXL — free, higher quality
   try {
-    const sdxlUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=sdxl&enhance=true`;
+    const sdxlUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=sdxl`;
     const sdxlRes = await fetch(sdxlUrl, { method: "HEAD" });
     if (sdxlRes.ok) {
-      console.log("Image Router: Pollinations SDXL succeeded.");
-      return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-        `![Generated Image](${sdxlUrl})\n` +
-        "Prompt: " + prompt + "\n" +
-        "Model: SDXL (quality)\n" +
-        "</artifact>";
+      const contentLength = sdxlRes.headers.get("content-length");
+      if (contentLength && parseInt(contentLength) > 100) {
+        console.log("Image Router: Pollinations SDXL succeeded.");
+        return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
+          `![Generated Image](${sdxlUrl})\n` +
+          "Prompt: " + prompt + "\n" +
+          "Model: SDXL (quality)\n" +
+          "</artifact>";
+      }
     }
   } catch { /* fall through */ }
 
@@ -462,8 +487,8 @@ export async function generateImage(prompt: string): Promise<string> {
     }
   }
 
-  // Final fallback: plain Pollinations FLUX URL
-  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux&enhance=true`;
+  // Final fallback: plain Pollinations FLUX URL (no problematic params)
+  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux`;
   return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
     `![Generated Image](${fallbackUrl})\n` +
     "Prompt: " + prompt + "\n" +
@@ -480,14 +505,12 @@ export async function editImage(imageUrl: string, editPrompt: string): Promise<s
   // 1st Route: Pollinations image-to-image (free, no key)
   try {
     const encodedPrompt = encodeURIComponent(editPrompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux`;
-    // Pollinations doesn't directly support img2img, but we return the edit prompt with the original image context
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux-schnell`;
     const pollinationsRes = await fetch(pollinationsUrl, { method: "HEAD" });
     if (pollinationsRes.ok) {
       console.log("Image Edit: Pollinations succeeded.");
-      const displayedUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux-schnell&enhance=true`;
       return "<artifact type=\"doc\" title=\"Edited Image\">\n" +
-        `![Edited Image](${displayedUrl})\n` +
+        `![Edited Image](${pollinationsUrl})\n` +
         `Original: ![Original](${imageUrl})\n\n` +
         "Edit Prompt: " + editPrompt + "\n" +
         "</artifact>";
