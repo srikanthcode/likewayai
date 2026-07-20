@@ -23,17 +23,6 @@ function toObjectId(id: string): ObjectId | null {
 }
 
 export async function getUserPlan(userId: string): Promise<UserSubscription> {
-  // Dev bypass: always return Pro for this user ID
-  if (userId === "6a53aa11ae01dde8fdacf81d") {
-    return {
-      userId,
-      plan: "Pro",
-      subscriptionId: "dev-pro-unlock",
-      status: "active",
-      updatedAt: new Date(),
-    };
-  }
-
   try {
     const client = await clientPromise;
     const db = client.db(DB_NAME);

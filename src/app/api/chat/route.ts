@@ -18,6 +18,7 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+
 // Lazy import — browser-engine has heavy deps that crash on Vercel serverless
 let runBrowserEngine: any = null;
 
@@ -111,8 +112,6 @@ export async function POST(req: NextRequest) {
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
     let plan = (tokenPayload?.plan as PlanType) || "Core";
-    // Dev bypass: force Pro for this user ID
-    if (userId === "6a53aa11ae01dde8fdacf81d") plan = "Pro";
 
     // Validate prompt
     const validation = validatePrompt(prompt);
@@ -180,8 +179,9 @@ export async function POST(req: NextRequest) {
     // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
     const isBrowserAgent = mode === "Browser";
     if (isBrowserAgent) {
-      // On Vercel: proxy to Render backend (no Chromium on Vercel)
-      if (process.env.VERCEL) {
+      // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
+      // VERCEL is set even in local dev by Next.js, so check VERCEL_REGION (only set on real Vercel)
+      if (process.env.VERCEL_REGION) {
         const renderUrl = process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
         const encoder = new TextEncoder();
         const stream = new ReadableStream({

@@ -1,9 +1,13 @@
 import crypto from "crypto";
 
 // ── Secrets ────────────────────────────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production"
-  ? (() => { throw new Error("CRITICAL: JWT_SECRET must be set in production environment"); })()
-  : "likeway-dev-secret-change-in-production-32chars");
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("CRITICAL: JWT_SECRET must be set in production environment");
+  }
+  console.warn("[Auth] WARNING: Using weak default JWT_SECRET in development. Set JWT_SECRET env var for production.");
+  return "likeway-dev-secret-change-in-production-32chars";
+})();
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || crypto.createHash("sha256").update(JWT_SECRET + ":refresh-token-key").digest("hex");
 
 // Access token: 7 days (users stay logged in without needing a refresh)
