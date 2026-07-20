@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Task description is required" }, { status: 400 });
     }
 
-    const modelId = requestedModel || "meta-llama/llama-3.3-70b-instruct";
+    const modelId = requestedModel || "llama-3.3-70b-versatile";
     const provider = getProviderForModel(modelId);
 
     const options: AgentOptions = {

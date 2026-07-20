@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
         const mod = await import("@/lib/automation/browser-engine");
         runBrowserEngine = mod.runBrowserEngine;
       }
-      const browserModelId = modelId || "meta-llama/llama-3.3-70b-instruct";
+      const browserModelId = modelId || "llama-3.3-70b-versatile";
       const browserProvider = getProviderForModel(browserModelId);
 
       const encoder = new TextEncoder();
