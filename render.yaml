@@ -1,8 +1,10 @@
 services:
   - type: web
     name: likeway
-    runtime: docker
+    runtime: node
     plan: starter
+    buildCommand: rm -rf .next && npm install --include=dev && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
