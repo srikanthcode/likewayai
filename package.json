@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "postinstall": "npx -y playwright install --with-deps chromium",
+    "postinstall": "npx playwright install --with-deps chromium",
     "lint": "next lint",
     "tailwind": "tailwindcss -i globals.css -o app/globals.css --minify",
     "test:e2e": "playwright test",
