@@ -1,7 +1,10 @@
 const getKeys = (envVar: string): string[] => {
   const keys = process.env[envVar];
-  if (!keys) return [];
-  return keys.split(",").map(k => k.trim());
+  if (!keys || keys.trim() === "") return [];
+  return keys
+    .split(",")
+    .map(k => k.trim())
+    .filter(k => k.length > 0);
 };
 
 export const API_KEYS = {

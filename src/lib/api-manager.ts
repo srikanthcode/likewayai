@@ -2,19 +2,46 @@ import { API_KEYS } from "@/config/keys";
 
 type Provider = "openrouter" | "groq" | "mistral" | "image";
 
+// ── Model mapping for each provider ──────────────────────────────────────
+// Key insight: Direct Mistral API expects model names WITHOUT "mistral/" prefix
+// OpenRouter expects model names WITH "mistral/" prefix (provider/model format)
+const FALLBACK_MODELS: Record<Provider, string> = {
+  mistral: "mistral-medium-latest",     // Direct Mistral API: NO prefix
+  groq: "llama-3.3-70b-versatile",
+  openrouter: "google/gemini-2.5-flash",
+  image: "",
+};
+
+const PROVIDER_INFO: Record<Provider, { envVar: string; url: string }> = {
+  groq: { envVar: "GROQ_KEYS", url: "https://api.groq.com/openai/v1/chat/completions" },
+  openrouter: { envVar: "OPENROUTER_KEYS", url: "https://openrouter.ai/api/v1/chat/completions" },
+  mistral: { envVar: "MISTRAL_API_KEY", url: "https://api.mistral.ai/v1/chat/completions" },
+  image: { envVar: "IMAGE_GENERATION_KEYS", url: "https://api.deepai.org/api/text2img" },
+};
+
 class KeyPool {
   private keys: Record<Provider, string[]>;
   private indices: Record<Provider, number>;
   private failedKeys: Set<string> = new Set();
 
   constructor() {
-    this.keys = API_KEYS as Record<Provider, string[]>;
+    this.keys = {
+      openrouter: API_KEYS.openrouter || [],
+      groq: API_KEYS.groq || [],
+      mistral: API_KEYS.mistral || [],
+      image: API_KEYS.image || [],
+    };
     this.indices = {
       openrouter: 0,
       groq: 0,
       mistral: 0,
       image: 0,
     };
+  }
+
+  /** Count of valid keys for a provider */
+  keyCount(provider: Provider): number {
+    return this.keys[provider]?.length || 0;
   }
 
   getNextKey(provider: Provider): string | null {
@@ -58,62 +85,111 @@ export const keyPool = new KeyPool();
 // ── Provider Health Check ─────────────────────────────────────────────────
 // Logs active key pools on server startup so missing env vars are immediately visible
 const _providerStatus = (["mistral", "groq", "openrouter"] as const).map(p => {
-  const envVar = p === "mistral" ? "MISTRAL_API_KEY" : p === "groq" ? "GROQ_KEYS" : "OPENROUTER_KEYS";
-  const keys = API_KEYS[p as keyof typeof API_KEYS];
-  const count = Array.isArray(keys) ? keys.filter(Boolean).length : 0;
-  return `${p}: ${count > 0 ? `✅ ${count} key(s)` : `❌ MISSING — set ${envVar}`}`;
+  const info = PROVIDER_INFO[p];
+  const count = keyPool.keyCount(p);
+  return `${p}: ${count > 0 ? `✅ ${count} key(s)` : `❌ MISSING — set ${info.envVar}`}`;
 });
 console.log("[LikeWay API] Provider pool status:\n" + _providerStatus.join("\n"));
 
-const PROVIDER_URLS: Record<Provider, string> = {
-    groq: "https://api.groq.com/openai/v1/chat/completions",
-    openrouter: "https://openrouter.ai/api/v1/chat/completions",
-    mistral: "https://api.mistral.ai/v1/chat/completions",
-    image: "https://api.deepai.org/api/text2img" // Not really used this way anymore
-};
+// ── Helper: Build fallback model for a provider ──────────────────────────
+// Mistral direct API: "mistral-medium-latest" (no prefix)
+// OpenRouter: "mistral/mistral-medium-latest" (with prefix)
+function getFallbackModel(provider: Provider, originalModel: string): string {
+  const base = FALLBACK_MODELS[provider] || "mistral-medium-latest";
+  return base;
+}
 
+// ── Helper: log provider attempt details ─────────────────────────────────
+function logAttempt(
+  provider: Provider,
+  model: string,
+  status: number | string,
+  message: string,
+  isFallback: boolean
+) {
+  const tag = isFallback ? "[Fallback]" : "[Primary]";
+  console.log(
+    `${tag} ${provider} | model=${model} | status=${status} | ${message}`
+  );
+}
+
+// ── fetchAI: Core AI provider router with fallback chain ─────────────────
 export async function fetchAI(provider: Provider, url: string, options: any) {
-  const providersToTry: Provider[] = [];
-  if (provider === "groq") {
-    providersToTry.push("groq", "openrouter", "mistral");
-  } else if (provider === "mistral") {
-    providersToTry.push("mistral", "openrouter", "groq");
-  } else {
-    providersToTry.push("openrouter", "groq", "mistral");
-  }
+  // Build fallback order: primary provider first, then fallbacks
+  const providerOrder: Provider[] = [];
+  const allProviders: Provider[] = ["openrouter", "groq", "mistral"];
   
-  for (const currentProvider of providersToTry) {
-    let key;
-    const currentUrl = PROVIDER_URLS[currentProvider] || url;
+  // Put the requested provider first
+  if (allProviders.includes(provider)) {
+    providerOrder.push(provider);
+    // Add remaining providers as fallbacks (preserving order while removing duplicates)
+    for (const p of allProviders) {
+      if (p !== provider) providerOrder.push(p);
+    }
+  } else {
+    // Unknown provider, try all
+    providerOrder.push(...allProviders);
+  }
 
-    // Translate body parameters dynamically during fallback
+  // Extract the original model from request body
+  let originalModel = "";
+  try {
+    if (options.body) {
+      const bodyObj = JSON.parse(options.body);
+      originalModel = bodyObj.model || "";
+    }
+  } catch {}
+
+  // Track which providers we've tried for detailed error reporting
+  const triedProviders: string[] = [];
+  
+  for (const currentProvider of providerOrder) {
+    const info = PROVIDER_INFO[currentProvider];
+    const currentUrl = info.url;
+    const fallbackModel = getFallbackModel(currentProvider, originalModel);
+
+    // Check if provider has any keys configured
+    if (keyPool.keyCount(currentProvider) === 0) {
+      // Skip providers with no keys configured
+      if (currentProvider !== provider) {
+        logAttempt(currentProvider, fallbackModel, "SKIP", "No keys configured", currentProvider !== provider);
+        continue;
+      }
+      // If the primary provider has no keys, we'll let it fail gracefully and fall through
+    }
+
+    // Build request options with correct model for this provider
     let requestOptions = options;
-    if (currentProvider !== provider && options.body) {
+    if (options.body && currentProvider !== provider) {
       try {
         const bodyObj = JSON.parse(options.body);
-        if (currentProvider === "mistral") {
-          bodyObj.model = "mistral/mistral-medium-latest";
-        } else if (currentProvider === "groq") {
-          bodyObj.model = "llama-3.3-70b-versatile";
-        } else if (currentProvider === "openrouter") {
-          bodyObj.model = "google/gemini-2.5-flash";
-        }
+        bodyObj.model = fallbackModel;
         requestOptions = {
           ...options,
-          body: JSON.stringify(bodyObj)
+          body: JSON.stringify(bodyObj),
         };
+        logAttempt(currentProvider, fallbackModel, "→", "Model mapped for fallback", true);
       } catch (e) {
-        console.warn("[Key Rotator] Dynamic translation failed during fallback:", e);
+        logAttempt(currentProvider, fallbackModel, "WARN", `Body translation failed: ${e}`, true);
       }
     }
 
-    // Try all keys for current provider (max attempts to prevent infinite loop from self-healing)
+    // Try all keys for current provider
     let providerAttempts = 0;
     const maxProviderAttempts = 6; // Enough to try all keys + one self-healing reset cycle
-    while ((key = keyPool.getNextKey(currentProvider)) !== null && providerAttempts++ < maxProviderAttempts) {
+    
+    while (true) {
+      const key = keyPool.getNextKey(currentProvider);
+      if (key === null) break;
+      providerAttempts++;
+      if (providerAttempts > maxProviderAttempts) break;
+
+      triedProviders.push(`${currentProvider}#${providerAttempts}`);
+
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
         const response = await fetch(currentUrl, {
           ...requestOptions,
           signal: controller.signal,
@@ -126,8 +202,14 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
         });
         clearTimeout(timeoutId);
 
+        // Extract error text for logging
+        let errText = "";
         if (!response.ok) {
-          const errText = await response.clone().text().catch(() => "");
+          errText = await response.clone().text().catch(() => "");
+        }
+
+        // Determine failure type
+        if (!response.ok) {
           const isRateLimit = response.status === 429 || 
                               response.status === 413 || 
                               errText.includes("rate_limit") || 
@@ -137,37 +219,94 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
                               errText.includes("too large") ||
                               errText.includes("TPM");
           
-          if (isRateLimit || response.status === 401) {
-            console.warn(`[Key Rotator] Key failed with rate/limit/auth issue (${response.status}). Rotating to next key...`);
+          const isAuthError = response.status === 401 || response.status === 403;
+          const isServerError = response.status >= 500;
+          const isInvalidModel = response.status === 400 && 
+            (errText.includes("model") || errText.includes("not found"));
+
+          if (isRateLimit || isAuthError) {
+            logAttempt(
+              currentProvider, fallbackModel, response.status,
+              `Key failed (${isRateLimit ? "rate limit" : "auth"}): ${errText.slice(0, 60)}`,
+              currentProvider !== provider
+            );
             keyPool.markKeyFailed(key);
-            continue;
+            continue; // Try next key
           }
-        }
 
-        // If it's a 5xx error, try next key
-        if (response.status >= 500) {
+          if (isInvalidModel) {
+            logAttempt(
+              currentProvider, fallbackModel, response.status,
+              `Invalid model: ${errText.slice(0, 80)}`,
+              currentProvider !== provider
+            );
+            // Don't mark key as failed - model issue is not key-related
+            // But don't retry this provider with same model - break to next provider
+            break;
+          }
+
+          if (isServerError) {
+            logAttempt(
+              currentProvider, fallbackModel, response.status,
+              `Server error: ${errText.slice(0, 60)}`,
+              currentProvider !== provider
+            );
             keyPool.markKeyFailed(key);
-            continue;
+            continue; // Try next key
+          }
+
+          // Other errors: try next key
+          logAttempt(
+            currentProvider, fallbackModel, response.status,
+            `HTTP ${response.status}: ${errText.slice(0, 60)}`,
+            currentProvider !== provider
+          );
+          keyPool.markKeyFailed(key);
+          continue;
         }
 
+        // SUCCESS!
+        logAttempt(
+          currentProvider, fallbackModel, response.status,
+          "OK",
+          currentProvider !== provider
+        );
         return response;
-      } catch (error) {
+      } catch (error: any) {
+        const errMsg = error.message?.slice(0, 80) || "Unknown error";
+        logAttempt(
+          currentProvider, fallbackModel, "NET_ERROR",
+          `${errMsg}${error.name === "AbortError" ? " (timeout 30s)" : ""}`,
+          currentProvider !== provider
+        );
         keyPool.markKeyFailed(key);
       }
     }
-    
-    // If we are here, current provider is exhausted, loop will try next provider
-    console.warn("Provider " + currentProvider + " exhausted. Trying fallback...");
+
+    // This provider is exhausted, try the next one
+    logAttempt(
+      currentProvider, FALLBACK_MODELS[currentProvider] || "?", "EXHAUSTED",
+      "All keys tried, moving to next provider",
+      currentProvider !== provider
+    );
   }
 
-  const hasAnyKey = ["mistral", "groq", "openrouter"].some(p => {
-    const keys = API_KEYS[p as keyof typeof API_KEYS];
-    return Array.isArray(keys) && keys.length > 0;
-  });
+  // ── ALL PROVIDERS EXHAUSTED ────────────────────────────────────────────
+  // Determine the reason for detailed error message
+  const configuredProviders = allProviders.filter(p => keyPool.keyCount(p) > 0);
+  const triedSet = new Set(triedProviders.map(t => t.split("#")[0]));
 
-  if (!hasAnyKey) {
-    throw new Error("No API keys configured. Set MISTRAL_API_KEY, GROQ_KEYS, and OPENROUTER_KEYS in your Vercel environment variables.");
+  if (configuredProviders.length === 0) {
+    throw new Error(
+      "No API keys configured. Set MISTRAL_API_KEY, GROQ_KEYS, and OPENROUTER_KEYS in your environment variables."
+    );
   }
 
-  throw new Error("All AI providers and keys are currently unavailable. Try again in a moment.");
+  const failedProviders = configuredProviders
+    .map(p => `${p} (${keyPool.keyCount(p)} key(s))`)
+    .join(", ");
+
+  throw new Error(
+    `All AI providers and keys are currently unavailable. Tried: ${failedProviders}. Check provider status and try again in a moment.`
+  );
 }
