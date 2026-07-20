@@ -25,40 +25,17 @@ async function getChromium() {
   }
 }
 
-// Global browser/session state
+// Global browser state
 let browser: any = null;
-let steelSessionId: string | null = null;
 
-async function getBrowser(): Promise<{ browser: any; steelSessionId?: string }> {
+async function getBrowser(): Promise<{ browser: any }> {
   if (browser && browser.isConnected()) {
-    return { browser, steelSessionId: steelSessionId || undefined };
-  }
-
-  // Steel cloud browser
-  const steelApiKey = process.env.STEEL_API_KEY;
-  if (steelApiKey) {
-    const loader = new Function("specifier", "return import(specifier)");
-    const Steel = (await loader("steel-sdk")).default;
-    const steel = new Steel({ steelAPIKey: steelApiKey });
-    const session = await steel.sessions.create();
-    const pw = await getChromium();
-    const wsUrl = `wss://connect.steel.dev?apiKey=${steelApiKey}&sessionId=${session.id}`;
-    browser = await pw.connect({ browserWSEndpoint: wsUrl });
-    steelSessionId = session.id;
-    return { browser, steelSessionId: session.id };
-  }
-
-  // Local Chromium
-  if (process.env.VERCEL) {
-    throw new Error(
-      "Browser automation requires STEEL_API_KEY on Vercel. " +
-      "Set it in your Vercel environment variables, or deploy on a server with Chromium."
-    );
+    return { browser };
   }
 
   const chromium = await getChromium();
   browser = await chromium.launch({
-    headless: false,
+    headless: true,
     args: [
       "--no-sandbox",
       "--disable-blink-features=AutomationControlled",
@@ -146,7 +123,7 @@ export async function POST(req: NextRequest) {
     const plan = await planAutomation(task.trim(), fetchAI, modelId, provider);
 
     // Phase 2: Execute
-    const { browser: b, steelSessionId: sid } = await getBrowser();
+    const { browser: b } = await getBrowser();
     const context = await b.newContext({
       viewport: { width: 1280, height: 800 },
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -177,16 +154,6 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     await context.close();
-
-    // Release Steel session
-    if (sid) {
-      try {
-        const loader = new Function("specifier", "return import(specifier)");
-        const Steel = (await loader("steel-sdk")).default;
-        const steel = new Steel({ steelAPIKey: process.env.STEEL_API_KEY });
-        await steel.sessions.release(sid);
-      } catch {}
-    }
 
     const success = stepResults.every((r) => r.success);
 

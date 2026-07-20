@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
               provider: browserProvider,
               modelId: browserModelId,
               fetchAI,
-              headless: false,
+              headless: true,
               maxIterations: 25,
               onStep: (step: any) => {
                 // Show sub-goal changes
@@ -277,7 +277,7 @@ export async function POST(req: NextRequest) {
               provider: automationProvider,
               modelId: automationModelId,
               fetchAI,
-              headless: false,
+              headless: true,
               maxIterations: 25,
               onStep: (step: any) => {
                 if (step.subGoal && step.subGoal !== lastSubGoal) {

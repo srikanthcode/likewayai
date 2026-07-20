@@ -43,14 +43,6 @@ let _playwright: any = null;
 async function getPlaywright() {
   if (_playwright) return _playwright;
 
-  // Playwright requires a full OS with Chromium — can't work on Vercel Lambda
-  if (process.env.VERCEL) {
-    throw new Error(
-      "Browser automation is not available on Vercel. " +
-      "This feature requires a server with Chromium installed."
-    );
-  }
-
   try {
     // new Function hides the import string from Turbopack/webpack static analysis
     // so the bundler never creates a chunk for playwright
@@ -333,36 +325,9 @@ function isSessionFresh(sessionPath: string, maxAgeHours = 24): boolean {
 async function launchBrowser(options: {
   headless: boolean;
   viewport: { width: number; height: number };
-}): Promise<{ browser: Browser; context: BrowserContext; page: Page; steelSessionId?: string }> {
+}): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
   const pw = await getPlaywright();
-  const steelApiKey = process.env.STEEL_API_KEY;
 
-  // ── STEEL CLOUD BROWSER ────────────────────────────────────────────
-  if (steelApiKey) {
-    console.log("[Browser] Connecting to Steel cloud browser...");
-    const Steel = (await import("steel-sdk")).default;
-    const steel = new Steel({ steelAPIKey: steelApiKey });
-    const session = await steel.sessions.create();
-    const wsUrl = `wss://connect.steel.dev?apiKey=${steelApiKey}&sessionId=${session.id}`;
-    console.log(`[Browser] Steel session created: ${session.id}`);
-
-    const browser = await pw.chromium.connect({
-      browserWSEndpoint: wsUrl,
-    } as any);
-
-    const context = await browser.newContext({
-      viewport: options.viewport,
-      locale: "en-US",
-    } as any);
-
-    const pages = context.pages();
-    const page = pages.length > 0 ? pages[0] : await context.newPage();
-    setupPageHandlers(page);
-
-    return { browser, context, page, steelSessionId: session.id };
-  }
-
-  // ── LOCAL CHROMIUM ─────────────────────────────────────────────────
   const profilePath = getProfilePath();
   const sessionPath = getSessionPath();
 
@@ -380,8 +345,7 @@ async function launchBrowser(options: {
   let context: BrowserContext;
 
   const launchOptions = {
-    headless: options.headless,
-    channel: options.headless ? undefined : "chrome",
+    headless: true,
     args: [
       "--no-sandbox",
       "--disable-blink-features=AutomationControlled",
@@ -2028,7 +1992,6 @@ export async function runBrowserEngine(
   let context: BrowserContext | null = null;
   let page: Page | null = null;
   let finalAnswer: string | undefined;
-  let steelSessionId: string | undefined;
 
   try {
     // ── LAUNCH BROWSER ───────────────────────────────────────────────
@@ -2036,7 +1999,6 @@ export async function runBrowserEngine(
     const launched = await launchBrowser({ headless, viewport });
     context = launched.context;
     page = launched.page;
-    steelSessionId = launched.steelSessionId;
 
     // ── DECOMPOSE GOAL ───────────────────────────────────────────────
     console.log(`[Browser] Decomposing goal: ${task.slice(0, 80)}`);
@@ -2269,27 +2231,15 @@ export async function runBrowserEngine(
       await saveSession(context).catch(() => {});
     }
 
-    // Close browser (always for cloud, only headless for local)
+    // Close browser (only when headless)
     try {
-      if (steelSessionId || headless) {
+      if (headless) {
         await context?.close().catch(() => {});
         console.log("[Browser] Browser closed.");
       } else {
         console.log("[Browser] Browser staying open for user to see.");
       }
     } catch {}
-
-    // Release Steel session
-    if (steelSessionId) {
-      try {
-        const Steel = (await import("steel-sdk")).default;
-        const steel = new Steel({ steelAPIKey: process.env.STEEL_API_KEY });
-        await steel.sessions.release(steelSessionId);
-        console.log(`[Browser] Steel session released: ${steelSessionId}`);
-      } catch (err: any) {
-        console.log(`[Browser] Steel session release failed: ${err.message?.slice(0, 60)}`);
-      }
-    }
   }
 }
 
