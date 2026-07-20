@@ -6,23 +6,30 @@ import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export const maxDuration = 120;
 
-// Dynamic import — avoids crashing at module load when playwright is unavailable (e.g. Vercel Lambda)
+// Bundler-proof dynamic import (same pattern as browser-engine.ts)
 let _chromium: any = null;
 
 async function getChromium() {
-  if (!_chromium) {
-    try {
-      const pw = await import("playwright");
-      _chromium = pw.chromium;
-    } catch (err: any) {
-      throw new Error(
-        "Browser automation requires a server with Chromium installed. " +
-        "This feature is not available on serverless platforms like Vercel. " +
-        `Original error: ${err.message}`
-      );
-    }
+  if (_chromium) return _chromium;
+
+  if (process.env.VERCEL) {
+    throw new Error(
+      "Browser automation is not available on Vercel. " +
+      "This feature requires a server with Chromium installed."
+    );
   }
-  return _chromium;
+
+  try {
+    const loader = new Function("specifier", "return import(specifier)");
+    const pw = await loader("playwright");
+    _chromium = pw.chromium;
+    return _chromium;
+  } catch (err: any) {
+    throw new Error(
+      "Browser automation requires playwright. Install it with: npm install playwright\n" +
+      `Error: ${err.message}`
+    );
+  }
 }
 
 // Global browser instance (persists across requests in same server process)

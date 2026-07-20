@@ -23,25 +23,56 @@
 import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
-import type { Browser, BrowserContext, Page, Frame } from "playwright";
 
-// Dynamic import — avoids crashing at module load when playwright is unavailable (e.g. Vercel Lambda)
-let _playwright: typeof import("playwright") | null = null;
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAYWRIGHT LOADER — Bundler-proof dynamic import
+//
+// Problem: Turbopack/webpack traces `import("playwright")` at build time,
+// creates a chunk, and at runtime in Vercel Lambda playwright-core tries to
+// require('playwright-core/browsers.json') which Vercel's file tracer never
+// included in the bundle (it's not in playwright's `exports` map).
+//
+// Fix: Use `new Function` to hide the import string from static analysis.
+// The bundler cannot resolve what it can't see. At runtime, Node.js resolves
+// `playwright` from node_modules normally. On Vercel, the import fails and
+// we return a clean error instead of crashing the entire serverless function.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _playwright: any = null;
 
 async function getPlaywright() {
-  if (!_playwright) {
-    try {
-      _playwright = await import("playwright");
-    } catch (err: any) {
-      throw new Error(
-        "Browser automation is not available in this environment. " +
-        "Playwright requires a server with Chromium installed. " +
-        `Original error: ${err.message}`
-      );
-    }
+  if (_playwright) return _playwright;
+
+  // Playwright requires a full OS with Chromium — can't work on Vercel Lambda
+  if (process.env.VERCEL) {
+    throw new Error(
+      "Browser automation is not available on Vercel. " +
+      "This feature requires a server with Chromium installed."
+    );
   }
-  return _playwright;
+
+  try {
+    // new Function hides the import string from Turbopack/webpack static analysis
+    // so the bundler never creates a chunk for playwright
+    const loader = new Function("specifier", "return import(specifier)");
+    _playwright = await loader("playwright");
+    return _playwright;
+  } catch (err: any) {
+    throw new Error(
+      "Browser automation requires playwright. Install it with: npm install playwright\n" +
+      `Error: ${err.message}`
+    );
+  }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPES (inline — no playwright import needed)
+// ═══════════════════════════════════════════════════════════════════════════
+
+type Browser = any;
+type BrowserContext = any;
+type Page = any;
+type Frame = any;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -371,7 +402,7 @@ async function launchBrowser(options: {
   }
 
   // Handle new pages (OAuth popups, target=_blank links)
-  context.on("page", (newPage) => {
+  context.on("page", (newPage: any) => {
     setupPageHandlers(newPage);
     console.log(`[Browser] New page opened: ${newPage.url()}`);
   });
@@ -384,13 +415,13 @@ async function launchBrowser(options: {
 
 function setupPageHandlers(page: Page) {
   // Auto-dismiss dialogs
-  page.on("dialog", async (dialog) => {
+  page.on("dialog", async (dialog: any) => {
     console.log(`[Browser] Dialog dismissed: ${dialog.type()} — ${dialog.message().slice(0, 100)}`);
     try { await dialog.dismiss(); } catch {}
   });
 
   // Log console errors for debugging
-  page.on("console", (msg) => {
+  page.on("console", (msg: any) => {
     if (msg.type() === "error") {
       const text = msg.text();
       // Filter out noisy third-party errors
@@ -401,7 +432,7 @@ function setupPageHandlers(page: Page) {
   });
 
   // Monitor failed network requests
-  page.on("requestfailed", (request) => {
+  page.on("requestfailed", (request: any) => {
     const url = request.url();
     // Only log non-trivial failures
     if (!url.includes("favicon") && !url.includes("analytics") && !url.includes(".png") && !url.includes(".jpg")) {
@@ -444,7 +475,7 @@ async function analyzePage(page: Page, memory: Memory, takeScreenshot = true): P
     })),
     extractElementsFromPage(page),
     getVisibleText(page, 3000),
-    takeScreenshot ? page.screenshot({ fullPage: false, type: "png" }).then(buf => `data:image/png;base64,${buf.toString("base64")}`).catch(() => undefined) : Promise.resolve(undefined),
+    takeScreenshot ? page.screenshot({ fullPage: false, type: "png" }).then((buf: any) => `data:image/png;base64,${buf.toString("base64")}`).catch(() => undefined) : Promise.resolve(undefined),
     detectPageFeatures(page),
   ]);
 
@@ -493,7 +524,7 @@ async function analyzePage(page: Page, memory: Memory, takeScreenshot = true): P
 }
 
 async function extractElementsFromPage(page: Page, max = 80): Promise<DOMElement[]> {
-  return page.evaluate(({ selectors, max }) => {
+  return page.evaluate(({ selectors, max }: { selectors: string; max: number }) => {
     const results: any[] = [];
     const seen = new Set<Element>();
     let idx = 0;
@@ -555,7 +586,7 @@ async function extractElementsFromPage(page: Page, max = 80): Promise<DOMElement
 
 async function extractElementsFromFrame(frame: Frame, max = 30): Promise<DOMElement[]> {
   try {
-    return await frame.evaluate(({ selectors, max }) => {
+    return await frame.evaluate(({ selectors, max }: { selectors: string; max: number }) => {
       const results: any[] = [];
       const seen = new Set<Element>();
       let idx = 1000; // Offset to avoid ref collisions with main frame
@@ -606,7 +637,7 @@ async function extractElementsFromFrame(frame: Frame, max = 30): Promise<DOMElem
 }
 
 async function getVisibleText(page: Page, max = 3000): Promise<string> {
-  return page.evaluate((max) => {
+  return page.evaluate((max: number) => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const chunks: string[] = [];
     let total = 0;
@@ -903,7 +934,7 @@ async function executeAction(
       }
 
       case "scroll": {
-        await page.evaluate((d) => {
+        await page.evaluate((d: string) => {
           window.scrollBy({ top: d === "up" ? -800 : 800, behavior: "smooth" });
         }, action.direction || "down");
         await page.waitForTimeout(150); // Brief scroll settle
@@ -983,7 +1014,7 @@ async function executeAction(
 
       case "clipboard_write": {
         if (!action.clipText) return { success: false, error: "No text" };
-        await page.evaluate((t) => navigator.clipboard.writeText(t), action.clipText);
+        await page.evaluate((t: string) => navigator.clipboard.writeText(t), action.clipText);
         return { success: true };
       }
 
@@ -1126,7 +1157,7 @@ async function executeFill(
       await page.waitForTimeout(200);
       await page.keyboard.insertText(action.value);
     } else if (found.strategy === "javascript") {
-      await page.evaluate(({ name, val }) => {
+      await page.evaluate(({ name, val }: { name: string; val: string }) => {
         const inputs = document.querySelectorAll("input, textarea");
         for (const inp of inputs) {
           const ph = (inp as HTMLInputElement).placeholder || "";
