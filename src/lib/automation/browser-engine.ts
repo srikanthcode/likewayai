@@ -328,23 +328,7 @@ async function launchBrowser(options: {
 }): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
   const pw = await getPlaywright();
 
-  const profilePath = getProfilePath();
-  const sessionPath = getSessionPath();
-
-  // Ensure profile directory exists
-  if (!fs.existsSync(profilePath)) {
-    fs.mkdirSync(profilePath, { recursive: true });
-  }
-
-  // Check for saved session
-  const hasSession = fs.existsSync(sessionPath) && isSessionFresh(sessionPath, 48);
-  if (hasSession) {
-    console.log("[Browser] Found saved session, loading...");
-  }
-
-  let context: BrowserContext;
-
-  const launchOptions = {
+  const browser = await pw.chromium.launch({
     headless: true,
     args: [
       "--no-sandbox",
@@ -356,37 +340,17 @@ async function launchBrowser(options: {
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
     ],
-    viewport: options.viewport,
-    locale: "en-US",
     ignoreDefaultArgs: ["--enable-automation"],
     timeout: 30000,
-  };
+  } as any);
 
-  try {
-    // If session exists and is fresh, create context with loaded session
-    if (hasSession) {
-      const browser = await pw.chromium.launch(launchOptions as any);
-      context = await browser.newContext({
-        ...launchOptions,
-        storageState: sessionPath,
-      } as any);
-      console.log("[Browser] Session loaded successfully");
-    } else {
-      context = await pw.chromium.launchPersistentContext(profilePath, launchOptions as any);
-    }
-  } catch (err: any) {
-    // Profile corrupted — try fresh profile
-    console.log("[Browser] Profile error, creating fresh profile...");
-    const defaultDir = path.join(profilePath, "Default");
-    if (fs.existsSync(defaultDir)) {
-      fs.rmSync(defaultDir, { recursive: true, force: true });
-    }
-    context = await pw.chromium.launchPersistentContext(profilePath, launchOptions as any);
-  }
+  const context = await browser.newContext({
+    viewport: options.viewport,
+    locale: "en-US",
+  } as any);
 
   // Set up dialog handler (auto-dismiss alerts/confirms/prompts)
-  const pages = context.pages();
-  const page = pages.length > 0 ? pages[0] : await context.newPage();
+  const page = await context.newPage();
 
   setupPageHandlers(page);
   for (const p of context.pages()) {
@@ -402,7 +366,7 @@ async function launchBrowser(options: {
   // Apply stealth patches
   await applyStealthPatch(page);
 
-  return { browser: null as any, context, page };
+  return { browser, context, page };
 }
 
 function setupPageHandlers(page: Page) {
