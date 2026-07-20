@@ -43,6 +43,13 @@ let _playwright: any = null;
 async function getPlaywright() {
   if (_playwright) return _playwright;
 
+  if (process.env.VERCEL) {
+    throw new Error(
+      "Browser automation is not available on Vercel. " +
+      "Use Render backend at https://likewayai.onrender.com/api/browser-agent instead."
+    );
+  }
+
   try {
     // new Function hides the import string from Turbopack/webpack static analysis
     // so the bundler never creates a chunk for playwright
