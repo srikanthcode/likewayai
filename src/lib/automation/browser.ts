@@ -46,7 +46,7 @@ export async function executeAutomation(
     provider,
     modelId,
     fetchAI,
-    headless: false,
+    headless: true,
     maxIterations: steps.length + 5,
   });
 

@@ -9,7 +9,7 @@ export const maxDuration = 180;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { task, modelId: requestedModel, startUrl, headless = false } = body;
+    const { task, modelId: requestedModel, startUrl, headless = true } = body;
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
       return NextResponse.json({ error: "Task description is required" }, { status: 400 });

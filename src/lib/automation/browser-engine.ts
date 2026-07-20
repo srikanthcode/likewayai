@@ -1980,7 +1980,7 @@ export async function runBrowserEngine(
 ): Promise<AgentResult> {
   const {
     provider, modelId, fetchAI,
-    headless = false, maxIterations = 25,
+    headless = true, maxIterations = 25,
     viewport = { width: 1280, height: 800 },
     onStep,
   } = options;
