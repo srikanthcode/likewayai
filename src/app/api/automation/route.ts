@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chromium, Browser, Page } from "playwright";
 import { fetchAI } from "@/lib/api-manager";
 import { MODELS, getProviderForModel } from "@/lib/models";
 import { planAutomation, AutomationStep } from "@/lib/automation/tasks";
@@ -7,11 +6,31 @@ import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export const maxDuration = 120;
 
-// Global browser instance (persists across requests in same server process)
-let browser: Browser | null = null;
+// Dynamic import — avoids crashing at module load when playwright is unavailable (e.g. Vercel Lambda)
+let _chromium: any = null;
 
-async function getBrowser(): Promise<Browser> {
+async function getChromium() {
+  if (!_chromium) {
+    try {
+      const pw = await import("playwright");
+      _chromium = pw.chromium;
+    } catch (err: any) {
+      throw new Error(
+        "Browser automation requires a server with Chromium installed. " +
+        "This feature is not available on serverless platforms like Vercel. " +
+        `Original error: ${err.message}`
+      );
+    }
+  }
+  return _chromium;
+}
+
+// Global browser instance (persists across requests in same server process)
+let browser: any = null;
+
+async function getBrowser(): Promise<any> {
   if (!browser || !browser.isConnected()) {
+    const chromium = await getChromium();
     browser = await chromium.launch({
       headless: false,
       args: [
@@ -24,7 +43,7 @@ async function getBrowser(): Promise<Browser> {
   return browser;
 }
 
-async function executeStep(page: Page, step: AutomationStep): Promise<{ success: boolean; screenshot?: string; error?: string; data?: string }> {
+async function executeStep(page: any, step: AutomationStep): Promise<{ success: boolean; screenshot?: string; error?: string; data?: string }> {
   try {
     switch (step.action) {
       case "navigate":

@@ -20,10 +20,28 @@
  *   30. Multi-tab awareness — track and manage new tabs/popups
  */
 
-import { chromium, Browser, BrowserContext, Page, Frame } from "playwright";
 import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
+import type { Browser, BrowserContext, Page, Frame } from "playwright";
+
+// Dynamic import — avoids crashing at module load when playwright is unavailable (e.g. Vercel Lambda)
+let _playwright: typeof import("playwright") | null = null;
+
+async function getPlaywright() {
+  if (!_playwright) {
+    try {
+      _playwright = await import("playwright");
+    } catch (err: any) {
+      throw new Error(
+        "Browser automation is not available in this environment. " +
+        "Playwright requires a server with Chromium installed. " +
+        `Original error: ${err.message}`
+      );
+    }
+  }
+  return _playwright;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -285,6 +303,7 @@ async function launchBrowser(options: {
   headless: boolean;
   viewport: { width: number; height: number };
 }): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
+  const pw = await getPlaywright();
   const profilePath = getProfilePath();
   const sessionPath = getSessionPath();
 
@@ -323,14 +342,14 @@ async function launchBrowser(options: {
   try {
     // If session exists and is fresh, create context with loaded session
     if (hasSession) {
-      const browser = await chromium.launch(launchOptions as any);
+      const browser = await pw.chromium.launch(launchOptions as any);
       context = await browser.newContext({
         ...launchOptions,
         storageState: sessionPath,
       } as any);
       console.log("[Browser] Session loaded successfully");
     } else {
-      context = await chromium.launchPersistentContext(profilePath, launchOptions as any);
+      context = await pw.chromium.launchPersistentContext(profilePath, launchOptions as any);
     }
   } catch (err: any) {
     // Profile corrupted — try fresh profile
@@ -339,7 +358,7 @@ async function launchBrowser(options: {
     if (fs.existsSync(defaultDir)) {
       fs.rmSync(defaultDir, { recursive: true, force: true });
     }
-    context = await chromium.launchPersistentContext(profilePath, launchOptions as any);
+    context = await pw.chromium.launchPersistentContext(profilePath, launchOptions as any);
   }
 
   // Set up dialog handler (auto-dismiss alerts/confirms/prompts)
