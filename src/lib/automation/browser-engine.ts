@@ -333,8 +333,36 @@ function isSessionFresh(sessionPath: string, maxAgeHours = 24): boolean {
 async function launchBrowser(options: {
   headless: boolean;
   viewport: { width: number; height: number };
-}): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
+}): Promise<{ browser: Browser; context: BrowserContext; page: Page; steelSessionId?: string }> {
   const pw = await getPlaywright();
+  const steelApiKey = process.env.STEEL_API_KEY;
+
+  // ── STEEL CLOUD BROWSER ────────────────────────────────────────────
+  if (steelApiKey) {
+    console.log("[Browser] Connecting to Steel cloud browser...");
+    const Steel = (await import("steel-sdk")).default;
+    const steel = new Steel({ steelAPIKey: steelApiKey });
+    const session = await steel.sessions.create();
+    const wsUrl = `wss://connect.steel.dev?apiKey=${steelApiKey}&sessionId=${session.id}`;
+    console.log(`[Browser] Steel session created: ${session.id}`);
+
+    const browser = await pw.chromium.connect({
+      browserWSEndpoint: wsUrl,
+    } as any);
+
+    const context = await browser.newContext({
+      viewport: options.viewport,
+      locale: "en-US",
+    } as any);
+
+    const pages = context.pages();
+    const page = pages.length > 0 ? pages[0] : await context.newPage();
+    setupPageHandlers(page);
+
+    return { browser, context, page, steelSessionId: session.id };
+  }
+
+  // ── LOCAL CHROMIUM ─────────────────────────────────────────────────
   const profilePath = getProfilePath();
   const sessionPath = getSessionPath();
 
@@ -2000,6 +2028,7 @@ export async function runBrowserEngine(
   let context: BrowserContext | null = null;
   let page: Page | null = null;
   let finalAnswer: string | undefined;
+  let steelSessionId: string | undefined;
 
   try {
     // ── LAUNCH BROWSER ───────────────────────────────────────────────
@@ -2007,6 +2036,7 @@ export async function runBrowserEngine(
     const launched = await launchBrowser({ headless, viewport });
     context = launched.context;
     page = launched.page;
+    steelSessionId = launched.steelSessionId;
 
     // ── DECOMPOSE GOAL ───────────────────────────────────────────────
     console.log(`[Browser] Decomposing goal: ${task.slice(0, 80)}`);
@@ -2239,15 +2269,27 @@ export async function runBrowserEngine(
       await saveSession(context).catch(() => {});
     }
 
-    // Only close browser in headless mode — keep it open for user to see
+    // Close browser (always for cloud, only headless for local)
     try {
-      if (headless && context) {
-        await context.close().catch(() => {});
-        console.log("[Browser] Browser closed (headless mode).");
+      if (steelSessionId || headless) {
+        await context?.close().catch(() => {});
+        console.log("[Browser] Browser closed.");
       } else {
         console.log("[Browser] Browser staying open for user to see.");
       }
     } catch {}
+
+    // Release Steel session
+    if (steelSessionId) {
+      try {
+        const Steel = (await import("steel-sdk")).default;
+        const steel = new Steel({ steelAPIKey: process.env.STEEL_API_KEY });
+        await steel.sessions.release(steelSessionId);
+        console.log(`[Browser] Steel session released: ${steelSessionId}`);
+      } catch (err: any) {
+        console.log(`[Browser] Steel session release failed: ${err.message?.slice(0, 60)}`);
+      }
+    }
   }
 }
 
