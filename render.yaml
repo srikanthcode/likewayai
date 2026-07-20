@@ -1,10 +1,8 @@
 services:
   - type: web
     name: likeway
-    runtime: node
+    runtime: docker
     plan: starter
-    buildCommand: rm -rf .next && npm install --include=dev && node_modules/.bin/playwright install --with-deps chromium && npm run build
-    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -25,7 +23,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: NEXT_PUBLIC_APP_URL
-        value: https://likeway.onrender.com
+        value: https://likewayai.onrender.com
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
