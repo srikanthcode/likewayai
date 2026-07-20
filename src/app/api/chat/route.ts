@@ -180,6 +180,42 @@ export async function POST(req: NextRequest) {
     // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
     const isBrowserAgent = mode === "Browser";
     if (isBrowserAgent) {
+      // On Vercel: proxy to Render backend (no Chromium on Vercel)
+      if (process.env.VERCEL) {
+        const renderUrl = process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const send = (text: string) => {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+            };
+            send(`> **LikeWay Browser v6** — Forwarding to Render backend...\n\n`);
+            send(`> Task: ${prompt}\n\n`);
+            try {
+              const res = await fetch(`${renderUrl}/api/browser-agent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ task: prompt, headless: true }),
+                signal: AbortSignal.timeout(180000),
+              });
+              const data = await res.json();
+              if (data.success && data.answer) {
+                send(`\n**Result:** ${data.answer}\n\n`);
+              } else if (data.error) {
+                send(`\n**Error:** ${data.error}\n\n`);
+              } else {
+                send(`\n**Completed** ${data.stepsTaken || 0} steps\n\n`);
+              }
+              send(`> Steps: ${data.stepsTaken || 0} | Duration: ${((data.duration || 0) / 1000).toFixed(1)}s\n`);
+            } catch (err: any) {
+              send(`\n> **Error:** ${err.message}\n`);
+            }
+            controller.close();
+          },
+        });
+        return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" } });
+      }
+
       if (!runBrowserEngine) {
         const mod = await import("@/lib/automation/browser-engine");
         runBrowserEngine = mod.runBrowserEngine;
