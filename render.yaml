@@ -32,4 +32,6 @@ services:
         sync: false
       - key: TAVILY_API_KEY
         sync: false
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: 0
     healthCheckPath: /api/health
