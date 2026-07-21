@@ -329,14 +329,80 @@ function isSessionFresh(sessionPath: string, maxAgeHours = 24): boolean {
   }
 }
 
+function findChromeExecutable(): string | undefined {
+  // Environment variable override
+  if (process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH) {
+    const envPath = process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH;
+    // Don't return paths with wildcards - they'll be resolved by glob
+    if (!envPath.includes('*')) {
+      console.log(`[Browser] Using PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH: ${envPath}`);
+      return envPath;
+    }
+  }
+
+  // Render.com specific paths (checked in order)
+  const renderPaths = [
+    '/opt/render/project/.playwright/chromium/chrome-linux/chrome',
+    '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',
+    '/opt/render/project/.playwright/chromium*/chrome-linux/chrome',
+  ];
+
+  // Vercel / CI specific paths
+  const ciPaths = [
+    '/root/.cache/ms-playwright/chromium*/chrome-linux/chrome',
+    '/home/runner/.cache/ms-playwright/chromium*/chrome-linux/chrome',
+  ];
+
+  // Try to find Playwright's system-installed browsers
+  let pwBrowsersPath: string | undefined;
+  try {
+    pwBrowsersPath = require('playwright-core').executablePath();
+  } catch {}
+
+  if (pwBrowsersPath) {
+    console.log(`[Browser] Found Playwright chromium at: ${pwBrowsersPath}`);
+    return pwBrowsersPath;
+  }
+
+  // Common Playwright install locations
+  const commonPaths = [
+    ...renderPaths,
+    ...ciPaths,
+    ...(process.platform === 'darwin'
+      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+         process.env.HOME + '/Library/Caches/ms-playwright/chromium*/chrome-mac/Chromium.app/Contents/MacOS/Chromium']
+      : process.platform === 'win32'
+      ? ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+         process.env.LOCALAPPDATA + '\\ms-playwright\\chromium*\\chrome-win\\chrome.exe']
+      : ['/usr/bin/google-chrome',
+         '/usr/bin/chromium-browser',
+         '/snap/bin/chromium']),
+  ];
+
+  for (const p of commonPaths) {
+    if (p.includes('*')) continue; // Skip wildcards for fs check
+    try {
+      if (require('fs').existsSync(p)) {
+        console.log(`[Browser] Found chromium at: ${p}`);
+        return p;
+      }
+    } catch {}
+  }
+
+  console.warn('[Browser] No chromium executable found — browser automation will fail');
+  return undefined;
+}
+
 async function launchBrowser(options: {
   headless: boolean;
   viewport: { width: number; height: number };
 }): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
   const pw = await getPlaywright();
+  const executablePath = findChromeExecutable();
 
-  const browser = await pw.chromium.launch({
-    headless: true,
+  const launchOptions: any = {
+    headless: options.headless,
     args: [
       "--no-sandbox",
       "--disable-blink-features=AutomationControlled",
@@ -349,7 +415,13 @@ async function launchBrowser(options: {
     ],
     ignoreDefaultArgs: ["--enable-automation"],
     timeout: 30000,
-  } as any);
+  };
+
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+  }
+
+  const browser = await pw.chromium.launch(launchOptions);
 
   const context = await browser.newContext({
     viewport: options.viewport,

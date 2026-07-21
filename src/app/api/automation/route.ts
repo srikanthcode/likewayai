@@ -28,6 +28,9 @@ async function getChromium() {
 // Global browser state
 let browser: any = null;
 
+// Use headless=false locally so user can see the browser
+const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+
 async function getBrowser(): Promise<{ browser: any }> {
   if (browser && browser.isConnected()) {
     return { browser };
@@ -35,7 +38,7 @@ async function getBrowser(): Promise<{ browser: any }> {
 
   const chromium = await getChromium();
   browser = await chromium.launch({
-    headless: true,
+    headless: isProduction,
     args: [
       "--no-sandbox",
       "--disable-blink-features=AutomationControlled",

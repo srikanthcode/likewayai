@@ -6,10 +6,14 @@ import { getProviderForModel } from "@/lib/models";
 
 export const maxDuration = 180;
 
+// Use headless=false locally so user can see the browser
+// Use headless=true on Vercel/Render (no display)
+const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { task, modelId: requestedModel, startUrl, headless = true } = body;
+    const { task, modelId: requestedModel, startUrl, headless = isProduction } = body;
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
       return NextResponse.json({ error: "Task description is required" }, { status: 400 });

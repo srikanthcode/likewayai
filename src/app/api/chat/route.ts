@@ -259,11 +259,14 @@ export async function POST(req: NextRequest) {
 
           try {
             let lastSubGoal = "";
+            // Use headless=false locally so user can see the browser
+            // Use headless=true on Vercel/Render (no display)
+            const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
             const result = await runBrowserEngine(prompt, {
               provider: browserProvider,
               modelId: browserModelId,
               fetchAI,
-              headless: true,
+              headless: isProduction,
               maxIterations: 25,
               onStep: (step: any) => {
                 // Show sub-goal changes
@@ -333,11 +336,12 @@ export async function POST(req: NextRequest) {
 
           try {
             let lastSubGoal = "";
+            const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
             const result = await runBrowserEngine(prompt, {
               provider: automationProvider,
               modelId: automationModelId,
               fetchAI,
-              headless: true,
+              headless: isProduction,
               maxIterations: 25,
               onStep: (step: any) => {
                 if (step.subGoal && step.subGoal !== lastSubGoal) {
