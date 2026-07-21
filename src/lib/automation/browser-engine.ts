@@ -396,6 +396,9 @@ function findChromeExecutable(): string | undefined {
 
   // Common Playwright install locations
   const commonPaths = [
+    // PLAYWRIGHT_BROWSERS_PATH=0 installs in node_modules
+    'node_modules/playwright/.local-browsers/chromium*/chrome-linux/chrome',
+    'node_modules/playwright-core/.local-browsers/chromium*/chrome-linux/chrome',
     // Render.com specific paths
     '/opt/render/project/.playwright/chromium/chrome-linux/chrome',
     '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',

@@ -1,0 +1,3 @@
+[Env Validation] ⚠️ Warnings:
+  - NEXT_PUBLIC_API_URL not set — browser automation proxy may fail on Vercel
+[?25h

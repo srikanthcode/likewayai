@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "postinstall": "node -e \"if(process.env.RENDER || !process.env.VERCEL){require('child_process').execSync('npx playwright install chromium 2>/dev/null || true', {stdio:'inherit'})}\"",
+    "postinstall": "node -e \"if(process.env.RENDER || !process.env.VERCEL){require('child_process').execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium 2>/dev/null || true', {stdio:'inherit'})}\"",
     "lint": "next lint",
     "tailwind": "tailwindcss -i globals.css -o app/globals.css --minify",
     "test:e2e": "playwright test",
