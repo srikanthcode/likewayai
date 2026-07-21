@@ -1,14 +1,38 @@
 import crypto from "crypto";
 
 // ── Secrets ────────────────────────────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || (() => {
+// Lazy getter — avoids crash at build time when env vars aren't loaded.
+let _jwtSecret: string | undefined;
+function getJwtSecret(): string {
+  if (_jwtSecret) return _jwtSecret;
+  const secret = process.env.JWT_SECRET;
+  if (secret) { _jwtSecret = secret; return secret; }
+  // During build, NODE_ENV=production but env vars aren't loaded yet
+  // Use placeholder — the real secret is loaded at runtime
+  if (!process.env.NEXT_RUNTIME && process.env.npm_lifecycle_event === "build") {
+    return "build-placeholder-loaded-at-runtime";
+  }
   if (process.env.NODE_ENV === "production") {
     throw new Error("CRITICAL: JWT_SECRET must be set in production environment");
   }
-  console.warn("[Auth] WARNING: Using weak default JWT_SECRET in development. Set JWT_SECRET env var for production.");
+  console.warn("[Auth] WARNING: Using weak default JWT_SECRET in development.");
   return "likeway-dev-secret-change-in-production-32chars";
-})();
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || crypto.createHash("sha256").update(JWT_SECRET + ":refresh-token-key").digest("hex");
+}
+
+function requireJwtSecret(): string {
+  const secret = getJwtSecret();
+  if (secret === "build-placeholder-loaded-at-runtime") {
+    throw new Error("CRITICAL: JWT_SECRET must be set in production environment");
+  }
+  return secret;
+}
+let _jwtRefreshSecret: string | undefined;
+function getJwtRefreshSecret(): string {
+  if (_jwtRefreshSecret) return _jwtRefreshSecret;
+  if (process.env.JWT_REFRESH_SECRET) { _jwtRefreshSecret = process.env.JWT_REFRESH_SECRET; return _jwtRefreshSecret; }
+  _jwtRefreshSecret = crypto.createHash("sha256").update(requireJwtSecret() + ":refresh-token-key").digest("hex");
+  return _jwtRefreshSecret;
+}
 
 // Access token: 7 days (users stay logged in without needing a refresh)
 // Middleware only checks the cookie exists, so expiry is enforced at API level.
@@ -110,7 +134,7 @@ export function createAccessToken(
     exp: now + JWT_ACCESS_EXPIRY,
     iat: now,
   };
-  return sign(payload as any, JWT_SECRET);
+  return sign(payload as any, requireJwtSecret());
 }
 
 export function createRefreshToken(userId: string, sessionId: string): string {
@@ -124,15 +148,15 @@ export function createRefreshToken(userId: string, sessionId: string): string {
     exp: now + JWT_REFRESH_EXPIRY,
     iat: now,
   };
-  return sign(payload as any, JWT_REFRESH_SECRET);
+  return sign(payload as any, getJwtRefreshSecret());
 }
 
 export function verifyAccessToken(token: string): TokenPayload | null {
-  return verify(token, JWT_SECRET) as TokenPayload | null;
+  return verify(token, requireJwtSecret()) as TokenPayload | null;
 }
 
 export function verifyRefreshToken(token: string): TokenPayload | null {
-  return verify(token, JWT_REFRESH_SECRET) as TokenPayload | null;
+  return verify(token, getJwtRefreshSecret()) as TokenPayload | null;
 }
 
 // ── JWT Rotation ──────────────────────────────────────────────────────────
