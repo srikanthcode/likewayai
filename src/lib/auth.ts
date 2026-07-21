@@ -135,6 +135,93 @@ export function verifyRefreshToken(token: string): TokenPayload | null {
   return verify(token, JWT_REFRESH_SECRET) as TokenPayload | null;
 }
 
+// ── JWT Rotation ──────────────────────────────────────────────────────────
+// Automatically rotate tokens when they're within 20% of expiry
+// This prevents silent expiration during active use
+export function shouldRotateAccessToken(token: string): boolean {
+  const payload = verifyAccessToken(token);
+  if (!payload) return false;
+  
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = payload.exp - now;
+  const threshold = JWT_ACCESS_EXPIRY * 0.2; // 20% of total lifetime
+  
+  return remaining < threshold;
+}
+
+export function shouldRotateRefreshToken(token: string): boolean {
+  const payload = verifyRefreshToken(token);
+  if (!payload) return false;
+  
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = payload.exp - now;
+  const threshold = JWT_REFRESH_EXPIRY * 0.2; // 20% of total lifetime
+  
+  return remaining < threshold;
+}
+
+// Rotate both tokens if needed, returning new tokens or null if no rotation needed
+export function rotateTokensIfNeeded(
+  accessToken: string,
+  refreshToken: string,
+  user: { id: string; email?: string; role: string; plan: string }
+): { accessToken: string; refreshToken: string } | null {
+  const needAccess = shouldRotateAccessToken(accessToken);
+  const needRefresh = shouldRotateRefreshToken(refreshToken);
+  
+  if (!needAccess && !needRefresh) return null;
+  
+  // Decode current session ID from the refresh token to maintain session continuity
+  const refreshPayload = verifyRefreshToken(refreshToken);
+  const sessionId = refreshPayload?.sessionId || generateSessionId();
+  
+  return {
+    accessToken: createAccessToken(user, sessionId),
+    refreshToken: createRefreshToken(user.id, sessionId),
+  };
+}
+
+// ── CSRF Token Generation & Validation ─────────────────────────────────────
+const CSRF_SECRET = process.env.CSRF_SECRET || crypto.randomBytes(32).toString("hex");
+
+export function generateCsrfToken(sessionId: string): string {
+  const timestamp = Date.now();
+  const payload = `${sessionId}:${timestamp}`;
+  const signature = crypto
+    .createHmac("sha256", CSRF_SECRET)
+    .update(payload)
+    .digest("hex");
+  return `${Buffer.from(payload).toString("base64url")}.${signature}`;
+}
+
+export function validateCsrfToken(token: string, sessionId: string): boolean {
+  try {
+    const [payloadB64, signature] = token.split(".");
+    if (!payloadB64 || !signature) return false;
+
+    const payload = Buffer.from(payloadB64, "base64url").toString();
+    const expectedSig = crypto
+      .createHmac("sha256", CSRF_SECRET)
+      .update(payload)
+      .digest("hex");
+
+    // Constant-time comparison
+    if (signature.length !== expectedSig.length) return false;
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) return false;
+
+    const [tokenSessionId, timestampStr] = payload.split(":");
+    if (tokenSessionId !== sessionId) return false;
+
+    // Token expires after 1 hour
+    const age = Date.now() - parseInt(timestampStr);
+    if (age > 3600000) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 export function generateRandomToken(length = 48): string {
   return crypto.randomBytes(length).toString("hex");

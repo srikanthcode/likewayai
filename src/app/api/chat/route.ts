@@ -4,7 +4,7 @@ import { MODELS, getProviderForModel } from "@/lib/models";
 import { SYSTEM_PROMPTS, AgentMode } from "@/lib/agents";
 import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { executeDeepResearch } from "@/lib/deep-research";
-import { saveMessage, getHistory } from "@/lib/memory";
+import { saveMessage, getHistory, getConversationContext, getUserPreferences, summarizeConversation } from "@/lib/memory";
 import { generateImage, editImage } from "@/lib/tools";
 import { PLANS, PlanType } from "@/lib/plans";
 import { NextResponse } from "next/server";
@@ -18,6 +18,8 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { detectPromptInjection, sanitizeInput } from "@/lib/security";
+import { logger, generateRequestId, recordAiMetric } from "@/lib/logger";
 
 // Lazy import — browser-engine has heavy deps that crash on Vercel serverless
 let runBrowserEngine: any = null;
@@ -81,6 +83,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = generateRequestId();
+  const reqLogger = logger.request(requestId);
+
   try {
     let body: any;
     try {
@@ -121,6 +126,25 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    // Prompt injection defense
+    const injectionCheck = detectPromptInjection(prompt);
+    if (injectionCheck.detected) {
+      reqLogger.warn("Potential prompt injection detected", { 
+        pattern: injectionCheck.pattern,
+        userId 
+      });
+      // Don't block - just log and continue with sanitized input
+    }
+
+    // Log request
+    reqLogger.info("Chat request received", {
+      userId,
+      mode,
+      modelId,
+      promptLength: prompt.length,
+      hasImages: images.length > 0,
+    });
 
     // Rate limiting - Per minute
     const rateLimitConfig = { windowMs: 60000, maxRequests: 20 }; // 20 requests per minute
@@ -520,6 +544,23 @@ export async function POST(req: NextRequest) {
 
     const agentMode = (mode as AgentMode) in SYSTEM_PROMPTS ? (mode as AgentMode) : "General";
     let systemPrompt = SYSTEM_PROMPTS[agentMode];
+
+    // Get user preferences for personalization
+    const userPrefs = await getUserPreferences(userId);
+    if (userPrefs.tone) {
+      systemPrompt += `\n\n## USER PREFERENCE\nRespond in a ${userPrefs.tone} tone.`;
+    }
+    if (userPrefs.language && userPrefs.language !== "en") {
+      systemPrompt += `\nUser prefers responses in ${userPrefs.language}.`;
+    }
+
+    // Get conversation context for continuity
+    if (userId !== "anonymous") {
+      const conversationContext = await getConversationContext(userId, projectId);
+      if (conversationContext) {
+        systemPrompt += conversationContext;
+      }
+    }
 
     if (customInstructions) {
       systemPrompt += `\n\n## USER CUSTOM INSTRUCTIONS\n${customInstructions}`;
