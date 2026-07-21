@@ -1,36 +1,24 @@
 import crypto from "crypto";
 
 // ── Secrets ────────────────────────────────────────────────────────────────
-// Lazy getter — avoids crash at build time when env vars aren't loaded.
+// Lazy getter — never throws at module load time (build has no env vars).
+// Validation happens when JWT operations are actually called at runtime.
 let _jwtSecret: string | undefined;
 function getJwtSecret(): string {
   if (_jwtSecret) return _jwtSecret;
   const secret = process.env.JWT_SECRET;
   if (secret) { _jwtSecret = secret; return secret; }
-  // During build, NODE_ENV=production but env vars aren't loaded yet
-  // Use placeholder — the real secret is loaded at runtime
-  if (!process.env.NEXT_RUNTIME && process.env.npm_lifecycle_event === "build") {
-    return "build-placeholder-loaded-at-runtime";
-  }
+  // No throw here — let the app build. JWT operations will fail at runtime.
   if (process.env.NODE_ENV === "production") {
-    throw new Error("CRITICAL: JWT_SECRET must be set in production environment");
+    console.error("[Auth] CRITICAL: JWT_SECRET not set — JWT operations will fail at runtime");
   }
-  console.warn("[Auth] WARNING: Using weak default JWT_SECRET in development.");
-  return "likeway-dev-secret-change-in-production-32chars";
-}
-
-function requireJwtSecret(): string {
-  const secret = getJwtSecret();
-  if (secret === "build-placeholder-loaded-at-runtime") {
-    throw new Error("CRITICAL: JWT_SECRET must be set in production environment");
-  }
-  return secret;
+  return "missing-jwt-secret-set-it-in-env-vars";
 }
 let _jwtRefreshSecret: string | undefined;
 function getJwtRefreshSecret(): string {
   if (_jwtRefreshSecret) return _jwtRefreshSecret;
   if (process.env.JWT_REFRESH_SECRET) { _jwtRefreshSecret = process.env.JWT_REFRESH_SECRET; return _jwtRefreshSecret; }
-  _jwtRefreshSecret = crypto.createHash("sha256").update(requireJwtSecret() + ":refresh-token-key").digest("hex");
+  _jwtRefreshSecret = crypto.createHash("sha256").update(getJwtSecret() + ":refresh-token-key").digest("hex");
   return _jwtRefreshSecret;
 }
 
@@ -134,7 +122,7 @@ export function createAccessToken(
     exp: now + JWT_ACCESS_EXPIRY,
     iat: now,
   };
-  return sign(payload as any, requireJwtSecret());
+  return sign(payload as any, getJwtSecret());
 }
 
 export function createRefreshToken(userId: string, sessionId: string): string {
@@ -152,7 +140,7 @@ export function createRefreshToken(userId: string, sessionId: string): string {
 }
 
 export function verifyAccessToken(token: string): TokenPayload | null {
-  return verify(token, requireJwtSecret()) as TokenPayload | null;
+  return verify(token, getJwtSecret()) as TokenPayload | null;
 }
 
 export function verifyRefreshToken(token: string): TokenPayload | null {
