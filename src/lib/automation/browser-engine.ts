@@ -329,29 +329,59 @@ function isSessionFresh(sessionPath: string, maxAgeHours = 24): boolean {
   }
 }
 
+function resolveWildcardPath(pattern: string): string | undefined {
+  // Resolve a path containing * by listing the parent directory and matching
+  const parts = pattern.split('/');
+  const wildcardIdx = parts.findIndex(p => p.includes('*'));
+
+  if (wildcardIdx === -1) {
+    // No wildcard — check directly
+    try {
+      if (fs.existsSync(pattern)) return pattern;
+    } catch {}
+    return undefined;
+  }
+
+  // Build the parent directory (everything before the wildcard segment)
+  const parentDir = parts.slice(0, wildcardIdx).join('/') || '/';
+  const wildcardSegment = parts[wildcardIdx];
+  const suffix = parts.slice(wildcardIdx + 1).join('/');
+
+  // Convert glob segment to regex: * matches any chars except /
+  const regex = new RegExp('^' + wildcardSegment.replace(/\./g, '\\.').replace(/\*/g, '[^/]*') + '$');
+
+  try {
+    const entries = fs.readdirSync(parentDir);
+    for (const entry of entries) {
+      if (!regex.test(entry)) continue;
+      const resolved = suffix ? `${parentDir}/${entry}/${suffix}` : `${parentDir}/${entry}`;
+      try {
+        if (fs.statSync(resolved).isFile()) {
+          return resolved;
+        }
+      } catch {}
+    }
+  } catch {}
+
+  return undefined;
+}
+
 function findChromeExecutable(): string | undefined {
   // Environment variable override
   if (process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH) {
     const envPath = process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH;
-    // Don't return paths with wildcards - they'll be resolved by glob
-    if (!envPath.includes('*')) {
+    // Resolve wildcards using filesystem listing
+    if (envPath.includes('*')) {
+      const resolved = resolveWildcardPath(envPath);
+      if (resolved) {
+        console.log(`[Browser] Resolved PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH wildcard to: ${resolved}`);
+        return resolved;
+      }
+    } else {
       console.log(`[Browser] Using PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH: ${envPath}`);
       return envPath;
     }
   }
-
-  // Render.com specific paths (checked in order)
-  const renderPaths = [
-    '/opt/render/project/.playwright/chromium/chrome-linux/chrome',
-    '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',
-    '/opt/render/project/.playwright/chromium*/chrome-linux/chrome',
-  ];
-
-  // Vercel / CI specific paths
-  const ciPaths = [
-    '/root/.cache/ms-playwright/chromium*/chrome-linux/chrome',
-    '/home/runner/.cache/ms-playwright/chromium*/chrome-linux/chrome',
-  ];
 
   // Try to find Playwright's system-installed browsers
   let pwBrowsersPath: string | undefined;
@@ -366,28 +396,39 @@ function findChromeExecutable(): string | undefined {
 
   // Common Playwright install locations
   const commonPaths = [
-    ...renderPaths,
-    ...ciPaths,
-    ...(process.platform === 'darwin'
-      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-         process.env.HOME + '/Library/Caches/ms-playwright/chromium*/chrome-mac/Chromium.app/Contents/MacOS/Chromium']
-      : process.platform === 'win32'
-      ? ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-         process.env.LOCALAPPDATA + '\\ms-playwright\\chromium*\\chrome-win\\chrome.exe']
-      : ['/usr/bin/google-chrome',
-         '/usr/bin/chromium-browser',
-         '/snap/bin/chromium']),
+    // Render.com specific paths
+    '/opt/render/project/.playwright/chromium/chrome-linux/chrome',
+    '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',
+    '/opt/render/project/.playwright/chromium*/chrome-linux/chrome',
+    // Vercel / CI specific paths
+    '/root/.cache/ms-playwright/chromium*/chrome-linux/chrome',
+    '/home/runner/.cache/ms-playwright/chromium*/chrome-linux/chrome',
+    // macOS
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    process.env.HOME + '/Library/Caches/ms-playwright/chromium*/chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+    // Windows
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    process.env.LOCALAPPDATA + '\\ms-playwright\\chromium*\\chrome-win\\chrome.exe',
+    // Linux
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
   ];
 
   for (const p of commonPaths) {
-    if (p.includes('*')) continue; // Skip wildcards for fs check
-    try {
-      if (require('fs').existsSync(p)) {
-        console.log(`[Browser] Found chromium at: ${p}`);
-        return p;
-      }
-    } catch {}
+    let resolved: string | undefined;
+    if (p.includes('*')) {
+      resolved = resolveWildcardPath(p);
+    } else {
+      try {
+        if (fs.existsSync(p)) resolved = p;
+      } catch {}
+    }
+    if (resolved) {
+      console.log(`[Browser] Found chromium at: ${resolved}`);
+      return resolved;
+    }
   }
 
   console.warn('[Browser] No chromium executable found — browser automation will fail');

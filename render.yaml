@@ -26,16 +26,30 @@ services:
         sync: false
       - key: NEXT_PUBLIC_APP_URL
         value: https://likewayai.onrender.com
+      - key: NEXT_PUBLIC_API_URL
+        value: https://likewayai.onrender.com
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
       - key: TAVILY_API_KEY
         sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STABILITY_API_KEY
+        sync: false
+      - key: HF_TOKEN
+        sync: false
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/.playwright
       - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
         value: "0"
       - key: PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH
-        value: /opt/render/project/.playwright/chromium-*/chrome-linux/chrome
+        value: /opt/render/project/.playwright/chromium*/chrome-linux/chrome
     healthCheckPath: /api/health

@@ -67,6 +67,6 @@ export const config = {
      *  - /api/*        (API routes handle their own auth)
      *  - /_             (Next.js internals)
      */
-    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|api/).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|icon-.*\\.png|robots\\.txt|sitemap\\.xml|api/).*)",
   ],
 };

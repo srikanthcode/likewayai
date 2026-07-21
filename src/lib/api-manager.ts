@@ -208,7 +208,7 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
           errText = await response.clone().text().catch(() => "");
         }
 
-        // Determine failure type
+    // Determine failure type
         if (!response.ok) {
           const isRateLimit = response.status === 429 || 
                               response.status === 413 || 
@@ -221,46 +221,37 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
           
           const isAuthError = response.status === 401 || response.status === 403;
           const isServerError = response.status >= 500;
+          const isTimeout = response.status === 408 || errText.includes("timeout");
           const isInvalidModel = response.status === 400 && 
-            (errText.includes("model") || errText.includes("not found"));
+            (errText.includes("model") || errText.includes("not found") || errText.includes("does not exist"));
+          const isQuotaExceeded = response.status === 402 || errText.includes("quota") || errText.includes("insufficient_quota");
 
-          if (isRateLimit || isAuthError) {
-            logAttempt(
-              currentProvider, fallbackModel, response.status,
-              `Key failed (${isRateLimit ? "rate limit" : "auth"}): ${errText.slice(0, 60)}`,
-              currentProvider !== provider
-            );
+          let failureType = "unknown";
+          if (isRateLimit) failureType = "rate_limit";
+          else if (isAuthError) failureType = "auth_error";
+          else if (isQuotaExceeded) failureType = "quota_exceeded";
+          else if (isTimeout) failureType = "timeout";
+          else if (isInvalidModel) failureType = "invalid_model";
+          else if (isServerError) failureType = "server_error";
+
+          logAttempt(
+            currentProvider, fallbackModel, response.status,
+            `[${failureType}] ${errText.slice(0, 80)}`,
+            currentProvider !== provider
+          );
+
+          if (isRateLimit || isAuthError || isServerError || isQuotaExceeded) {
             keyPool.markKeyFailed(key);
             continue; // Try next key
           }
 
           if (isInvalidModel) {
-            logAttempt(
-              currentProvider, fallbackModel, response.status,
-              `Invalid model: ${errText.slice(0, 80)}`,
-              currentProvider !== provider
-            );
             // Don't mark key as failed - model issue is not key-related
             // But don't retry this provider with same model - break to next provider
             break;
           }
 
-          if (isServerError) {
-            logAttempt(
-              currentProvider, fallbackModel, response.status,
-              `Server error: ${errText.slice(0, 60)}`,
-              currentProvider !== provider
-            );
-            keyPool.markKeyFailed(key);
-            continue; // Try next key
-          }
-
           // Other errors: try next key
-          logAttempt(
-            currentProvider, fallbackModel, response.status,
-            `HTTP ${response.status}: ${errText.slice(0, 60)}`,
-            currentProvider !== provider
-          );
           keyPool.markKeyFailed(key);
           continue;
         }
@@ -273,10 +264,19 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
         );
         return response;
       } catch (error: any) {
-        const errMsg = error.message?.slice(0, 80) || "Unknown error";
+        const errMsg = error.message?.slice(0, 100) || "Unknown error";
+        const isTimeout = error.name === "AbortError";
+        const isDNS = errMsg.includes("ENOTFOUND") || errMsg.includes("ECONNREFUSED") || errMsg.includes("ECONNRESET");
+        const isNetwork = errMsg.includes("network") || errMsg.includes("socket") || errMsg.includes("fetch failed");
+
+        let failureType = "network_error";
+        if (isTimeout) failureType = "timeout";
+        else if (isDNS) failureType = "connection_error";
+        else if (isNetwork) failureType = "network_error";
+
         logAttempt(
           currentProvider, fallbackModel, "NET_ERROR",
-          `${errMsg}${error.name === "AbortError" ? " (timeout 30s)" : ""}`,
+          `[${failureType}] ${errMsg}${isTimeout ? " (timeout 30s)" : ""}`,
           currentProvider !== provider
         );
         keyPool.markKeyFailed(key);
