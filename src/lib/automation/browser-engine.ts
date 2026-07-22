@@ -43,7 +43,8 @@ let _playwright: any = null;
 async function getPlaywright() {
   if (_playwright) return _playwright;
 
-  if (process.env.VERCEL) {
+  // VERCEL is set even in local dev by Next.js, so check VERCEL_REGION (only set on real Vercel)
+  if (process.env.VERCEL_REGION) {
     throw new Error(
       "Browser automation is not available on Vercel. " +
       "Use Render backend at https://likewayai.onrender.com/api/browser-agent instead."
@@ -470,7 +471,35 @@ async function launchBrowser(options: {
   const context = await browser.newContext({
     viewport: options.viewport,
     locale: "en-US",
+    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    extraHTTPHeaders: {
+      "Accept-Language": "en-US,en;q=0.9",
+    },
   } as any);
+
+  // Apply stealth BEFORE any page loads
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [1, 2, 3, 4, 5].map(() => ({
+        name: "Chrome PDF Plugin",
+        description: "Portable Document Format",
+        filename: "internal-pdf-viewer",
+        length: 1,
+      })),
+    });
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["en-US", "en"],
+    });
+    const originalQuery = window.navigator.permissions.query;
+    window.navigator.permissions.query = (parameters: any) =>
+      parameters.name === "notifications"
+        ? Promise.resolve({ state: "denied" } as PermissionStatus)
+        : originalQuery(parameters);
+    delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Array;
+    delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+    delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+  });
 
   // Set up dialog handler (auto-dismiss alerts/confirms/prompts)
   const page = await context.newPage();
@@ -485,9 +514,6 @@ async function launchBrowser(options: {
     setupPageHandlers(newPage);
     console.log(`[Browser] New page opened: ${newPage.url()}`);
   });
-
-  // Apply stealth patches
-  await applyStealthPatch(page);
 
   return { browser, context, page };
 }

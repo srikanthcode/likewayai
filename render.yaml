@@ -1,10 +1,8 @@
 services:
   - type: web
     name: likeway
-    runtime: node
+    runtime: docker
     plan: starter
-    buildCommand: rm -rf .next && npm install --include=dev && npm run build && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium
-    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -46,6 +44,4 @@ services:
         sync: false
       - key: HF_TOKEN
         sync: false
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "0"
     healthCheckPath: /api/health

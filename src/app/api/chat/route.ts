@@ -223,6 +223,18 @@ export async function POST(req: NextRequest) {
                 signal: AbortSignal.timeout(180000),
               });
               const data = await res.json();
+
+              // Stream screenshots from each step
+              if (data.steps && Array.isArray(data.steps)) {
+                for (const step of data.steps) {
+                  if (step.screenshot) {
+                    send(`\n![Step ${step.iteration}: ${step.action}](${step.screenshot})\n\n`);
+                  }
+                }
+              } else if (data.lastScreenshot) {
+                send(`\n![Browser Screenshot](${data.lastScreenshot})\n\n`);
+              }
+
               if (data.success && data.answer) {
                 send(`\n**Result:** ${data.answer}\n\n`);
               } else if (data.error) {
@@ -336,6 +348,18 @@ export async function POST(req: NextRequest) {
                 signal: AbortSignal.timeout(180000),
               });
               const data = await res.json();
+
+              // Stream screenshots from each step
+              if (data.steps && Array.isArray(data.steps)) {
+                for (const step of data.steps) {
+                  if (step.screenshot) {
+                    send(`\n![Step ${step.iteration}: ${step.action}](${step.screenshot})\n\n`);
+                  }
+                }
+              } else if (data.lastScreenshot) {
+                send(`\n![Browser Screenshot](${data.lastScreenshot})\n\n`);
+              }
+
               if (data.success && data.answer) {
                 send(`\n**Result:** ${data.answer}\n\n`);
               } else if (data.error) {
