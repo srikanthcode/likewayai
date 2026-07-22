@@ -639,55 +639,79 @@ export async function POST(req: NextRequest) {
 
     // CRITICAL: Force clean formatting — prepend formatting override
     const FORMATTING_OVERRIDE = `
-## 📝 FORMATTING RULES — GPT-STYLE, CLEAN, SCANNABLE
+## FORMATTING RULES — ADAPTIVE, DETAILED, GPT-STYLE
 
-### CRITICAL:
-1. Start with a 1-sentence summary
-2. Use ## for sections
-3. Keep responses SHORT — 300-500 words max
-4. Use **bold** for key terms
-5. Tables for rankings (clean pipes only)
-6. Bullet points for lists (max 5-7 items)
-7. Numbered steps for roadmaps (max 4 phases)
-8. End with **Key Takeaways** (2-3 bullets max)
+### RESPONSE LENGTH — MATCH THE QUESTION:
+- **Simple/factual questions** ("what is X", "who is Y", "when did Z"): 150-300 words. Give a clear definition, key facts, and a short summary.
+- **Explanatory/educational questions** ("explain X", "how does X work", "tell me about X"): 500-1500 words. Be THOROUGH — cover definition, history, how it works, key features, use cases, pros/cons, examples. Think like a teacher.
+- **How-to/tutorial questions** ("how to do X", "steps to learn Y"): 400-800 words. Numbered steps with explanations for each.
+- **Comparison questions** ("X vs Y", "which is better"): 400-800 words. Table + detailed analysis of each option.
+- **Opinion/advice questions**: 300-600 words. Structured with reasoning.
 
-### TABLE FORMAT (use exactly this):
-| Rank | Company | Focus |
-|------|---------|-------|
-| 1 | TCS | IT Services |
-| 2 | Infosys | Consulting |
+### STRUCTURE:
+1. Start with a direct answer or summary
+2. Use ## for major sections
+3. Use ### for subsections within detailed answers
+4. Use **bold** for key terms (first mention)
+5. Use tables for comparisons and rankings (clean pipes)
+6. Use bullet points for feature lists (no artificial cap — list what matters)
+7. Use numbered steps for processes and roadmaps
+8. End with Key Takeaways ONLY for detailed answers (3-5 bullets)
 
-### ROADMAP FORMAT:
-**Phase 1: Title** (3-6 months)
-- Learn X
-- Practice Y
+### DETAILED ANSWER EXAMPLE (for "What is Java"):
+**What is Java?**
 
-**Phase 2: Title** (6-12 months)
-- Master Z
+Java is a high-level, object-oriented programming language developed by Sun Microsystems (now Oracle) in 1995. It was designed to be platform-independent — the idea being "write once, run anywhere" (WORA). Java code compiles to bytecode that runs on the Java Virtual Machine (JVM), which exists for Windows, Mac, Linux, and more.
 
-### RESPONSE STRUCTURE:
-1. Opening sentence
-2. Main content (table/steps/explanation)
-3. Key Takeaways (2-3 bullets)
+## History
+- **1995** — James Gosling and team at Sun Microsystems create Java
+- **2000** — Java 2 (J2SE) with major library updates
+- **2004** — Java 5 adds generics, annotations, enhanced for loop
+- **2011** — Oracle acquires Sun, takes over Java
+- **2014** — Java 8 adds lambda expressions, Stream API (huge milestone)
+- **2021+** — Modern Java (17, 21) adds records, sealed classes, pattern matching
 
-### EXAMPLE:
-**Top 5 IT Companies in India**
+## Key Features
+- **Platform Independent** — JVM lets Java run on any OS without recompilation
+- **Object-Oriented** — Everything is organized into classes and objects. Supports inheritance, polymorphism, encapsulation, abstraction
+- **Robust & Secure** — Strong type checking, exception handling, built-in security manager, automatic garbage collection
+- **Multithreaded** — Built-in support for running multiple threads simultaneously
+- **Rich Standard Library** — Collections, I/O, networking, concurrency, XML processing, database connectivity (JDBC)
+- **Memory Management** — Automatic garbage collection frees developers from manual memory allocation
+- **Backward Compatibility** — Old Java code still runs on new JVMs (rare in programming)
 
-| Rank | Company | Focus |
-|------|---------|-------|
-| 1 | TCS | IT Services |
-| 2 | Infosys | Consulting |
-| 3 | Wipro | Cloud |
+## How Java Works
+1. You write .java source files
+2. The **javac** compiler converts them to .class bytecode files
+3. The **JVM** interprets or JIT-compiles bytecode to native machine code at runtime
+4. This two-step process is what makes Java platform-independent
 
-**How to get in:**
-1. **Learn DSA** — Solve 200+ problems
-2. **Build projects** — 2-3 portfolio apps
+## Where Java is Used
+- **Enterprise Applications** — Banking systems, insurance platforms, e-commerce backends (Spring, Jakarta EE)
+- **Android Development** — Android apps are primarily written in Java (though Kotlin is now preferred)
+- **Big Data** — Hadoop, Spark, Kafka are all written in Java
+- **Web Applications** — Backend services with Spring Boot, Tomcat, JBoss
+- **Financial Services** — Trading systems, risk management platforms
+- **Scientific Computing** — MATLAB uses Java, NASA uses Java for systems
 
-**Key Takeaways:**
-- Focus on fundamentals
-- Build real projects
-- Practice daily
-`;
+## Java vs Other Languages
+| Feature | Java | Python | JavaScript | C++ |
+|---------|------|--------|------------|-----|
+| Typing | Static | Dynamic | Dynamic | Static |
+| Speed | Fast | Slow | Medium | Very Fast |
+| Learning Curve | Medium | Easy | Easy | Hard |
+| Memory Mgmt | Auto (GC) | Auto (GC) | Auto (GC) | Manual |
+| Use Case | Enterprise | Data Science | Web | Systems |
+
+## Key Takeaways
+- Java is the backbone of enterprise software — banks, hospitals, governments run on Java
+- The JVM ecosystem is massive — you write once, deploy anywhere
+- Java evolves steadily — modern Java (17+) is much cleaner than old Java
+- Great for: large teams, long-lived projects, Android, backend systems
+- Not ideal for: quick scripts, frontend, mobile (iOS)
+
+### QUICK ANSWER EXAMPLE (for "What is the capital of France?"):
+The capital of France is **Paris**. It is the largest city in France, located in the north-central part of the country along the Seine River. Paris is known for the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral. It has been France's capital since the 10th century.`;
     systemPrompt = FORMATTING_OVERRIDE + "\n\n" + systemPrompt;
 
     const messages: { role: string; content: string }[] = [
