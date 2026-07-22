@@ -537,7 +537,7 @@ function setupPageHandlers(page: Page) {
     if (msg.type() === "error") {
       const text = msg.text();
       // Filter out noisy third-party errors
-      if (!text.includes("favicon.ico") && !text.includes("analytics") && !text.includes("gtm.js")) {
+      if (!text.includes("favicon.ico") && !text.includes("analytics") && !text.includes("gtm.js") && !text.includes("aquire-persistent-storage-denied") && !text.includes("storage bucket persistence")) {
         console.log(`[Browser] Console error: ${text.slice(0, 200)}`);
       }
     }
