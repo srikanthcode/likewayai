@@ -409,6 +409,8 @@ function findChromeExecutable(pw?: any): string | undefined {
     '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',
     '/opt/render/project/.playwright/chromium*/chrome-linux/chrome',
     '/opt/render/.cache/ms-playwright/chromium*/chrome-linux/chrome',
+    // Docker default paths
+    '/ms-playwright/chromium*/chrome-linux/chrome',
     // Vercel / CI specific paths
     '/root/.cache/ms-playwright/chromium*/chrome-linux/chrome',
     '/home/runner/.cache/ms-playwright/chromium*/chrome-linux/chrome',

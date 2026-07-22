@@ -37,14 +37,22 @@ async function getBrowser(): Promise<{ browser: any }> {
   }
 
   const chromium = await getChromium();
-  browser = await chromium.launch({
+  const launchOptions: any = {
     headless: isProduction,
     args: [
       "--no-sandbox",
       "--disable-blink-features=AutomationControlled",
       "--disable-dev-shm-usage",
     ],
-  });
+  };
+  
+  try {
+    launchOptions.executablePath = chromium.executablePath();
+  } catch (err: any) {
+    console.log("[Automation API] Failed to get executablePath:", err.message);
+  }
+
+  browser = await chromium.launch(launchOptions);
   return { browser };
 }
 
