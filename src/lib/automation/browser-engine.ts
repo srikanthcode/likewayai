@@ -367,7 +367,7 @@ function resolveWildcardPath(pattern: string): string | undefined {
   return undefined;
 }
 
-function findChromeExecutable(): string | undefined {
+function findChromeExecutable(pw?: any): string | undefined {
   // Environment variable override
   if (process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH) {
     const envPath = process.env.PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH;
@@ -387,8 +387,12 @@ function findChromeExecutable(): string | undefined {
   // Try to find Playwright's system-installed browsers
   let pwBrowsersPath: string | undefined;
   try {
-    pwBrowsersPath = require('playwright-core').executablePath();
-  } catch {}
+    if (pw && pw.chromium) {
+      pwBrowsersPath = pw.chromium.executablePath();
+    }
+  } catch (err: any) {
+    console.log(`[Browser] Failed to get Playwright executablePath:`, err.message);
+  }
 
   if (pwBrowsersPath) {
     console.log(`[Browser] Found Playwright chromium at: ${pwBrowsersPath}`);
@@ -404,6 +408,7 @@ function findChromeExecutable(): string | undefined {
     '/opt/render/project/.playwright/chromium/chrome-linux/chrome',
     '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',
     '/opt/render/project/.playwright/chromium*/chrome-linux/chrome',
+    '/opt/render/.cache/ms-playwright/chromium*/chrome-linux/chrome',
     // Vercel / CI specific paths
     '/root/.cache/ms-playwright/chromium*/chrome-linux/chrome',
     '/home/runner/.cache/ms-playwright/chromium*/chrome-linux/chrome',
@@ -444,7 +449,7 @@ async function launchBrowser(options: {
   viewport: { width: number; height: number };
 }): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
   const pw = await getPlaywright();
-  const executablePath = findChromeExecutable();
+  const executablePath = findChromeExecutable(pw);
 
   const launchOptions: any = {
     headless: options.headless,
