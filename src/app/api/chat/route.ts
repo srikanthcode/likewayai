@@ -20,6 +20,7 @@ import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import { detectPromptInjection, sanitizeInput } from "@/lib/security";
 import { logger, generateRequestId, recordAiMetric } from "@/lib/logger";
+import crypto from "crypto";
 
 // Lazy import — browser-engine has heavy deps that crash on Vercel serverless
 let runBrowserEngine: any = null;
@@ -274,12 +275,14 @@ export async function POST(req: NextRequest) {
             // Use headless=false locally so user can see the browser
             // Use headless=true on Vercel/Render (no display)
             const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+            const browserSessionId = crypto.randomUUID();
             const result = await runBrowserEngine(prompt, {
               provider: browserProvider,
               modelId: browserModelId,
               fetchAI,
               headless: isProduction,
               maxIterations: 25,
+              sessionId: browserSessionId,
               onStep: (step: any) => {
                 // Show sub-goal changes
                 if (step.subGoal && step.subGoal !== lastSubGoal) {
@@ -397,12 +400,14 @@ export async function POST(req: NextRequest) {
           try {
             let lastSubGoal = "";
             const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+            const autoSessionId = crypto.randomUUID();
             const result = await runBrowserEngine(prompt, {
               provider: automationProvider,
               modelId: automationModelId,
               fetchAI,
               headless: isProduction,
               maxIterations: 25,
+              sessionId: autoSessionId,
               onStep: (step: any) => {
                 if (step.subGoal && step.subGoal !== lastSubGoal) {
                   lastSubGoal = step.subGoal;

@@ -23,6 +23,8 @@
 import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
+import { startScreencast, ScreencastSession } from "./screencast-manager";
+import { broadcastFrame, broadcastStep, broadcastStatus } from "./browser-ws-server";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAYWRIGHT LOADER — Bundler-proof dynamic import
@@ -184,6 +186,7 @@ export interface AgentOptions {
   maxIterations?: number;
   viewport?: { width: number; height: number };
   onStep?: (step: AgentStep) => void;
+  sessionId?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2103,6 +2106,7 @@ export async function runBrowserEngine(
     headless = true, maxIterations = 25,
     viewport = { width: 1280, height: 800 },
     onStep,
+    sessionId,
   } = options;
 
   const startTime = Date.now();
@@ -2112,13 +2116,27 @@ export async function runBrowserEngine(
   let context: BrowserContext | null = null;
   let page: Page | null = null;
   let finalAnswer: string | undefined;
+  let screencast: ScreencastSession | null = null;
 
   try {
     // ── LAUNCH BROWSER ───────────────────────────────────────────────
+    if (sessionId) broadcastStatus(sessionId, "launching");
     console.log(`[Browser] Launching... (headless=${headless})`);
     const launched = await launchBrowser({ headless, viewport });
     context = launched.context;
     page = launched.page;
+
+    // ── START LIVE SCREENCAST ────────────────────────────────────────
+    if (sessionId) {
+      try {
+        screencast = await startScreencast(page, (frame) => {
+          broadcastFrame(sessionId, frame.data);
+        });
+        broadcastStatus(sessionId, "ready");
+      } catch (err: any) {
+        console.log(`[Browser] Screencast failed to start: ${err.message}`);
+      }
+    }
 
     // ── DECOMPOSE GOAL ───────────────────────────────────────────────
     console.log(`[Browser] Decomposing goal: ${task.slice(0, 80)}`);
@@ -2295,6 +2313,18 @@ export async function runBrowserEngine(
       steps.push(step);
       onStep?.(step);
 
+      // Broadcast live step to WebSocket clients
+      if (sessionId) {
+        broadcastStep(sessionId, {
+          iteration: step.iteration,
+          action: action.action,
+          reasoning: action.reasoning,
+          url: snapshot.url,
+          phase: state.phase,
+          success: result.success,
+        });
+      }
+
       console.log(
         `[Browser] #${i + 1} [${state.phase}] ${action.action}` +
         (action.url ? ` url="${action.url.slice(0, 60)}"` : "") +
@@ -2346,6 +2376,14 @@ export async function runBrowserEngine(
       finalState: { phase: "ERROR", url: page?.url() || "", title: "" },
     };
   } finally {
+    // Stop live screencast
+    if (screencast) {
+      await screencast.stop().catch(() => {});
+    }
+    if (sessionId) {
+      broadcastStatus(sessionId, finalAnswer ? "done" : "error");
+    }
+
     // Save session before closing
     if (context) {
       await saveSession(context).catch(() => {});

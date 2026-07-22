@@ -3,6 +3,7 @@ import { runAgent } from "@/lib/automation/browser-engine";
 import type { AgentOptions } from "@/lib/automation/browser-engine";
 import { fetchAI } from "@/lib/api-manager";
 import { getProviderForModel } from "@/lib/models";
+import crypto from "crypto";
 
 export const maxDuration = 180;
 
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
 
     const modelId = requestedModel || "llama-3.3-70b-versatile";
     const provider = getProviderForModel(modelId);
+    const sessionId = crypto.randomUUID();
 
     const options: AgentOptions = {
       provider,
@@ -28,6 +30,7 @@ export async function POST(req: NextRequest) {
       fetchAI,
       headless,
       maxIterations: 25,
+      sessionId,
       onStep: (step) => {
         console.log(
           `[Browser Agent] Step ${step.iteration}: ${step.action.action}` +
@@ -47,6 +50,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: result.success,
+      sessionId,
       goal: result.task,
       answer: result.answer,
       stepsTaken: result.steps.length,
