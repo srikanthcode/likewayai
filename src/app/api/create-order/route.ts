@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Razorpay from "razorpay";
+import { getRazorpay } from "@/lib/razorpay";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
@@ -24,15 +24,15 @@ export async function POST(req: NextRequest) {
     const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 
     if (!razorpayKeyId || !razorpayKeySecret || razorpayKeyId === "rzp_test_your_id") {
-      return NextResponse.json({ 
-        error: "Razorpay credentials not configured. Please add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to environment variables." 
+      return NextResponse.json({
+        error: "Razorpay credentials not configured. Please add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to environment variables."
       }, { status: 500 });
     }
 
-    const razorpay = new Razorpay({
-      key_id: razorpayKeyId,
-      key_secret: razorpayKeySecret,
-    });
+    const razorpay = getRazorpay();
+    if (!razorpay) {
+      return NextResponse.json({ error: "Razorpay is not configured" }, { status: 500 });
+    }
 
     // Razorpay receipt max 40 chars — truncate to avoid 400 error
     const shortReceipt = (receipt || `r_${Date.now()}`).slice(0, 40);
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     };
 
     const order = await razorpay.orders.create(options);
-    
+
     if (!order) {
       throw new Error("Razorpay API returned undefined response");
     }
@@ -60,15 +60,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Order Creation Error:", error);
-    
+
     if (error.statusCode === 401) {
       return NextResponse.json({ error: "Authentication failed. Check your Razorpay credentials." }, { status: 401 });
     }
-    
+
     const errorMessage = error.error?.description || error.message || "Failed to create order";
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: errorMessage,
-      details: error.error || null 
+      details: error.error || null
     }, { status: 500 });
   }
 }

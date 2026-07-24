@@ -1,6 +1,6 @@
 /**
  * Razorpay Real-Time Payment Server - Production
- * 
+ *
  * ⚠️ LIVE MODE - Real payments will be processed!
  */
 
@@ -13,8 +13,18 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Timing-safe comparison to prevent timing attacks
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000'],
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.static('../client'));
 
@@ -34,15 +44,16 @@ app.post('/api/create-order', async (req, res) => {
   try {
     const { amount, currency = 'INR' } = req.body;
 
-    if (!amount || amount < 1) {
+    // Amount should be in paise (INR) - minimum 100 paise = ₹1
+    if (!amount || amount < 100) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid amount'
+        error: 'Invalid amount. Minimum amount is 100 paise (₹1)'
       });
     }
 
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Convert to paise
+      amount: amount, // Amount should already be in paise
       currency,
       receipt: `rcpt_${Date.now()}`
     });
@@ -94,7 +105,7 @@ app.post('/api/verify-payment', async (req, res) => {
       .update(body)
       .digest('hex');
 
-    if (expectedSignature === razorpay_signature) {
+    if (timingSafeEqual(expectedSignature, razorpay_signature)) {
       // Update order status
       const order = orders.get(razorpay_order_id);
       if (order) {
@@ -161,15 +172,22 @@ app.get('/api/payment/:paymentId', async (req, res) => {
 app.post('/api/webhook', async (req, res) => {
   try {
     const signature = req.headers['x-razorpay-signature'];
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error('❌ RAZORPAY_WEBHOOK_SECRET is not configured');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+
     const body = JSON.stringify(req.body);
 
     // Verify webhook signature
     const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || '')
+      .createHmac('sha256', webhookSecret)
       .update(body)
       .digest('hex');
 
-    if (signature !== expectedSignature) {
+    if (!timingSafeEqual(expectedSignature, signature)) {
       return res.status(400).json({ error: 'Invalid signature' });
     }
 

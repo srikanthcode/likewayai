@@ -1,12 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PLANS, PlanType } from "@/lib/plans";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, planId } = await req.json();
+    // Auth check
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
 
-    if (!userId || !planId) {
-      return NextResponse.json({ error: "Missing userId or planId" }, { status: 400 });
+    const { planId } = await req.json();
+
+    if (!planId) {
+      return NextResponse.json({ error: "Missing planId" }, { status: 400 });
+    }
+
+    const validPlanIds: PlanType[] = ["Go", "Plus", "Pro"];
+    if (!validPlanIds.includes(planId as PlanType)) {
+      return NextResponse.json({ error: "Invalid plan ID" }, { status: 400 });
     }
 
     const plan = PLANS[planId as PlanType];

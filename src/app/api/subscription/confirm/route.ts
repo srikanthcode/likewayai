@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { updateUserSubscription } from "@/lib/user";
 import { PLANS, PlanType } from "@/lib/plans";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -10,8 +11,18 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth check
+    const tokens = getTokenFromCookies(req);
+    if (!tokens.access) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const payload = verifyAccessToken(tokens.access);
+    if (!payload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = payload.sub;
+
     const {
-      userId,
       planId,
       razorpay_payment_id,
       razorpay_subscription_id,
@@ -22,8 +33,13 @@ export async function POST(req: NextRequest) {
     // Accept either razorpay_order_id (standard checkout) or razorpay_subscription_id (subscription checkout)
     const orderId = razorpay_order_id || razorpay_subscription_id;
 
-    if (!userId || !planId || !orderId) {
+    if (!planId || !orderId) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
+    }
+
+    const validPlanIds: PlanType[] = ["Go", "Plus", "Pro"];
+    if (!validPlanIds.includes(planId as PlanType)) {
+      return NextResponse.json({ error: "Invalid plan ID" }, { status: 400 });
     }
 
     const plan = PLANS[planId as PlanType];

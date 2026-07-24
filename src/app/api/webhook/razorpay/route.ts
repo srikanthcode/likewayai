@@ -12,7 +12,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.text();
     const signature = req.headers.get("x-razorpay-signature") || "";
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (!secret) {
+      console.error("[Webhook] RAZORPAY_WEBHOOK_SECRET is not configured");
+      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
+    }
 
     // Verify signature
     const expectedSignature = crypto
@@ -44,11 +49,13 @@ export async function POST(req: NextRequest) {
     // we should have stored the subscriptionId <-> userId mapping during creation.
     // For now, we'll try to find the user by subscriptionId in our DB.
     // (In a real app, you might use subscription.notes.userId if you passed it during creation)
-    
+
     // For simplicity, we'll assume the userId is passed in notes.userId
     const userId = subscription.notes?.userId || "unknown";
 
-    if (userId !== "unknown") {
+    if (userId === "unknown") {
+      console.error(`[Webhook] Could not determine userId for subscription ${subscriptionId}`);
+    } else {
       await updateUserSubscription(userId, tier as PlanType, status, subscriptionId);
     }
 

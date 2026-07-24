@@ -243,15 +243,50 @@ export default function PricingPage() {
 
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
-      // Always remove and reload to avoid stale config
+      // If Razorpay is already loaded, reuse it
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+
+      // Check if script tag already exists and is loading
       const existing = document.querySelector('script[src*="checkout.razorpay.com"]');
-      if (existing) existing.remove();
-      delete (window as any).Razorpay;
+      if (existing) {
+        // Script tag exists, wait for it to load
+        const checkLoaded = setInterval(() => {
+          if ((window as any).Razorpay) {
+            clearInterval(checkLoaded);
+            resolve(true);
+          }
+        }, 100);
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          clearInterval(checkLoaded);
+          resolve(false);
+        }, 10000);
+        return;
+      }
 
       const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js?v=" + Date.now();
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+
+      const timeout = setTimeout(() => {
+        script.remove();
+        resolve(false);
+      }, 10000);
+
+      script.onload = () => {
+        clearTimeout(timeout);
+        // Wait a tick for Razorpay global to be available
+        setTimeout(() => resolve(!!(window as any).Razorpay), 100);
+      };
+      script.onerror = () => {
+        clearTimeout(timeout);
+        script.remove();
+        resolve(false);
+      };
+
       document.body.appendChild(script);
     });
   };
