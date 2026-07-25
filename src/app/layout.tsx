@@ -167,6 +167,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://checkout.razorpay.com" />
+        <link rel="dns-prefetch" href="https://checkout.razorpay.com" />
+        <script src="https://checkout.razorpay.com/v1/checkout.js" async />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

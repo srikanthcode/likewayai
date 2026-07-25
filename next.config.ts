@@ -22,6 +22,14 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "**.githubusercontent.com",
       },
+      {
+        protocol: "https",
+        hostname: "checkout.razorpay.com",
+      },
+      {
+        protocol: "https",
+        hostname: "**.razorpay.com",
+      },
     ],
   },
 

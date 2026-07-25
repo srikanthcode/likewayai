@@ -242,57 +242,64 @@ export default function PricingPage() {
   };
 
   const loadRazorpayScript = (): Promise<boolean> => {
+    // If Razorpay is already loaded, reuse it
+    if ((window as any).Razorpay) {
+      return Promise.resolve(true);
+    }
+
+    // Helper: poll for Razorpay global with timeout
+    const pollForRazorpay = (timeoutMs: number): Promise<boolean> => {
+      return new Promise((res) => {
+        if ((window as any).Razorpay) { res(true); return; }
+        const start = Date.now();
+        const interval = setInterval(() => {
+          if ((window as any).Razorpay) {
+            clearInterval(interval);
+            res(true);
+          } else if (Date.now() - start > timeoutMs) {
+            clearInterval(interval);
+            res(false);
+          }
+        }, 150);
+      });
+    };
+
     return new Promise((resolve) => {
-      // If Razorpay is already loaded, reuse it
-      if ((window as any).Razorpay) {
-        resolve(true);
-        return;
-      }
+      const RAZORPAY_URL = "https://checkout.razorpay.com/v1/checkout.js";
 
-      // Helper: poll for Razorpay global with timeout
-      const pollForRazorpay = (timeoutMs: number): Promise<boolean> => {
-        return new Promise((res) => {
-          if ((window as any).Razorpay) { res(true); return; }
-          const start = Date.now();
-          const interval = setInterval(() => {
-            if ((window as any).Razorpay) {
-              clearInterval(interval);
-              res(true);
-            } else if (Date.now() - start > timeoutMs) {
-              clearInterval(interval);
-              res(false);
-            }
-          }, 150);
-        });
-      };
-
-      // If a script tag already exists (previous attempt), wait for it
-      const existing = document.querySelector('script[src*="checkout.razorpay.com"]');
+      // If a script tag already exists (from layout or previous attempt), just wait for it
+      const existing = document.querySelector(`script[src="${RAZORPAY_URL}"]`);
       if (existing) {
-        pollForRazorpay(10000).then(resolve);
+        pollForRazorpay(15000).then(resolve);
         return;
       }
 
-      // Remove any broken/failed script tags before retrying
+      // Clean up any broken/failed script tags
       document.querySelectorAll('script[src*="checkout.razorpay.com"]').forEach(s => s.remove());
 
       const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.src = RAZORPAY_URL;
       script.async = true;
 
       script.onload = () => {
-        // After script loads, poll for the Razorpay global (may take a moment to init)
-        pollForRazorpay(5000).then(resolve);
+        pollForRazorpay(8000).then(resolve);
       };
+
       script.onerror = () => {
         script.remove();
-        resolve(false);
+        // Retry once: try loading from the same URL again
+        const retry = document.createElement("script");
+        retry.src = RAZORPAY_URL + "?retry=" + Date.now();
+        retry.async = true;
+        retry.onload = () => pollForRazorpay(8000).then(resolve);
+        retry.onerror = () => { retry.remove(); resolve(false); };
+        document.body.appendChild(retry);
       };
 
       document.body.appendChild(script);
 
-      // Global timeout: if nothing happens in 15s, give up
-      setTimeout(() => resolve(false), 15000);
+      // Global timeout
+      setTimeout(() => resolve(false), 20000);
     });
   };
 
