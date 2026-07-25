@@ -37,7 +37,21 @@ export async function initializeApp(): Promise<void> {
     logger.error("Failed to initialize MongoDB indexes", { error: error.message });
   }
 
-  // 3. Schedule periodic cleanup
+  // 3. Initialize WebSocket server for browser automation streaming
+  // Only on Render (Docker) - standalone WS server for live browser streaming
+  if (process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+    try {
+      const { createStandaloneWSS, getWSS } = await import("./automation/browser-ws-server");
+      if (!getWSS()) {
+        createStandaloneWSS();
+        logger.info("Browser WebSocket server initialized");
+      }
+    } catch (error: any) {
+      logger.warn("WebSocket server initialization skipped", { error: error.message });
+    }
+  }
+
+  // 4. Schedule periodic cleanup
   scheduleCleanup();
 
   initialized = true;

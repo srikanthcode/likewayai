@@ -125,15 +125,14 @@ export default function AccountMenu() {
         const menuWidth = 300;
         
         let top: number;
-        let left: number;
-        
+
         if (rect.top > menuHeight) {
           top = rect.top - menuHeight - 8;
         } else {
           top = rect.bottom + 8;
         }
-        
-        left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+
+        const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
         
         if (top + menuHeight > window.innerHeight) {
           top = window.innerHeight - menuHeight - 8;

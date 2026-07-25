@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const logoutAll = Boolean(body.all);
 
     let userId: string | null = null;
-    let currentRefreshToken: string | null = tokens.refresh || null;
+    const currentRefreshToken: string | null = tokens.refresh || null;
 
     // Get userId from access token if valid
     if (tokens.access) {

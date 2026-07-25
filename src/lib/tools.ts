@@ -33,13 +33,13 @@ export async function duckDuckGoSearch(rawQuery: string): Promise<string> {
     
     const linkRegex = /<a rel="nofollow" href="([^"]+)" class='result-link'>([^<]+)<\/a>/g;
     let match;
-    let links = [];
+    const links = [];
     while ((match = linkRegex.exec(text)) !== null) {
       links.push({ url: match[1], title: match[2].trim(), index: match.index });
     }
-    
+
     const snippetRegex = /<td class='result-snippet'>([\s\S]*?)<\/td>/g;
-    let snippets = [];
+    const snippets = [];
     while ((match = snippetRegex.exec(text)) !== null) {
       snippets.push({ snippet: match[1].replace(/<[^>]+>/g, '').trim(), index: match.index });
     }

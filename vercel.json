@@ -3,6 +3,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
+  "env": {
+    "RENDER_API_URL": "@render-api-url"
+  },
   "headers": [
     {
       "source": "/(.*)",

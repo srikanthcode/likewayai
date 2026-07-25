@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "postinstall": "node -e \"if(process.env.RENDER && !process.env.VERCEL && !process.env.PLAYWRIGHT_BROWSERS_PATH){require('child_process').execSync('npx playwright install chromium 2>/dev/null || true', {stdio:'inherit'})}\"",
+    "postinstall": "node -e \"if(process.env.RENDER||process.env.RENDER_EXTERNAL_URL){const{execSync}=require('child_process');const env={...process.env,PLAYWRIGHT_BROWSERS_PATH:'/ms-playwright'};try{console.log('[Playwright] Installing Chromium for Render...');execSync('npx playwright install chromium --with-deps',{stdio:'inherit',env,timeout:120000})}catch(e){console.warn('[Playwright] Browser install failed (non-fatal):',e.message)}}\"",
     "lint": "next lint",
     "tailwind": "tailwindcss -i globals.css -o app/globals.css --minify",
     "test:e2e": "playwright test",
@@ -29,6 +29,8 @@
     "motion-utils": "^12.39.0",
     "next": "^16.2.6",
     "ogl": "^1.0.11",
+    "playwright": "^1.61.1",
+    "playwright-core": "^1.61.1",
     "razorpay": "^2.9.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -51,7 +53,6 @@
     "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
-    "playwright": "^1.61.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

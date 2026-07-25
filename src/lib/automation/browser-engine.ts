@@ -27,26 +27,39 @@ import { startScreencast, ScreencastSession } from "./screencast-manager";
 import { broadcastFrame, broadcastStep, broadcastStatus } from "./browser-ws-server";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PLAYWRIGHT LOADER — Bundler-proof dynamic import
+// PLAYWRIGHT LOADER — Production-safe dynamic import
 //
-// Problem: Turbopack/webpack traces `import("playwright")` at build time,
-// creates a chunk, and at runtime in Vercel Lambda playwright-core tries to
-// require('playwright-core/browsers.json') which Vercel's file tracer never
-// included in the bundle (it's not in playwright's `exports` map).
+// Problem (solved): The old code used new Function("specifier", "return import(specifier)")
+// which created a new V8 context that couldn't resolve playwright from node_modules
+// due to CJS/ESM boundary crossing. This caused crashes on Render.
 //
-// Fix: Use `new Function` to hide the import string from static analysis.
-// The bundler cannot resolve what it can't see. At runtime, Node.js resolves
-// `playwright` from node_modules normally. On Vercel, the import fails and
-// we return a clean error instead of crashing the entire serverless function.
+// Solution: Use a standard dynamic import. Next.js's serverExternalPackages config
+// (in next.config.ts) excludes playwright from bundling, so at runtime Node.js
+// resolves it from node_modules normally. On Vercel, we throw a clean error.
+// There's also a fallback to playwright-core if playwright isn't available.
+//
 // ═══════════════════════════════════════════════════════════════════════════
 
 let _playwright: any = null;
+let _pwInitialized = false;
 
 async function getPlaywright() {
   if (_playwright) return _playwright;
+  
+  // Prevent re-entrant calls from trying to import simultaneously
+  if (_pwInitialized) {
+    // Wait briefly for the ongoing initialization to complete
+    for (let i = 0; i < 50; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (_playwright) return _playwright;
+    }
+    throw new Error("Playwright initialization timed out after 5s");
+  }
+  _pwInitialized = true;
 
   // VERCEL is set even in local dev by Next.js, so check VERCEL_REGION (only set on real Vercel)
   if (process.env.VERCEL_REGION) {
+    _pwInitialized = false;
     throw new Error(
       "Browser automation is not available on Vercel. " +
       "Use Render backend at https://likewayai.onrender.com/api/browser-agent instead."
@@ -54,16 +67,31 @@ async function getPlaywright() {
   }
 
   try {
-    // new Function hides the import string from Turbopack/webpack static analysis
-    // so the bundler never creates a chunk for playwright
-    const loader = new Function("specifier", "return import(specifier)");
-    _playwright = await loader("playwright");
+    console.log("[Playwright] Attempting to import playwright...");
+    // Standard dynamic import — Next.js's serverExternalPackages config ensures
+    // playwright is NOT bundled, so Node.js resolves it from node_modules at runtime.
+    // This works correctly in both CJS and ESM contexts on Node.js 18+.
+    _playwright = await import("playwright");
+    console.log("[Playwright] Successfully loaded playwright module");
     return _playwright;
   } catch (err: any) {
-    throw new Error(
-      "Browser automation requires playwright. Install it with: npm install playwright\n" +
-      `Error: ${err.message}`
-    );
+    console.warn(`[Playwright] Failed to import playwright: ${err.message}`);
+    
+    // Fallback: try playwright-core (standalone chromium core)
+    try {
+      console.log("[Playwright] Attempting to import playwright-core as fallback...");
+      _playwright = await import("playwright-core");
+      console.log("[Playwright] Successfully loaded playwright-core as fallback");
+      return _playwright;
+    } catch (err2: any) {
+      _pwInitialized = false;
+      throw new Error(
+        "Browser automation requires playwright. " +
+        "Ensure it's installed via: npm install playwright\n" +
+        `Primary error: ${err.message}\n` +
+        `Fallback error: ${err2.message}`
+      );
+    }
   }
 }
 
@@ -412,8 +440,12 @@ function findChromeExecutable(pw?: any): string | undefined {
     '/opt/render/project/.playwright/chromium-*/chrome-linux/chrome',
     '/opt/render/project/.playwright/chromium*/chrome-linux/chrome',
     '/opt/render/.cache/ms-playwright/chromium*/chrome-linux/chrome',
-    // Docker default paths
+    // Docker mcr.microsoft.com/playwright default paths
     '/ms-playwright/chromium*/chrome-linux/chrome',
+    '/ms-playwright/chromium/chrome-linux/chrome',
+    // PLAYWRIGHT_BROWSERS_PATH=/ms-playwright on Render
+    '/ms-playwright/chromium-*/chrome-linux/chrome',
+    '/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome',
     // Vercel / CI specific paths
     '/root/.cache/ms-playwright/chromium*/chrome-linux/chrome',
     '/home/runner/.cache/ms-playwright/chromium*/chrome-linux/chrome',
@@ -469,7 +501,7 @@ async function launchBrowser(options: {
       "--disable-renderer-backgrounding",
     ],
     ignoreDefaultArgs: ["--enable-automation"],
-    timeout: 30000,
+    timeout: 60000,
   };
 
   if (executablePath) {

@@ -314,7 +314,7 @@ export default function SessionsPage() {
               <div>
                 <h3 className="font-semibold text-sm text-red-400 mb-1">Log out all devices</h3>
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  This will immediately sign you out of all sessions across all devices, including this one. You'll need to sign in again.
+                  This will immediately sign you out of all sessions across all devices, including this one. You&apos;ll need to sign in again.
                 </p>
               </div>
               <button
@@ -333,7 +333,7 @@ export default function SessionsPage() {
         <div className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/8 flex items-start gap-3">
           <Shield size={15} className="text-gray-600 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-gray-600 leading-relaxed">
-            If you see a session you don't recognize, revoke it immediately and{" "}
+            If you see a session you don&apos;t recognize, revoke it immediately and{" "}
             <a href="/account" className="text-gray-400 hover:text-white transition-colors underline underline-offset-2">
               change your password
             </a>

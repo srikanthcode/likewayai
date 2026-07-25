@@ -204,7 +204,7 @@ export default function AgentSelector({ selectedAgentId, onSelect, currentPlan }
 
               {filteredAgents.length === 0 && (
                 <div className="text-center py-8 text-gray-500 text-sm">
-                  No agents found for "{search}"
+                  No agents found for &quot;{search}&quot;
                 </div>
               )}
             </div>

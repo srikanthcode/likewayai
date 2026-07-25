@@ -23,6 +23,7 @@ const CRITICAL_VARS: EnvVarConfig[] = [
   { key: "NEXT_PUBLIC_APP_URL", required: false, description: "Public app URL" },
   { key: "RAZORPAY_KEY_ID", required: false, description: "Razorpay key ID" },
   { key: "RAZORPAY_KEY_SECRET", required: false, description: "Razorpay key secret" },
+  { key: "RENDER_API_URL", required: false, description: "Render backend URL for browser automation proxy (used on Vercel)" },
 ];
 
 export function validateEnv(): { valid: boolean; errors: string[]; warnings: string[] } {
@@ -56,6 +57,11 @@ export function validateEnv(): { valid: boolean; errors: string[]; warnings: str
   // Validate Playwright browser path on Render
   if (process.env.RENDER && !process.env.PLAYWRIGHT_BROWSERS_PATH) {
     warnings.push('PLAYWRIGHT_BROWSERS_PATH not set — browser automation may fail on Render');
+  }
+
+  // Validate RENDER_API_URL when on Vercel (needed for proxy to Render)
+  if (process.env.VERCEL_REGION && !process.env.RENDER_API_URL) {
+    warnings.push('RENDER_API_URL not set — browser automation proxy from Vercel to Render will fail');
   }
 
   if (errors.length > 0) {

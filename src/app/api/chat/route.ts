@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
       experimental = false,
       extendedThinking = false,
       conversationId,
+      startUrl = "",
     } = body;
 
     // Get userId from server-side session, not from client
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
     // Get plan from JWT token
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    let plan = (tokenPayload?.plan as PlanType) || "Core";
+    const plan = (tokenPayload?.plan as PlanType) || "Core";
 
     // Validate prompt
     const validation = validatePrompt(prompt);
@@ -207,7 +208,9 @@ export async function POST(req: NextRequest) {
       // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
       // VERCEL is set even in local dev by Next.js, so check VERCEL_REGION (only set on real Vercel)
       if (process.env.VERCEL_REGION) {
-        const renderUrl = process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+        // Use RENDER_API_URL env var for the Render backend URL.
+        // Falls back to NEXT_PUBLIC_API_URL, then hardcoded default.
+        const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
@@ -220,19 +223,20 @@ export async function POST(req: NextRequest) {
               const res = await fetch(`${renderUrl}/api/browser-agent`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ task: prompt, headless: true }),
-                signal: AbortSignal.timeout(180000),
+                body: JSON.stringify({ task: prompt, startUrl, headless: true }),
+                // Timeout matches the Vercel serverless maxDuration (120s)
+                signal: AbortSignal.timeout(115000),
               });
+              
+              if (!res.ok) {
+                const errText = await res.text().catch(() => "Unknown error");
+                throw new Error(`Render backend returned ${res.status}: ${errText.slice(0, 200)}`);
+              }
+              
               const data = await res.json();
 
-              // Stream screenshots from each step
-              if (data.steps && Array.isArray(data.steps)) {
-                for (const step of data.steps) {
-                  if (step.screenshot) {
-                    send(`\n![Step ${step.iteration}: ${step.action}](${step.screenshot})\n\n`);
-                  }
-                }
-              } else if (data.lastScreenshot) {
+              // Render /api/browser-agent returns lastScreenshot, not per-step screenshots
+              if (data.lastScreenshot) {
                 send(`\n![Browser Screenshot](${data.lastScreenshot})\n\n`);
               }
 
@@ -601,7 +605,7 @@ export async function POST(req: NextRequest) {
 
     // ── Standard Text Conversation ───────────────────────────────────────
     const selectedModel = MODELS.find((m) => m.id === modelId) || MODELS[0];
-    let routedModelId = modelId || selectedModel.id;
+    const routedModelId = modelId || selectedModel.id;
 
     const provider = getProviderForModel(routedModelId);
     const url =

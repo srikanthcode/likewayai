@@ -7,9 +7,21 @@ import crypto from "crypto";
 
 export const maxDuration = 180;
 
+// CORS headers for cross-origin requests (Vercel → Render)
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Max-Age": "86400",
+};
+
 // Use headless=false locally so user can see the browser
 // Use headless=true on Vercel/Render (no display)
 const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +29,10 @@ export async function POST(req: NextRequest) {
     const { task, modelId: requestedModel, startUrl, headless = isProduction } = body;
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
-      return NextResponse.json({ error: "Task description is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Task description is required" },
+        { status: 400, headers: corsHeaders }
+      );
     }
 
     const modelId = requestedModel || "llama-3.3-70b-versatile";
@@ -71,12 +86,12 @@ export async function POST(req: NextRequest) {
       subGoals: result.subGoals,
       error: result.error,
       duration: result.duration,
-    });
+    }, { headers: corsHeaders });
   } catch (error: any) {
     console.error("[Browser Agent API]", error);
     return NextResponse.json(
       { error: error.message || "Browser agent failed" },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -87,5 +102,5 @@ export async function GET() {
     name: "LikeWay Browser",
     version: "6.0",
     message: "Unified browser agent v6 (accessibility-first, adaptive recovery, goal decomposition). POST with { task: 'your instruction' }",
-  });
+  }, { headers: corsHeaders });
 }
