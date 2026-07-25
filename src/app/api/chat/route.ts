@@ -202,22 +202,36 @@ export async function POST(req: NextRequest) {
       return deepRes;
     }
 
+    // ── Detect Vercel vs local/Render ────────────────────────────────
+    // VERCEL_ENV is "production" or "preview" only on real Vercel (not in local dev)
+    const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
+
     // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
     const isBrowserAgent = mode === "Browser";
     if (isBrowserAgent) {
       // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
-      // VERCEL is set even in local dev by Next.js, so check VERCEL_REGION (only set on real Vercel)
-      if (process.env.VERCEL_REGION) {
+      if (isOnVercel) {
         // Use RENDER_API_URL env var for the Render backend URL.
         // Falls back to NEXT_PUBLIC_API_URL, then hardcoded default.
         const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+
+        // Prevent proxy loop: if renderUrl points back to this Vercel domain,
+        // the /api/browser-agent route will fail (Playwright not available on Vercel).
+        const selfUrl = req.nextUrl.origin;
+        if (renderUrl === selfUrl || renderUrl.startsWith(selfUrl + "/")) {
+          return NextResponse.json(
+            { error: `RENDER_API_URL points to this Vercel domain (${renderUrl}). Set it to the Render backend URL (e.g. https://likewayai.onrender.com) in Vercel Dashboard → Environment Variables.` },
+            { status: 500 }
+          );
+        }
+
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
             const send = (text: string) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
             };
-            send(`> **LikeWay Browser v6** — Forwarding to Render backend...\n\n`);
+            send(`> **LikeWay Browser v6** — Forwarding to \`${renderUrl}\`...\n\n`);
             send(`> Task: ${prompt}\n\n`);
             try {
               const res = await fetch(`${renderUrl}/api/browser-agent`, {
@@ -278,7 +292,7 @@ export async function POST(req: NextRequest) {
             let lastSubGoal = "";
             // Use headless=false locally so user can see the browser
             // Use headless=true on Vercel/Render (no display)
-            const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+            const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
             const browserSessionId = crypto.randomUUID();
             const result = await runBrowserEngine(prompt, {
               provider: browserProvider,
@@ -337,15 +351,22 @@ export async function POST(req: NextRequest) {
     const isAutomation = mode === "Automation";
     if (isAutomation) {
       // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
-      if (process.env.VERCEL_REGION) {
-        const renderUrl = process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+      if (isOnVercel) {
+        const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+        const selfUrl = req.nextUrl.origin;
+        if (renderUrl === selfUrl || renderUrl.startsWith(selfUrl + "/")) {
+          return NextResponse.json(
+            { error: `RENDER_API_URL points to this Vercel domain (${renderUrl}). Set it to the Render backend URL in Vercel Dashboard → Environment Variables.` },
+            { status: 500 }
+          );
+        }
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
             const send = (text: string) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
             };
-            send(`> **Automation Mode** — Forwarding to Render backend...\n\n`);
+            send(`> **Automation Mode** — Forwarding to \`${renderUrl}\`...\n\n`);
             send(`> Task: ${prompt}\n\n`);
             try {
               const res = await fetch(`${renderUrl}/api/browser-agent`, {
@@ -403,7 +424,7 @@ export async function POST(req: NextRequest) {
 
           try {
             let lastSubGoal = "";
-            const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+            const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
             const autoSessionId = crypto.randomUUID();
             const result = await runBrowserEngine(prompt, {
               provider: automationProvider,

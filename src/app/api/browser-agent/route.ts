@@ -17,7 +17,7 @@ const corsHeaders = {
 
 // Use headless=false locally so user can see the browser
 // Use headless=true on Vercel/Render (no display)
-const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
 
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });

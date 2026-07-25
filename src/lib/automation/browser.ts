@@ -46,7 +46,7 @@ export async function executeAutomation(
     provider,
     modelId,
     fetchAI,
-    headless: !!process.env.VERCEL_REGION || !!process.env.RENDER, // headless on prod, visible locally
+    headless: process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER, // headless on prod, visible locally
     maxIterations: steps.length + 5,
   });
 

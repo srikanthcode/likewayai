@@ -29,7 +29,7 @@ async function getChromium() {
 let browser: any = null;
 
 // Use headless=false locally so user can see the browser
-const isProduction = !!process.env.VERCEL_REGION || !!process.env.RENDER;
+const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
 
 async function getBrowser(): Promise<{ browser: any }> {
   if (browser && browser.isConnected()) {
