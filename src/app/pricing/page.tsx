@@ -249,45 +249,50 @@ export default function PricingPage() {
         return;
       }
 
-      // Check if script tag already exists and is loading
+      // Helper: poll for Razorpay global with timeout
+      const pollForRazorpay = (timeoutMs: number): Promise<boolean> => {
+        return new Promise((res) => {
+          if ((window as any).Razorpay) { res(true); return; }
+          const start = Date.now();
+          const interval = setInterval(() => {
+            if ((window as any).Razorpay) {
+              clearInterval(interval);
+              res(true);
+            } else if (Date.now() - start > timeoutMs) {
+              clearInterval(interval);
+              res(false);
+            }
+          }, 150);
+        });
+      };
+
+      // If a script tag already exists (previous attempt), wait for it
       const existing = document.querySelector('script[src*="checkout.razorpay.com"]');
       if (existing) {
-        // Script tag exists, wait for it to load
-        const checkLoaded = setInterval(() => {
-          if ((window as any).Razorpay) {
-            clearInterval(checkLoaded);
-            resolve(true);
-          }
-        }, 100);
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          clearInterval(checkLoaded);
-          resolve(false);
-        }, 10000);
+        pollForRazorpay(10000).then(resolve);
         return;
       }
+
+      // Remove any broken/failed script tags before retrying
+      document.querySelectorAll('script[src*="checkout.razorpay.com"]').forEach(s => s.remove());
 
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.async = true;
 
-      const timeout = setTimeout(() => {
-        script.remove();
-        resolve(false);
-      }, 10000);
-
       script.onload = () => {
-        clearTimeout(timeout);
-        // Wait a tick for Razorpay global to be available
-        setTimeout(() => resolve(!!(window as any).Razorpay), 100);
+        // After script loads, poll for the Razorpay global (may take a moment to init)
+        pollForRazorpay(5000).then(resolve);
       };
       script.onerror = () => {
-        clearTimeout(timeout);
         script.remove();
         resolve(false);
       };
 
       document.body.appendChild(script);
+
+      // Global timeout: if nothing happens in 15s, give up
+      setTimeout(() => resolve(false), 15000);
     });
   };
 
