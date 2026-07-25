@@ -58,7 +58,8 @@ async function getPlaywright() {
   _pwInitialized = true;
 
   // VERCEL is set even in local dev by Next.js, so check VERCEL_REGION (only set on real Vercel)
-  if (process.env.VERCEL_REGION) {
+  // Also check RENDER — if running on Render, Playwright IS available even if VERCEL_REGION leaked
+  if (process.env.VERCEL_REGION && !process.env.RENDER && !process.env.RENDER_EXTERNAL_URL) {
     _pwInitialized = false;
     throw new Error(
       "Browser automation is not available on Vercel. " +
