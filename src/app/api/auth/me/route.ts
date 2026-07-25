@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAccessToken, getTokenFromCookies } from "@/lib/auth";
 import { findUserById, updateUser } from "@/lib/auth-models";
+import { normalizePlan } from "@/lib/plans";
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
         email: user.email,
         avatar: user.avatar,
         role: user.role,
-        plan: user.plan,
+        plan: normalizePlan(user.plan),
         provider: user.provider,
         emailVerified: user.emailVerified,
         onboardingCompleted: user.onboardingCompleted,

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { updateUserSubscription } from "@/lib/user";
+import { findUserById } from "@/lib/auth-models";
 import { PLANS, PlanType } from "@/lib/plans";
-import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { getTokenFromCookies, verifyAccessToken, createAccessToken, createRefreshToken, setAuthCookies } from "@/lib/auth";
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -66,6 +67,24 @@ export async function POST(req: NextRequest) {
     }
 
     await updateUserSubscription(userId, planId as PlanType, "active", orderId);
+
+    // Regenerate JWT access token with the new plan so features unlock immediately
+    const updatedUser = await findUserById(userId);
+    if (updatedUser) {
+      const sessionId = crypto.randomUUID();
+      const newAccessToken = createAccessToken(
+        { id: userId, email: updatedUser.email, role: updatedUser.role, plan: updatedUser.plan },
+        sessionId
+      );
+      const newRefreshToken = createRefreshToken(userId, sessionId);
+      const response = NextResponse.json({ status: "success", message: "Subscription confirmed successfully" });
+      const cookies = setAuthCookies(newAccessToken, newRefreshToken);
+      for (const c of cookies) {
+        response.cookies.set(c.name, c.value, c.options as any);
+      }
+      console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${planId}`);
+      return response;
+    }
 
     console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${planId}`);
     return NextResponse.json({ status: "success", message: "Subscription confirmed successfully" });

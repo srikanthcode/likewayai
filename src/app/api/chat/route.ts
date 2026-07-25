@@ -6,7 +6,7 @@ import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { executeDeepResearch } from "@/lib/deep-research";
 import { saveMessage, getHistory, getConversationContext, getUserPreferences, summarizeConversation } from "@/lib/memory";
 import { generateImage, editImage } from "@/lib/tools";
-import { PLANS, PlanType } from "@/lib/plans";
+import { PLANS, PlanType, normalizePlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import {
   SEARCH_KEYWORDS,
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
     // Get plan from JWT token
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    const plan = (tokenPayload?.plan as PlanType) || "Core";
+    const plan = normalizePlan(tokenPayload?.plan) || "Core";
 
     // Validate prompt
     const validation = validatePrompt(prompt);

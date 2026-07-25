@@ -155,6 +155,16 @@ export function getCurrentPlan(): PlanType {
   return "Core";
 }
 
+// Normalize plan names between DB (lowercase) and frontend (capitalized)
+export function normalizePlan(plan: string | undefined | null): PlanType {
+  if (!plan) return "Core";
+  const lower = plan.toLowerCase();
+  if (lower === "go") return "Go";
+  if (lower === "plus") return "Plus";
+  if (lower === "pro") return "Pro";
+  return "Core";
+}
+
 export function setCurrentPlan(plan: PlanType): void {
   if (typeof window !== "undefined") {
     localStorage.setItem("likeway_plan", plan);
