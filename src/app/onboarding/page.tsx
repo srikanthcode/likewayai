@@ -120,7 +120,7 @@ export default function OnboardingPage() {
               exit={{ opacity: 0, y: -10 }}
               className="w-full max-w-sm"
             >
-              <h1 className="text-2xl font-semibold mb-2">What's your full name?</h1>
+              <h1 className="text-2xl font-semibold mb-2">What&apos;s your full name?</h1>
               <p className="text-gray-400 text-sm mb-8">So we know what to call you.</p>
 
               <input

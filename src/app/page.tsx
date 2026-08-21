@@ -334,12 +334,92 @@ function YoutubeCard({ ytId, titleText, href }: { ytId: string; titleText: strin
 
 // Shared ReactMarkdown component map — renders step cards for ordered lists
 // isGeneratingRef is read by CodeBlock via module-level variable to avoid re-mount
-let _isGeneratingRef = { current: false };
-export function getIsGenerating() { return _isGeneratingRef.current; }
+const _isGeneratingRef = { current: false };
+function getIsGenerating() { return _isGeneratingRef.current; }
+void getIsGenerating; // keep helper referenced; not a valid Next.js page export
+
+// ── ID generators (module scope: impure by design — only called from event handlers) ──
+function generateConversationId(): string {
+  const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+  const randomChars = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  return timestamp + randomChars;
+}
+
+function generateUserMsgId(): string {
+  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function generateAssistantMsgId(): string {
+  return `msg_${Date.now()}_assistant`;
+}
+
+// Proper component for markdown images (download/copy actions need state → must be a component)
+function MarkdownImage({ src, alt, ...props }: any) {
+  const [copied, setCopied] = React.useState(false);
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = src || '';
+    link.download = alt || 'image';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  const handleCopyImage = async () => {
+    try {
+      const resp = await fetch(src);
+      const blob = await resp.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      navigator.clipboard.writeText(src || '');
+    }
+  };
+  return (
+    <span className="block my-4 w-full max-w-xl group/img">
+      <span className="block relative w-full rounded-2xl overflow-hidden shadow-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5">
+        <img
+          src={src}
+          alt={alt || "Generated Visual"}
+          loading="lazy"
+          className="w-full h-auto object-cover transition-transform duration-500 ease-out group-hover/img:scale-[1.02]"
+          {...props}
+        />
+        <span className="absolute bottom-2 right-2 flex items-center gap-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
+          <button
+            onClick={handleDownload}
+            className="p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white hover:bg-black/80 transition-colors inline-flex"
+            title="Download image"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+          <button
+            onClick={handleCopyImage}
+            className="p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white hover:bg-black/80 transition-colors inline-flex"
+            title="Copy image"
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            )}
+          </button>
+        </span>
+      </span>
+    </span>
+  );
+}
 
 function buildMarkdownComponents() {
-  let stepCounter = 0;
-  
   const getYoutubeId = (url: string): string | null => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
@@ -409,70 +489,7 @@ function buildMarkdownComponents() {
         </a>
       );
     },
-    img: ({ src, alt, ...props }: any) => {
-      const [copied, setCopied] = React.useState(false);
-      const handleDownload = () => {
-        const link = document.createElement('a');
-        link.href = src || '';
-        link.download = alt || 'image';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      };
-      const handleCopyImage = async () => {
-        try {
-          const resp = await fetch(src);
-          const blob = await resp.blob();
-          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        } catch {
-          navigator.clipboard.writeText(src || '');
-        }
-      };
-      return (
-        <span className="block my-4 w-full max-w-xl group/img">
-          <span className="block relative w-full rounded-2xl overflow-hidden shadow-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5">
-            <img 
-              src={src} 
-              alt={alt || "Generated Visual"} 
-              loading="lazy"
-              className="w-full h-auto object-cover transition-transform duration-500 ease-out group-hover/img:scale-[1.02]"
-              {...props}
-            />
-            <span className="absolute bottom-2 right-2 flex items-center gap-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
-              <button
-                onClick={handleDownload}
-                className="p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white hover:bg-black/80 transition-colors inline-flex"
-                title="Download image"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-              </button>
-              <button
-                onClick={handleCopyImage}
-                className="p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white hover:bg-black/80 transition-colors inline-flex"
-                title="Copy image"
-              >
-                {copied ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                )}
-              </button>
-            </span>
-          </span>
-        </span>
-      );
-    },
+    img: (props: any) => <MarkdownImage {...props} />,
   };
 }
 
@@ -1333,13 +1350,11 @@ export default function ChatPage() {
 
     let conversationIdToUse = activeConversationId;
     if (!conversationIdToUse && !activeProject) {
-      const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
-      const randomChars = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      conversationIdToUse = timestamp + randomChars;
+      conversationIdToUse = generateConversationId();
       setActiveConversationId(conversationIdToUse);
     }
 
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const msgId = generateUserMsgId();
     setMessages(prev => [...prev, { id: msgId, role: "user", content: userMessage }]);
     setInput("");
     setIsLoading(true);
@@ -1361,7 +1376,7 @@ export default function ChatPage() {
         SEARCH_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) ||
         (TIME_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
       );
-    const assistantMsgId = `msg_${Date.now()}_assistant`;
+    const assistantMsgId = generateAssistantMsgId();
     setMessages(prev => [...prev, { 
       id: assistantMsgId,
       role: "assistant", 
@@ -1639,9 +1654,7 @@ export default function ChatPage() {
 
     let conversationIdToUse = activeConversationId;
     if (!conversationIdToUse && !activeProject) {
-      const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
-      const randomChars = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      conversationIdToUse = timestamp + randomChars;
+      conversationIdToUse = generateConversationId();
       setActiveConversationId(conversationIdToUse);
     }
 
@@ -1656,7 +1669,7 @@ export default function ChatPage() {
         (TIME_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
       );
 
-    const assistantMsgId = `msg_${Date.now()}_assistant`;
+    const assistantMsgId = generateAssistantMsgId();
     setMessages(prev => [...prev, { 
       id: assistantMsgId,
       role: "assistant", 
@@ -2528,7 +2541,7 @@ export default function ChatPage() {
                             <div className="flex flex-col gap-1 mt-1">
                               <span className="text-xs sm:text-sm font-bold">Creating your masterpiece...</span>
                               <p className="text-[10px] text-gray-500 line-clamp-2 italic">
-                                "{messages[messages.indexOf(m) - 1]?.content || "A magical AI generation"}"
+                                &quot;{messages[messages.indexOf(m) - 1]?.content || "A magical AI generation"}&quot;
                               </p>
                             </div>
 
@@ -2948,12 +2961,17 @@ export default function ChatPage() {
                               className={cn("absolute bottom-full left-0 mb-3 w-60 p-1.5 border rounded-2xl shadow-2xl z-50 flex flex-col gap-0.5 origin-bottom-left", theme === 'dark' ? "bg-[#1e1e20] border-white/10" : "bg-white border-black/8")}
                             >
                               {[
-                                { icon: Paperclip, label: "Attach image or file", onClick: () => fileInputRef.current?.click() },
-                                { icon: ImageIcon, label: "Generate image", onClick: () => { setInput("Generate an image of "); setIsAttachmentMenuOpen(false); } },
-                                { icon: Globe, label: "Deep research", onClick: () => { setSelectedMode("Researcher"); setIsAttachmentMenuOpen(false); } },
-                                { icon: Mic, label: "Create podcast", onClick: () => setIsAttachmentMenuOpen(false) },
+                                { icon: Paperclip, label: "Attach image or file", action: "attach" },
+                                { icon: ImageIcon, label: "Generate image", action: "image" },
+                                { icon: Globe, label: "Deep research", action: "research" },
+                                { icon: Mic, label: "Create podcast", action: "podcast" },
                               ].map(item => (
-                                <button key={item.label} type="button" onClick={item.onClick} className={cn("flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-left group", theme === 'dark' ? "hover:bg-white/6 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-500 hover:text-gray-900")}>
+                                <button key={item.label} type="button" onClick={() => {
+                                  if (item.action === "attach") fileInputRef.current?.click();
+                                  else if (item.action === "image") { setInput("Generate an image of "); setIsAttachmentMenuOpen(false); }
+                                  else if (item.action === "research") { setSelectedMode("Researcher"); setIsAttachmentMenuOpen(false); }
+                                  else setIsAttachmentMenuOpen(false);
+                                }} className={cn("flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-left group", theme === 'dark' ? "hover:bg-white/6 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-500 hover:text-gray-900")}>
                                   <item.icon size={15} />
                                   <span className="text-[13px] font-medium">{item.label}</span>
                                 </button>

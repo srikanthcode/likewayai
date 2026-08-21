@@ -204,7 +204,7 @@ export default function LoginPage() {
 
           <footer className="mt-5 text-center">
             <p className="text-[13px] text-[#c7c4d7]">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <a href="/signup" className="text-[#c0c1ff] hover:text-[#8083ff] font-semibold transition-colors ml-1">
                 Sign up
               </a>

@@ -71,7 +71,10 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   try {
     const db = await getDb();
     return db.collection<User>("users").findOne({ email: email.toLowerCase() }) as any;
-  } catch { return null; }
+  } catch (err: any) {
+    console.error("[AuthModels] findUserByEmail failed:", err?.message || err);
+    return null;
+  }
 }
 
 export async function findUserById(id: string): Promise<User | null> {
@@ -91,8 +94,17 @@ export async function createUser(user: Omit<User, "_id" | "createdAt">): Promise
     if (res.acknowledged) {
       return { ...doc, _id: res.insertedId } as any;
     }
+    console.error("[AuthModels] createUser: insertOne not acknowledged for email:", user.email);
     return null;
-  } catch { return null; }
+  } catch (err: any) {
+    // Duplicate key error — user was inserted by another request/race
+    if (err?.code === 11000) {
+      console.warn("[AuthModels] createUser: duplicate key for email:", user.email, "— falling back to findUserByEmail");
+      return findUserByEmail(user.email);
+    }
+    console.error("[AuthModels] createUser failed for email:", user.email, "—", err?.message || err);
+    return null;
+  }
 }
 
 export async function updateUser(userId: string, updates: Partial<User>): Promise<boolean> {

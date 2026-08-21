@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   // Server external packages
   serverExternalPackages: ["mongodb", "playwright", "playwright-core"],
 
+  // Pin Turbopack root to this project (avoids multi-lockfile warning from parent dirs)
+  turbopack: {
+    root: __dirname,
+  },
+
   // Performance optimizations
   experimental: {
     // Enable compression

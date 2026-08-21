@@ -16,6 +16,11 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Module-scope receipt ID generator (impure — only called from checkout handler)
+function generateReceiptId(planId: string): string {
+  return `lk_${planId}_${Date.now().toString(36)}`.slice(0, 40);
+}
+
 // ── Currency Support ──────────────────────────────────────────────────
 const CURRENCIES = [
   { code: "INR", symbol: "₹", name: "Indian Rupee", rate: 1 },
@@ -153,7 +158,7 @@ export default function PricingPage() {
         body: JSON.stringify({ 
           amount: amountInPaise, 
           currency: "INR",
-          receipt: `lk_${planId}_${Date.now().toString(36)}`.slice(0, 40)
+          receipt: generateReceiptId(planId)
         }),
       });
 

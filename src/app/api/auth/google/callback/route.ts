@@ -106,6 +106,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!user) {
+      console.error("[Google OAuth] create_user_failed — findUserByEmail returned null, then createUser also returned null for email:", email);
       return NextResponse.redirect(new URL("/login?error=create_user_failed", appUrl));
     }
 

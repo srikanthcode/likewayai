@@ -20,6 +20,14 @@ const eslintConfig = defineConfig([
       "react-hooks/preserve-manual-memoization": "off",
     },
   },
+  {
+    // Standalone CommonJS Node scripts (Render WS server, Vercel serverless, tooling)
+    // — not bundled by Next.js, `require()` is correct here.
+    files: ["**/*.js", "**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
