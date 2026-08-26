@@ -305,7 +305,7 @@ export default function VoiceAssistant({
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 size={13} className="text-cyan-400 shrink-0" />
-                  <span>Autonomous browser automation</span>
+                  <span>Autonomous web task execution</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 size={13} className="text-cyan-400 shrink-0" />
@@ -484,10 +484,8 @@ export default function VoiceAssistant({
 
         {/* Bottom Control Dock & Floating Bar */}
         <footer className="relative z-50 px-8 py-4 border-t border-white/10 bg-black/60 backdrop-blur-xl flex items-center justify-between">
-          <div className="flex items-center gap-4 text-[11px] text-gray-400">
-            <span className="font-mono text-cyan-400">Voice Assistant v2.5.0</span>
-            <span className="hidden sm:inline">•</span>
-            <span className="hidden sm:inline">Playwright Automation Ready</span>
+          <div className="flex items-center gap-2 text-[11px] text-gray-400">
+            <span className="font-mono text-cyan-400">Voice Assistant</span>
           </div>
 
           {/* Central Action Bar */}
