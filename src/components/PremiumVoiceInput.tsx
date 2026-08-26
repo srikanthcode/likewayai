@@ -28,14 +28,18 @@ export default function PremiumVoiceInput({
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Persistent text accumulator across recognition restarts
+  const previousSessionsTextRef = useRef("");
   const finalTranscriptRef = useRef("");
   const partialTextRef = useRef("");
+
   const onTranscriptRef = useRef(onTranscript);
   const onSendRef = useRef(onSend);
   const onCancelRef = useRef(onCancel);
   const mountedRef = useRef(true);
 
-  // Keep callback refs fresh without causing re-renders/re-initializations
+  // Keep callback refs fresh
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
   }, [onTranscript]);
@@ -91,7 +95,7 @@ export default function PremiumVoiceInput({
       return;
     }
 
-    // Start timer
+    // Start elapsed timer
     timerRef.current = setInterval(() => {
       if (mountedRef.current && isListeningRef.current) {
         setElapsed((p) => p + 1);
@@ -110,38 +114,44 @@ export default function PremiumVoiceInput({
     };
 
     recognition.onresult = (event: any) => {
-      let interim = "";
-      let newFinal = "";
+      let sessionFinal = "";
+      let sessionInterim = "";
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          newFinal += transcript;
+      // Iterate across all results in current session
+      for (let i = 0; i < event.results.length; i++) {
+        const item = event.results[i];
+        const transcriptChunk = item[0]?.transcript?.trim() || "";
+        if (!transcriptChunk) continue;
+
+        if (item.isFinal) {
+          sessionFinal += (sessionFinal ? " " : "") + transcriptChunk;
         } else {
-          interim += transcript;
+          sessionInterim += (sessionInterim ? " " : "") + transcriptChunk;
         }
       }
 
-      if (newFinal) {
-        const trimmed = newFinal.trim();
-        if (trimmed) {
-          finalTranscriptRef.current += (finalTranscriptRef.current ? " " : "") + trimmed;
-          setFinalText(finalTranscriptRef.current);
-        }
-        partialTextRef.current = interim;
-        setPartialText(interim);
-        setState("transcribing");
+      // Combine persistent past sessions with current session final & interim
+      const prev = previousSessionsTextRef.current.trim();
+      const currentCombinedFinal = prev
+        ? sessionFinal
+          ? `${prev} ${sessionFinal}`
+          : prev
+        : sessionFinal;
 
-        const full = finalTranscriptRef.current + (interim ? " " + interim : "");
-        onTranscriptRef.current?.(full, false);
-      } else if (interim) {
-        partialTextRef.current = interim;
-        setPartialText(interim);
-        setState("transcribing");
+      const fullCombined = currentCombinedFinal
+        ? sessionInterim
+          ? `${currentCombinedFinal} ${sessionInterim}`
+          : currentCombinedFinal
+        : sessionInterim;
 
-        const full = finalTranscriptRef.current ? `${finalTranscriptRef.current} ${interim}` : interim;
-        onTranscriptRef.current?.(full, false);
-      }
+      finalTranscriptRef.current = currentCombinedFinal;
+      partialTextRef.current = sessionInterim;
+
+      setFinalText(currentCombinedFinal);
+      setPartialText(sessionInterim);
+      setState(fullCombined ? "transcribing" : "listening");
+
+      onTranscriptRef.current?.(fullCombined, false);
     };
 
     recognition.onerror = (e: any) => {
@@ -164,12 +174,16 @@ export default function PremiumVoiceInput({
         return;
       }
       if (e.error === "network") {
-        // Network blip, continue
         return;
       }
     };
 
     recognition.onend = () => {
+      // Commit all finalized text so far into previousSessionsTextRef
+      if (finalTranscriptRef.current) {
+        previousSessionsTextRef.current = finalTranscriptRef.current;
+      }
+
       // Auto-reconnect if user is still actively recording
       if (mountedRef.current && isListeningRef.current) {
         try {
@@ -213,6 +227,7 @@ export default function PremiumVoiceInput({
     }
     const full = (finalTranscriptRef.current + (partialTextRef.current ? " " + partialTextRef.current : "")).trim();
     if (full) {
+      previousSessionsTextRef.current = full;
       setFinalText(full);
       setPartialText("");
       setState("ready");
@@ -225,10 +240,11 @@ export default function PremiumVoiceInput({
   // Cancel
   const handleCancel = useCallback(() => {
     cleanup();
-    setPartialText("");
-    setFinalText("");
+    previousSessionsTextRef.current = "";
     finalTranscriptRef.current = "";
     partialTextRef.current = "";
+    setFinalText("");
+    setPartialText("");
     setElapsed(0);
     setError(null);
     setState("idle");
@@ -242,16 +258,20 @@ export default function PremiumVoiceInput({
       onSendRef.current?.(full);
     }
     cleanup();
-    setPartialText("");
-    setFinalText("");
+    previousSessionsTextRef.current = "";
     finalTranscriptRef.current = "";
     partialTextRef.current = "";
+    setFinalText("");
+    setPartialText("");
     setState("idle");
   }, [cleanup]);
 
   // Auto-start recording on initial mount ONLY
   useEffect(() => {
     mountedRef.current = true;
+    previousSessionsTextRef.current = "";
+    finalTranscriptRef.current = "";
+    partialTextRef.current = "";
     startRecording();
 
     return () => {
@@ -356,7 +376,7 @@ export default function PremiumVoiceInput({
 
         {/* Live Transcript Preview Box */}
         {displayText ? (
-          <div className="w-full max-w-lg px-6 pb-3 min-h-[32px] max-h-32 overflow-y-auto">
+          <div className="w-full max-w-lg px-6 pb-3 min-h-[32px] max-h-36 overflow-y-auto">
             <p className={cn(
               "text-sm leading-relaxed",
               isDark ? "text-gray-100" : "text-gray-900"

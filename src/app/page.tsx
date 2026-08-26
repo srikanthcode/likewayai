@@ -1024,15 +1024,17 @@ export default function ChatPage() {
     recognition.onresult = (event: any) => {
       let interim = '';
       let final = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      for (let i = 0; i < event.results.length; ++i) {
+        const chunk = event.results[i][0]?.transcript?.trim() || '';
+        if (!chunk) continue;
         if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript;
+          final += (final ? ' ' : '') + chunk;
         } else {
-          interim += event.results[i][0].transcript;
+          interim += (interim ? ' ' : '') + chunk;
         }
       }
       
-      const currentText = (final || interim).trim();
+      const currentText = (final ? (interim ? `${final} ${interim}` : final) : interim).trim();
       
       // 2. Enhanced Barge-in Logic
       // If AI is speaking and user says something meaningful (not just a filler word)
