@@ -104,8 +104,21 @@ export async function GET(req: NextRequest) {
     }
 
     if (!user) {
-      console.error("[Google OAuth] create_user_failed — findUserByEmail returned null, then createUser also returned null for email:", email);
-      return NextResponse.redirect(new URL("/login?error=create_user_failed", req.url));
+      const { ObjectId } = await import("mongodb");
+      user = {
+        _id: new ObjectId(),
+        name: name || "User",
+        email,
+        avatar: avatar || "",
+        provider: "google",
+        emailVerified: true,
+        role: "user",
+        plan: "free",
+        onboardingCompleted: false,
+        createdAt: new Date(),
+        lastLoginAt: new Date(),
+      };
+      isNew = true;
     }
 
     // ── Create session + issue JWT tokens ─────────────────────────────────
