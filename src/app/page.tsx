@@ -914,21 +914,38 @@ export default function ChatPage() {
               const launchInfo = {
                 name: voiceData.appLaunch.appName || voiceData.appLaunch.siteName || "Application",
                 url: voiceData.appLaunch.targetUrl,
-                status: "Opening...",
+                status: "Opened",
               };
               setActiveAppLaunch(launchInfo);
               setVoiceStatus('acting');
               setLiveTranscript(`Opening ${launchInfo.name}...`);
 
-              // Open web application in a new window/tab
+              // Automatically open the application in a new window/tab
               try {
                 const w = window.open(launchInfo.url, '_blank', 'noopener,noreferrer');
                 if (w) {
-                  launchInfo.status = "Opened";
-                  setActiveAppLaunch({ ...launchInfo });
+                  w.focus();
+                } else {
+                  // Fallback synthetic link trigger
+                  const link = document.createElement('a');
+                  link.href = launchInfo.url;
+                  link.target = '_blank';
+                  link.rel = 'noopener noreferrer';
+                  document.body.appendChild(link);
+                  link.click();
+                  setTimeout(() => link.remove(), 100);
                 }
               } catch (wErr) {
-                console.warn("[Voice Assistant] Window open blocked by browser popup settings:", wErr);
+                console.warn("[Voice Assistant] Automatic window open fallback:", wErr);
+                try {
+                  const link = document.createElement('a');
+                  link.href = launchInfo.url;
+                  link.target = '_blank';
+                  link.rel = 'noopener noreferrer';
+                  document.body.appendChild(link);
+                  link.click();
+                  setTimeout(() => link.remove(), 100);
+                } catch (e) {}
               }
             } else if (voiceData.browserTask) {
               // Handle deep autonomous browser task
@@ -938,7 +955,16 @@ export default function ChatPage() {
 
               if (voiceData.browserTask.targetUrl) {
                 try {
-                  window.open(voiceData.browserTask.targetUrl, '_blank', 'noopener,noreferrer');
+                  const w = window.open(voiceData.browserTask.targetUrl, '_blank', 'noopener,noreferrer');
+                  if (!w) {
+                    const link = document.createElement('a');
+                    link.href = voiceData.browserTask.targetUrl;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    document.body.appendChild(link);
+                    link.click();
+                    setTimeout(() => link.remove(), 100);
+                  }
                 } catch (wErr) {
                   console.warn("[Voice Assistant] Window open blocked:", wErr);
                 }

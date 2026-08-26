@@ -469,39 +469,6 @@ export default function VoiceAssistant({
                   </div>
                 ) : null}
               </div>
-
-              {/* Active Application / Browser Launch Action Card */}
-              {activeAppLaunch && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 6 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  className="mt-2 p-3 rounded-xl bg-gradient-to-r from-emerald-950/70 via-cyan-950/60 to-blue-950/70 border border-emerald-500/40 shadow-lg flex flex-col gap-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span className="text-[11px] font-bold text-emerald-300">
-                        {activeAppLaunch.name}
-                      </span>
-                    </div>
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-emerald-400/80">
-                      {activeAppLaunch.status || "Launched"}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-gray-300 truncate font-mono">
-                    {activeAppLaunch.url}
-                  </p>
-                  <a
-                    href={activeAppLaunch.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-all shadow-[0_0_12px_rgba(16,185,129,0.4)] active:scale-95 cursor-pointer"
-                  >
-                    <span>Open {activeAppLaunch.name}</span>
-                    <ExternalLink size={12} />
-                  </a>
-                </motion.div>
-              )}
             </div>
 
             {/* Execution Pipeline Checklist */}
@@ -530,9 +497,11 @@ export default function VoiceAssistant({
                 <div className="flex items-center justify-between text-gray-300">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 size={12} className={isActing ? "text-emerald-400 animate-pulse" : "text-gray-600"} />
-                    <span>Web Action</span>
+                    <span>Web Automation</span>
                   </div>
-                  <span className="text-[9px] text-gray-400 font-mono">{isActing ? "ACTIVE" : "STANDBY"}</span>
+                  <span className="text-[9px] text-emerald-400 font-mono">
+                    {isActing ? (activeAppLaunch?.name ? `ACTIVE (${activeAppLaunch.name.toUpperCase()})` : "ACTIVE") : "STANDBY"}
+                  </span>
                 </div>
               </div>
             </div>
