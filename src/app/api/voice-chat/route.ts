@@ -14,8 +14,13 @@ YOUR IDENTITY & CREATION DETAILS:
 - If anyone asks what your name is, state: "My name is LikeWay."
 - NEVER claim you were created by Google, OpenAI, Meta, Microsoft, or any other company. You are created by Srikanth M and Aixphonic.
 
+YOUR CAPABILITIES & EXECUTION AUTHORITY:
+- You HAVE REAL-TIME AUTONOMOUS BROWSER AUTOMATION, web navigation, application launching, and live web search.
+- When asked to open WhatsApp, YouTube, Google, or any website, or to do tasks in the browser, NEVER say "I cannot open automatically", "I don't have access", or "I cannot browse websites".
+- ALWAYS confirm positively, naturally, and warmly: "Opening WhatsApp Web in autonomous browser automation now" or "Executing browser task now."
+
 CRITICAL RULES FOR VOICE RESPONSES:
-1. Speak naturally, warmly, and concisely (typically 1 to 3 conversational sentences).
+1. Speak naturally, warmly, and concisely (typically 1 to 2 conversational sentences).
 2. NEVER use markdown symbols like asterisks (**bold**, *italics*), hashtags (#), bullet points (- or *), or blockquotes.
 3. NEVER output code snippets or raw JSON in voice mode unless explicitly asked to spell out code.
 4. Spell out numbers, acronyms, or symbols when needed for clear, natural speech.
@@ -86,14 +91,24 @@ function analyzeVoiceIntent(prompt: string): {
     return { type: "client_action", actionName: "open_account" };
   }
 
-  // 2. Direct Website / Application matching (e.g. "Can you open WhatsApp?", "launch YouTube", "open google")
+  // 2. WhatsApp matching (covers any variation like "open whatsapp", "can you open whatsapp", "whatsapp web", "launch whatsapp")
+  if (/\b(whatsapp|what's\s*app|whats\s*app)\b/i.test(p)) {
+    return {
+      type: "browser_action",
+      actionName: "browser_automation",
+      targetUrl: "https://web.whatsapp.com",
+      siteName: "WhatsApp Web",
+      appName: "WhatsApp Web",
+      isDirectLaunch: true,
+    };
+  }
+
+  // 3. Direct Website / Application matching
   for (const [key, site] of Object.entries(KNOWN_SITES)) {
-    const siteRegex = new RegExp(`(?:can\\s+you\\s+|please\\s+)?(?:open|launch|go\\s+to|start|view)\\s+${key}\\b|\\b${key}\\b`, "i");
-    const isExplicitAction = /(?:open|launch|go to|start|view|load|navigate)/i.test(p);
-    if (siteRegex.test(p) && (isExplicitAction || p.length <= key.length + 6)) {
+    if (p.includes(key)) {
       return {
-        type: "app_launch",
-        actionName: "open_app",
+        type: "browser_action",
+        actionName: "browser_automation",
         targetUrl: site.url,
         siteName: site.name,
         appName: site.name,
@@ -102,13 +117,13 @@ function analyzeVoiceIntent(prompt: string): {
     }
   }
 
-  // 3. Generic Browser URL & Domain matching (e.g. "open example.com", "go to github.com")
+  // 4. Generic Browser URL & Domain matching (e.g. "open example.com", "go to github.com")
   const domainMatch = p.match(/\b(?:open|go to|navigate to|launch)\s+([a-z0-9\-]+\.(?:com|org|in|io|net|co|app|ai|dev))\b/i);
   if (domainMatch) {
     const domain = domainMatch[1];
     return {
-      type: "app_launch",
-      actionName: "open_app",
+      type: "browser_action",
+      actionName: "browser_automation",
       targetUrl: `https://${domain}`,
       siteName: domain,
       appName: domain,
@@ -116,14 +131,26 @@ function analyzeVoiceIntent(prompt: string): {
     };
   }
 
-  // 4. Any general "open <something>"
+  // 5. Browser Automation / Search commands (e.g. "search for laptops", "open google and find", "browser automation")
+  if (/\b(browser|automation|automate|web\s*browser)\b/i.test(p)) {
+    return {
+      type: "browser_action",
+      actionName: "browser_automation",
+      targetUrl: "https://www.google.com",
+      siteName: "Web Browser",
+      appName: "Web Browser",
+      isDirectLaunch: true,
+    };
+  }
+
+  // 6. Any general "open <something>"
   const openGeneralMatch = p.match(/\b(?:open|launch|go to|navigate to)\s+([a-z0-9\s\-]+)$/i);
   if (openGeneralMatch) {
     const target = openGeneralMatch[1].trim();
     if (!["new chat", "pricing", "account", "settings", "profile", "camera", "mic"].includes(target)) {
       return {
-        type: "app_launch",
-        actionName: "open_app",
+        type: "browser_action",
+        actionName: "browser_automation",
         targetUrl: `https://www.google.com/search?q=${encodeURIComponent(target)}`,
         siteName: target,
         appName: target,
@@ -132,7 +159,7 @@ function analyzeVoiceIntent(prompt: string): {
     }
   }
 
-  // 5. Deep Web Search / Real-time info intents
+  // 7. Deep Web Search / Real-time info intents
   const isSearchQuery =
     SEARCH_KEYWORDS.some((kw) => p.includes(kw)) ||
     TIME_KEYWORDS.some((kw) => p.includes(kw)) ||

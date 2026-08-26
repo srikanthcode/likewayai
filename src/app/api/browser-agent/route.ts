@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const modelId = requestedModel || "llama-3.3-70b-versatile";
+    const modelId = requestedModel || "mistral-small-latest";
     const provider = getProviderForModel(modelId);
     const sessionId = crypto.randomUUID();
 
