@@ -46,8 +46,8 @@ export async function getUserApiKeys(userId: string): Promise<Record<string, str
 }
 
 // Helper function to merge env keys with user-specific keys
-export async function getMergedApiKeys(userId: string): Promise<Record<string, string[] | string>> {
-  const userKeys = await getUserApiKeys(userId);
+export async function getMergedApiKeys(userId: string = ""): Promise<Record<string, string[] | string>> {
+  const userKeys = userId ? await getUserApiKeys(userId) : {};
   
   return {
     openrouter: userKeys.openrouter ? [userKeys.openrouter] : API_KEYS.openrouter,
