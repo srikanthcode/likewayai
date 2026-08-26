@@ -562,7 +562,7 @@ export default function VoiceAssistant({
 
           <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-gray-400">
             <Lock size={11} className="text-emerald-400" />
-            <span className="hidden sm:inline font-medium">Secure • Gemini Core</span>
+            <span className="hidden sm:inline font-medium">Secure • LikeWay Neural Core</span>
           </div>
         </footer>
       </motion.div>
