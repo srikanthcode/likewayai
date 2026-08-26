@@ -122,25 +122,12 @@ export default function VoiceAssistant({
         </div>
 
         {/* Top Header Bar */}
-        <header className="relative z-50 flex items-center justify-between px-8 py-5 border-b border-white/10 bg-black/40 backdrop-blur-xl">
-          <div className="flex items-center gap-3.5">
-            {/* Glowing System Icon */}
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-purple-500/20 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-              <Cpu size={20} className="text-cyan-400 animate-pulse" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-extrabold tracking-wider text-white uppercase">
-                  {character.name} Neural AI
-                </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 uppercase tracking-wider">
-                  v2.5 Pro
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 font-medium">Next-Gen Autonomous Voice Assistant</p>
-            </div>
+        <header className="relative z-50 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/40 backdrop-blur-xl">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_#22d3ee]" />
+            <span className="text-xs font-bold tracking-wider text-gray-300 uppercase">
+              Voice Assistant
+            </span>
           </div>
 
           {/* Quick Voice Persona Switcher & Controls */}

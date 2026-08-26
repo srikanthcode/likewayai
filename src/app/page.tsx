@@ -1056,7 +1056,7 @@ export default function ChatPage() {
         setLiveTranscript(currentText);
       }
 
-      // Voice Activity Detection Silence Debounce: Auto-send after 1.2s silence when speech is detected
+      // Voice Activity Detection Silence Debounce: Auto-send after 650ms silence when speech is detected
       if (silenceTimeoutRef.current) {
         clearTimeout(silenceTimeoutRef.current);
         silenceTimeoutRef.current = null;
@@ -1069,7 +1069,7 @@ export default function ChatPage() {
             try { recognition.stop(); } catch(e) {}
             processVoiceQuery(currentText);
           }
-        }, 1200);
+        }, 650);
       }
 
       // Automatically process if user stops talking and browser emits final
@@ -3281,6 +3281,12 @@ export default function ChatPage() {
             onSelectCharacter={(id) => {
               setSelectedVoiceChar(id);
               localStorage.setItem('likeway_voice_char', id);
+              window.speechSynthesis.cancel();
+              isSpeakingRef.current = false;
+              setVoiceStatus('listening');
+              setTimeout(() => {
+                startVoiceListeningCycle();
+              }, 80);
             }}
             onToggleListening={() => {
               if (voiceStatus === "listening") {
