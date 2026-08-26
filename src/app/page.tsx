@@ -3266,7 +3266,7 @@ export default function ChatPage() {
       </AnimatePresence>
 
 
-      {/* Voice Assistant Overlay — Orb UI */}
+      {/* Voice Assistant Overlay — 3D Neural Network Avatar UI */}
       <AnimatePresence>
         {isVoiceMode && (
           <VoiceAssistant
@@ -3274,6 +3274,12 @@ export default function ChatPage() {
             status={voiceStatus as any}
             transcript={liveTranscript}
             responseText={messages.length > 0 ? messages[messages.length - 1].content : ""}
+            character={VOICE_CHARACTERS.find(c => c.id === selectedVoiceChar) || VOICE_CHARACTERS[0]}
+            availableCharacters={VOICE_CHARACTERS}
+            onSelectCharacter={(id) => {
+              setSelectedVoiceChar(id);
+              localStorage.setItem('likeway_voice_char', id);
+            }}
             onToggleListening={() => {
               if (voiceStatus === "listening") {
                 stopVoiceAssistant();
