@@ -28,11 +28,37 @@ function sanitizeForVoice(text: string): string {
     .trim();
 }
 
+const KNOWN_SITES: Record<string, { url: string; name: string }> = {
+  whatsapp: { url: "https://web.whatsapp.com", name: "WhatsApp Web" },
+  "whatsapp web": { url: "https://web.whatsapp.com", name: "WhatsApp Web" },
+  youtube: { url: "https://www.youtube.com", name: "YouTube" },
+  google: { url: "https://www.google.com", name: "Google" },
+  amazon: { url: "https://www.amazon.in", name: "Amazon" },
+  flipkart: { url: "https://www.flipkart.com", name: "Flipkart" },
+  instagram: { url: "https://www.instagram.com", name: "Instagram" },
+  facebook: { url: "https://www.facebook.com", name: "Facebook" },
+  twitter: { url: "https://x.com", name: "X (Twitter)" },
+  x: { url: "https://x.com", name: "X" },
+  spotify: { url: "https://open.spotify.com", name: "Spotify" },
+  netflix: { url: "https://www.netflix.com", name: "Netflix" },
+  github: { url: "https://github.com", name: "GitHub" },
+  reddit: { url: "https://www.reddit.com", name: "Reddit" },
+  linkedin: { url: "https://www.linkedin.com", name: "LinkedIn" },
+  gmail: { url: "https://mail.google.com", name: "Gmail" },
+  email: { url: "https://mail.google.com", name: "Gmail" },
+  chatgpt: { url: "https://chatgpt.com", name: "ChatGPT" },
+  openai: { url: "https://openai.com", name: "OpenAI" },
+  wikipedia: { url: "https://www.wikipedia.org", name: "Wikipedia" },
+  maps: { url: "https://maps.google.com", name: "Google Maps" },
+  "google maps": { url: "https://maps.google.com", name: "Google Maps" },
+};
+
 // Intent detection helper
 function analyzeVoiceIntent(prompt: string): {
   type: "browser_action" | "web_search" | "client_action" | "general_qa";
   actionName?: string;
   targetUrl?: string;
+  siteName?: string;
   searchQuery?: string;
 } {
   const p = prompt.toLowerCase().trim();
@@ -48,21 +74,44 @@ function analyzeVoiceIntent(prompt: string): {
     return { type: "client_action", actionName: "open_account" };
   }
 
-  // 2. Browser Automation intents (e.g. "open amazon and search for...", "go to youtube...", "automate browser")
-  const browserMatch = p.match(/\b(?:open|go to|navigate to|search on|buy on|check on)\s+([a-z0-9\-]+\.(?:com|org|in|io|net|co|app|ai)|amazon|flipkart|youtube|google|twitter|x\.com|github|linkedin|reddit)\b/i);
-  if (browserMatch || /\b(?:browse|browser|automate|automation|click on|fill form|order|scrape)\b/i.test(p)) {
-    let site = browserMatch ? browserMatch[1] : "";
-    if (site && !site.includes(".")) {
-      site = site === "youtube" ? "youtube.com" : site === "amazon" ? "amazon.in" : site === "google" ? "google.com" : `${site}.com`;
+  // 2. Direct Website / Application matching
+  for (const [key, site] of Object.entries(KNOWN_SITES)) {
+    const siteRegex = new RegExp(`\\b(?:open|launch|go to|navigate to|search on|play on|show me)\\s+${key}\\b|\\b${key}\\b`, "i");
+    if (siteRegex.test(p) && (p.includes("open") || p.includes("go to") || p.includes("launch") || p.includes("play") || p.includes("show"))) {
+      return {
+        type: "browser_action",
+        actionName: "browser_automation",
+        targetUrl: site.url,
+        siteName: site.name,
+      };
     }
+  }
+
+  // 3. Generic Browser Automation & Domain matching (e.g. "open example.com", "open google.com")
+  const domainMatch = p.match(/\b(?:open|go to|navigate to|launch)\s+([a-z0-9\-]+\.(?:com|org|in|io|net|co|app|ai))\b/i);
+  if (domainMatch) {
+    const domain = domainMatch[1];
     return {
       type: "browser_action",
       actionName: "browser_automation",
-      targetUrl: site ? (site.startsWith("http") ? site : `https://${site}`) : undefined,
+      targetUrl: `https://${domain}`,
+      siteName: domain,
     };
   }
 
-  // 3. Web Search / Real-time info intents (weather, scores, latest news, current stock, dates)
+  // 4. Any general "open <something>"
+  const openGeneralMatch = p.match(/\b(?:open|launch|go to|navigate to)\s+([a-z0-9\-]+)\b/i);
+  if (openGeneralMatch && !["new chat", "pricing", "account", "settings", "profile", "camera", "mic"].includes(openGeneralMatch[1])) {
+    const appTarget = openGeneralMatch[1];
+    return {
+      type: "browser_action",
+      actionName: "browser_automation",
+      targetUrl: `https://www.google.com/search?q=${encodeURIComponent(appTarget)}`,
+      siteName: appTarget,
+    };
+  }
+
+  // 5. Web Search / Real-time info intents
   const isSearchQuery =
     SEARCH_KEYWORDS.some((kw) => p.includes(kw)) ||
     TIME_KEYWORDS.some((kw) => p.includes(kw)) ||
@@ -223,6 +272,11 @@ export async function POST(req: NextRequest) {
         targetUrl: intent.targetUrl,
         task: prompt,
       };
+      if (intent.siteName) {
+        actionResultText = `Opening ${intent.siteName} for you right now.`;
+      } else {
+        actionResultText = "Opening the web application for you now.";
+      }
     }
 
     let replyText = actionResultText;

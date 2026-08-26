@@ -865,10 +865,22 @@ export default function ChatPage() {
               }
             }
 
-            // Handle browser automation task
+            // Handle browser automation task (e.g. open whatsapp, open youtube, etc.)
             if (voiceData.browserTask) {
               setVoiceStatus('acting');
-              setLiveTranscript(`Executing browser task: ${voiceData.browserTask.task}...`);
+              const targetName = voiceData.browserTask.siteName || voiceData.browserTask.targetUrl || 'web page';
+              setLiveTranscript(`Opening ${targetName}...`);
+
+              // Open web application immediately in a new tab
+              if (voiceData.browserTask.targetUrl) {
+                try {
+                  window.open(voiceData.browserTask.targetUrl, '_blank', 'noopener,noreferrer');
+                } catch (wErr) {
+                  console.warn("[Voice Assistant] Window open blocked:", wErr);
+                }
+              }
+
+              // Also run browser agent if deep task requested
               try {
                 const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
                 const agentUrl = apiBase ? `${apiBase}/api/browser-agent` : '/api/browser-agent';
