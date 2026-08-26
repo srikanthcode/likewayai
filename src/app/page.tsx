@@ -466,12 +466,14 @@ function buildMarkdownComponents() {
 }
 
 const VOICE_CHARACTERS = [
-  { id: 'aria',   name: 'Aria',   gender: 'female', desc: 'Warm & Friendly',    emoji: '👩', keywords: ['Zira','Aria','Samantha','Google UK English Female','Microsoft Zira'] },
-  { id: 'nova',   name: 'Nova',   gender: 'female', desc: 'Clear & Professional', emoji: '👩‍💼', keywords: ['Google US English Female','Ava','Victoria','Karen','Moira','Tessa'] },
-  { id: 'echo',   name: 'Echo',   gender: 'male',   desc: 'Deep & Confident',   emoji: '🧑', keywords: ['Google UK English Male','Daniel','Microsoft David','Fred'] },
-  { id: 'spark',  name: 'Spark',  gender: 'female', desc: 'Bright & Energetic',  emoji: '👧', keywords: ['Google IN English Female','Rishi','Alex','Fiona'] },
-  { id: 'atlas',  name: 'Atlas',  gender: 'male',   desc: 'Calm & Authoritative', emoji: '🧑‍💻', keywords: ['Microsoft Mark','Google US English Male','Tom','Ralph'] },
-  { id: 'luna',   name: 'Luna',   gender: 'female', desc: 'Soft & Soothing',    emoji: '🌙', keywords: ['Nicky','Amelie','Monica','Kyoko','Mei-Jia'] },
+  { id: 'kani',     name: 'Kani (தமிழ்)',     gender: 'female', desc: 'Tamil & Multilingual',  emoji: '🌸', keywords: ['ta-IN','ta_IN','Tamil','Valluvar','Kani','Google தமிழ்','Microsoft Kani','Rishi','Aria','Samantha'] },
+  { id: 'valluvar', name: 'Valluvar (தமிழ்)', gender: 'male',   desc: 'Tamil & Multilingual',  emoji: '👑', keywords: ['ta-IN','ta_IN','Tamil','Valluvar','Google தமிழ்','Microsoft Valluvar','Rishi','David','Mark'] },
+  { id: 'aria',     name: 'Aria',             gender: 'female', desc: 'Warm & Friendly',       emoji: '👩', keywords: ['Zira','Aria','Samantha','Google UK English Female','Microsoft Zira'] },
+  { id: 'nova',     name: 'Nova',             gender: 'female', desc: 'Clear & Professional',  emoji: '👩‍💼', keywords: ['Google US English Female','Ava','Victoria','Karen','Moira','Tessa'] },
+  { id: 'echo',     name: 'Echo',             gender: 'male',   desc: 'Deep & Confident',      emoji: '🧑', keywords: ['Google UK English Male','Daniel','Microsoft David','Fred'] },
+  { id: 'spark',    name: 'Spark',            gender: 'female', desc: 'Bright & Energetic',    emoji: '👧', keywords: ['Google IN English Female','Rishi','Alex','Fiona'] },
+  { id: 'atlas',    name: 'Atlas',            gender: 'male',   desc: 'Calm & Authoritative',  emoji: '🧑‍💻', keywords: ['Microsoft Mark','Google US English Male','Tom','Ralph'] },
+  { id: 'luna',     name: 'Luna',             gender: 'female', desc: 'Soft & Soothing',       emoji: '🌙', keywords: ['Nicky','Amelie','Monica','Kyoko','Mei-Jia'] },
 ];
 
 export default function ChatPage() {
@@ -585,20 +587,47 @@ export default function ChatPage() {
 
   const markdownComponents = useMemo(() => buildMarkdownComponents(), []);
 
-  const findVoiceForChar = (charId: string) => {
+  const findVoiceForChar = (charId: string, textSample: string = '') => {
     const voices = window.speechSynthesis.getVoices();
-    const char = VOICE_CHARACTERS.find(c => c.id === charId);
-    if (!char || voices.length === 0) return voices[0] || null;
-    for (const kw of char.keywords) {
-      const v = voices.find(v => v.name.includes(kw));
-      if (v) return v;
+    if (voices.length === 0) return null;
+
+    const isTamilText = /[\u0B80-\u0BFF]/.test(textSample);
+    const isHindiText = /[\u0900-\u097F]/.test(textSample);
+
+    // 1. If text is Tamil or persona is Kani/Valluvar, prioritize Tamil voices
+    if (isTamilText || charId === 'kani' || charId === 'valluvar') {
+      const tamilVoice = voices.find(v => 
+        v.lang?.toLowerCase().startsWith('ta') ||
+        v.name.toLowerCase().includes('tamil') ||
+        v.name.includes('தமிழ்') ||
+        v.name.includes('Valluvar') ||
+        v.name.includes('Kani')
+      );
+      if (tamilVoice) return tamilVoice;
     }
-    // Fallback: pick by gender
-    const genderFallback = voices.find(v => {
-      const n = v.name.toLowerCase();
-      return char.gender === 'female' ? (n.includes('female') || n.includes('zira') || n.includes('aria') || n.includes('samantha')) : (n.includes('male') || n.includes('david') || n.includes('mark'));
-    });
-    return genderFallback || voices[0];
+
+    // 2. If text is Hindi, prioritize Hindi voices
+    if (isHindiText) {
+      const hindiVoice = voices.find(v => v.lang?.toLowerCase().startsWith('hi') || v.name.toLowerCase().includes('hindi') || v.name.includes('हिन्दी'));
+      if (hindiVoice) return hindiVoice;
+    }
+
+    // 3. Match by character keywords
+    const char = VOICE_CHARACTERS.find(c => c.id === charId);
+    if (char) {
+      for (const kw of char.keywords) {
+        const v = voices.find(v => v.name.includes(kw) || v.lang?.includes(kw));
+        if (v) return v;
+      }
+      // Fallback by gender
+      const genderFallback = voices.find(v => {
+        const n = v.name.toLowerCase();
+        return char.gender === 'female' ? (n.includes('female') || n.includes('zira') || n.includes('aria') || n.includes('samantha')) : (n.includes('male') || n.includes('david') || n.includes('mark'));
+      });
+      if (genderFallback) return genderFallback;
+    }
+
+    return voices[0] || null;
   };
 
   // Project state
@@ -781,11 +810,22 @@ export default function ChatPage() {
 
     currentSpeakingTextRef.current = cleaned;
     
+    const isTamilText = /[\u0B80-\u0BFF]/.test(cleaned);
+    const isHindiText = /[\u0900-\u097F]/.test(cleaned);
+
     const utterance = new SpeechSynthesisUtterance(cleaned);
     utteranceRef.current = utterance; 
     (window as any).__currentUtterance = utterance; // Pin to window to prevent Chromium GC freeze bug
     
-    utterance.rate = 1.05;
+    if (isTamilText || selectedVoiceChar === 'kani' || selectedVoiceChar === 'valluvar') {
+      utterance.lang = 'ta-IN';
+    } else if (isHindiText) {
+      utterance.lang = 'hi-IN';
+    } else {
+      utterance.lang = 'en-IN';
+    }
+
+    utterance.rate = isTamilText ? 0.95 : 1.05;
     utterance.pitch = selectedVoiceChar === 'spark' ? 1.15 : selectedVoiceChar === 'luna' ? 0.9 : 1.0;
 
     let hasEnded = false;
@@ -807,7 +847,7 @@ export default function ChatPage() {
     };
     
     const assignVoiceAndSpeak = () => {
-      const voice = findVoiceForChar(selectedVoiceChar);
+      const voice = findVoiceForChar(selectedVoiceChar, cleaned);
       if (voice) utterance.voice = voice;
       isSpeakingRef.current = true;
 
@@ -1122,7 +1162,13 @@ export default function ChatPage() {
     voiceRecognitionRef.current = recognition;
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    
+    // Dynamic Tamil & Multilingual Speech Recognition
+    if (selectedVoiceChar === 'kani' || selectedVoiceChar === 'valluvar') {
+      recognition.lang = 'ta-IN'; // Native Tamil speech recognition
+    } else {
+      recognition.lang = 'en-IN'; // Indian English / Tanglish / Global speech recognition
+    }
 
     let finalResultProcessed = false;
 
