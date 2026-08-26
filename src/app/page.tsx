@@ -539,6 +539,7 @@ export default function ChatPage() {
   const isSpeakingRef = useRef(false);
   const currentSpeakingTextRef = useRef('');
   const utteranceRef = useRef<any>(null);
+  const micPermissionGrantedRef = useRef(false);
   const [showVoiceCharSelector, setShowVoiceCharSelector] = useState(false);
   const [pendingVoiceLaunch, setPendingVoiceLaunch] = useState(false);
   const [selectedVoiceChar, setSelectedVoiceChar] = useState(() => {
@@ -984,21 +985,22 @@ export default function ChatPage() {
       return;
     }
 
-    // Request microphone permission first via getUserMedia
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Got permission — stop the stream, we don't need it
-      stream.getTracks().forEach(track => track.stop());
-    } catch (err: any) {
-      // Permission denied or no mic
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setLiveTranscript("Microphone permission required. Click the lock icon next to the address bar to allow microphone access, then tap to start.");
-      } else if (err.name === 'NotFoundError') {
-        setLiveTranscript("No microphone found. Please connect a microphone.");
-      } else {
-        setLiveTranscript("Could not access microphone: " + err.message);
+    // Request microphone permission once on initial start
+    if (!micPermissionGrantedRef.current && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        micPermissionGrantedRef.current = true;
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setLiveTranscript("Microphone permission required. Click the lock icon next to the address bar to allow microphone access, then tap to start.");
+        } else if (err.name === 'NotFoundError') {
+          setLiveTranscript("No microphone found. Please connect a microphone.");
+        } else {
+          setLiveTranscript("Could not access microphone: " + err.message);
+        }
+        return;
       }
-      return;
     }
 
     // Permission granted — start speech recognition

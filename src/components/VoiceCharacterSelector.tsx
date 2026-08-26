@@ -1,11 +1,13 @@
 "use client";
 
+import React from "react";
 import { cn } from "@/lib/utils";
+import { User, Sparkles, Volume2, CheckCircle2, Radio } from "lucide-react";
 
 export interface VoiceCharacter {
   id: string;
   name: string;
-  emoji: string;
+  emoji?: string;
   gender: string;
   desc: string;
 }
@@ -24,67 +26,96 @@ export default function VoiceCharacterSelector({
   onConfirm?: () => void;
 }) {
   return (
-    <div className="w-full max-w-2xl bg-zinc-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden flex flex-col gap-6">
-      {/* Glow Effect */}
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="w-full max-w-2xl bg-zinc-950/85 backdrop-blur-2xl border border-white/15 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden flex flex-col gap-6 font-sans">
+      {/* Glow Effects */}
+      <div className="absolute -top-32 -right-32 w-80 h-80 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
 
       <div className="text-center relative">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white bg-clip-text bg-gradient-to-r from-white via-zinc-200 to-zinc-400">
-          Choose Assistant Voice
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
+          <Sparkles size={13} />
+          Neural Voice Matrix
+        </div>
+        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+          Choose Your AI Persona
         </h2>
-        <p className="text-zinc-400 text-sm mt-2">
-          Select your preferred persona. Double click any card to hear a voice preview.
+        <p className="text-zinc-400 text-xs md:text-sm mt-1.5">
+          Select an AI persona. Tap to select or double-click to preview speech.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 py-2">
-        {characters.map((char) => (
-          <button
-            key={char.id}
-            type="button"
-            onClick={() => onSelect(char.id)}
-            onDoubleClick={() => onPreview(char.id)}
-            className={cn(
-              "group relative flex flex-col items-center gap-3 p-5 rounded-2xl border text-center transition-all duration-300",
-              selectedId === char.id
-                ? "border-cyan-500 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]"
-                : "border-white/5 hover:border-white/15 bg-white/5 hover:bg-white/10"
-            )}
-          >
-            <span className="text-4xl filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.3)] transform transition-transform group-hover:scale-110 duration-300">
-              {char.emoji}
-            </span>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-white tracking-wide">{char.name}</span>
-              <span className="text-[11px] text-zinc-400 mt-0.5 font-medium">{char.desc}</span>
-              <span className="text-[9px] text-zinc-500 mt-1 uppercase tracking-wider font-bold">
-                {char.gender}
-              </span>
-            </div>
-            
-            {/* Active Indicator Dot */}
-            {selectedId === char.id && (
-              <span className="absolute top-3 right-3 flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 py-1">
+        {characters.map((char) => {
+          const isSelected = selectedId === char.id;
+          const isFemale = char.gender === "female";
+
+          return (
+            <button
+              key={char.id}
+              type="button"
+              onClick={() => onSelect(char.id)}
+              onDoubleClick={() => onPreview(char.id)}
+              className={cn(
+                "group relative flex flex-col items-center gap-3 p-4.5 rounded-2xl border text-center transition-all duration-300 cursor-pointer",
+                isSelected
+                  ? isFemale
+                    ? "border-pink-500/60 bg-pink-500/15 shadow-[0_0_25px_rgba(236,72,153,0.2)]"
+                    : "border-cyan-500/60 bg-cyan-500/15 shadow-[0_0_25px_rgba(6,182,212,0.2)]"
+                  : "border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10"
+              )}
+            >
+              {/* Persona Icon Badge */}
+              <div
+                className={cn(
+                  "w-12 h-12 rounded-2xl flex items-center justify-center border transition-all duration-300 group-hover:scale-105",
+                  isSelected
+                    ? isFemale
+                      ? "bg-pink-500/20 border-pink-400/50 text-pink-300 shadow-[0_0_15px_rgba(236,72,153,0.3)]"
+                      : "bg-cyan-500/20 border-cyan-400/50 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                    : "bg-white/10 border-white/10 text-gray-300"
+                )}
+              >
+                <User size={22} />
+              </div>
+
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-white tracking-wide">{char.name}</span>
+                <span className="text-[11px] text-zinc-400 mt-0.5 font-medium">{char.desc}</span>
+                <span
+                  className={cn(
+                    "text-[9px] mt-1.5 uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full inline-block mx-auto",
+                    isFemale
+                      ? "bg-pink-500/15 text-pink-300 border border-pink-500/20"
+                      : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/20"
+                  )}
+                >
+                  {char.gender}
+                </span>
+              </div>
+
+              {/* Selection Indicator */}
+              {isSelected && (
+                <div className="absolute top-3 right-3">
+                  <CheckCircle2 size={16} className={isFemale ? "text-pink-400" : "text-cyan-400"} />
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {onConfirm && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-2 border-t border-white/5 pt-6">
-          <p className="text-xs text-zinc-500 text-center sm:text-left">
-            Double click a voice character card above to preview speech.
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-1 border-t border-white/10 pt-5">
+          <p className="text-xs text-zinc-400 flex items-center gap-1.5">
+            <Volume2 size={14} className="text-cyan-400" />
+            Double-click any persona to preview sound
           </p>
           <button
             type="button"
             onClick={onConfirm}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm tracking-wide shadow-lg shadow-cyan-500/20 active:scale-[0.98] transition-all duration-200 cursor-pointer"
+            className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/25 active:scale-[0.98] transition-all cursor-pointer"
           >
-            Confirm & Activate Voice
+            Activate Persona
           </button>
         </div>
       )}

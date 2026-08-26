@@ -1,15 +1,33 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Square, Sparkles, User, RefreshCw, Volume2 } from "lucide-react";
+import {
+  X,
+  Square,
+  Mic,
+  MicOff,
+  Cpu,
+  Brain,
+  Layers,
+  Sparkles,
+  CheckCircle2,
+  CircleDot,
+  Radio,
+  Volume2,
+  RefreshCw,
+  Lock,
+  MessageSquare,
+  Sliders,
+  Terminal,
+} from "lucide-react";
 
 export interface VoiceCharacterInfo {
   id: string;
   name: string;
   gender: string;
   desc: string;
-  emoji: string;
+  emoji?: string;
 }
 
 interface VoiceAssistantProps {
@@ -35,31 +53,31 @@ export default function VoiceAssistant({
     name: "Aria",
     gender: "female",
     desc: "Warm & Friendly",
-    emoji: "👩",
   },
   availableCharacters = [
-    { id: "aria", name: "Aria", gender: "female", desc: "Warm & Friendly", emoji: "👩" },
-    { id: "nova", name: "Nova", gender: "female", desc: "Clear & Professional", emoji: "👩‍💼" },
-    { id: "echo", name: "Echo", gender: "male", desc: "Deep & Confident", emoji: "🧑" },
-    { id: "spark", name: "Spark", gender: "female", desc: "Bright & Energetic", emoji: "👧" },
-    { id: "atlas", name: "Atlas", gender: "male", desc: "Calm & Authoritative", emoji: "🧑‍💻" },
-    { id: "luna", name: "Luna", gender: "female", desc: "Soft & Soothing", emoji: "🌙" },
+    { id: "aria", name: "Aria", gender: "female", desc: "Warm & Friendly" },
+    { id: "nova", name: "Nova", gender: "female", desc: "Clear & Professional" },
+    { id: "echo", name: "Echo", gender: "male", desc: "Deep & Confident" },
+    { id: "spark", name: "Spark", gender: "female", desc: "Bright & Energetic" },
+    { id: "atlas", name: "Atlas", gender: "male", desc: "Calm & Authoritative" },
+    { id: "luna", name: "Luna", gender: "female", desc: "Soft & Soothing" },
   ],
   onSelectCharacter,
   onToggleListening,
   onInterrupt,
   onClose,
 }: VoiceAssistantProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animIdRef = useRef<number>(0);
-  const [showPersonaMenu, setShowPersonaMenu] = useState(false);
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [activeTab, setActiveTab] = useState<"visual" | "logs">("visual");
 
-  // Auto-start listening on open
+  // Auto-start listening on mount
   useEffect(() => {
     if (isOpen && status === "idle") {
       onToggleListening();
     }
   }, [isOpen, status, onToggleListening]);
+
+  if (!isOpen) return null;
 
   const isFemale = character.gender === "female";
   const isListening = status === "listening" || status === "idle";
@@ -67,218 +85,7 @@ export default function VoiceAssistant({
   const isActing = status === "acting";
   const isSpeaking = status === "speaking";
 
-  // 3D Neural Network Hologram Simulation on HTML5 Canvas
-  useEffect(() => {
-    if (!isOpen) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let width = (canvas.width = 340);
-    let height = (canvas.height = 340);
-
-    // Generate 3D Neural Synaptic Nodes on a Sphere Lattice
-    const nodeCount = isFemale ? 56 : 64;
-    const nodes: Array<{
-      x: number;
-      y: number;
-      z: number;
-      ox: number;
-      oy: number;
-      oz: number;
-      baseRadius: number;
-      phase: number;
-      pulseSpeed: number;
-    }> = [];
-
-    const radius = 100;
-    for (let i = 0; i < nodeCount; i++) {
-      const theta = Math.acos(1 - (2 * (i + 0.5)) / nodeCount);
-      const phi = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
-
-      const x = radius * Math.sin(theta) * Math.cos(phi);
-      const y = radius * Math.sin(theta) * Math.sin(phi);
-      const z = radius * Math.cos(theta);
-
-      nodes.push({
-        x,
-        y,
-        z,
-        ox: x,
-        oy: y,
-        oz: z,
-        baseRadius: Math.random() * 2.2 + 1.2,
-        phase: Math.random() * Math.PI * 2,
-        pulseSpeed: Math.random() * 0.05 + 0.02,
-      });
-    }
-
-    let rotX = 0;
-    let rotY = 0;
-    let rotZ = 0;
-    let time = 0;
-
-    const render = () => {
-      time += 0.02;
-      ctx.clearRect(0, 0, width, height);
-
-      const cx = width / 2;
-      const cy = height / 2;
-
-      // Rotation speeds based on state
-      const speedMult = isThinking ? 3.5 : isActing ? 2.5 : isSpeaking ? 1.8 : 1.0;
-      rotX += 0.007 * speedMult;
-      rotY += 0.011 * speedMult;
-      rotZ += 0.004 * speedMult;
-
-      // Audio pulsation magnitude
-      const audioPulse = isSpeaking
-        ? Math.sin(time * 8) * 16 + Math.cos(time * 12) * 8
-        : isListening
-        ? Math.sin(time * 4) * 5
-        : isActing
-        ? Math.sin(time * 10) * 10
-        : 2;
-
-      // Project 3D nodes to 2D
-      const projectedNodes = nodes.map((node) => {
-        // Expand/contract with neural breath & voice
-        const currentR = radius + audioPulse + Math.sin(time * 3 + node.phase) * 6;
-        const norm = Math.sqrt(node.ox * node.ox + node.oy * node.oy + node.oz * node.oz);
-        const nx = (node.ox / norm) * currentR;
-        const ny = (node.oy / norm) * currentR;
-        const nz = (node.oz / norm) * currentR;
-
-        // 3D Rotation matrices
-        // Rotate Y
-        let x1 = nx * Math.cos(rotY) + nz * Math.sin(rotY);
-        let y1 = ny;
-        let z1 = -nx * Math.sin(rotY) + nz * Math.cos(rotY);
-
-        // Rotate X
-        let x2 = x1;
-        let y2 = y1 * Math.cos(rotX) - z1 * Math.sin(rotX);
-        let z2 = y1 * Math.sin(rotX) + z1 * Math.cos(rotX);
-
-        // Rotate Z
-        let x3 = x2 * Math.cos(rotZ) - y2 * Math.sin(rotZ);
-        let y3 = x2 * Math.sin(rotZ) + y2 * Math.cos(rotZ);
-        let z3 = z2;
-
-        // Perspective projection
-        const fov = 280;
-        const scale = fov / (fov + z3 + 80);
-        const px = cx + x3 * scale;
-        const py = cy + y3 * scale;
-
-        return {
-          px,
-          py,
-          scale,
-          z: z3,
-          brightness: Math.max(0.15, (z3 + radius) / (2 * radius)),
-        };
-      });
-
-      // Draw Synaptic Neural Connections
-      ctx.lineWidth = isFemale ? 0.9 : 1.2;
-      for (let i = 0; i < projectedNodes.length; i++) {
-        for (let j = i + 1; j < projectedNodes.length; j++) {
-          const dx = projectedNodes[i].px - projectedNodes[j].px;
-          const dy = projectedNodes[i].py - projectedNodes[j].py;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          const maxDist = isFemale ? 58 : 64;
-          if (dist < maxDist) {
-            const alpha = (1 - dist / maxDist) * 0.45 * Math.min(projectedNodes[i].brightness, projectedNodes[j].brightness);
-
-            // Persona-based color palette
-            if (isFemale) {
-              // Female Palette: Cyan, Magenta, Purple, Rose
-              if (isSpeaking) {
-                ctx.strokeStyle = `rgba(244, 114, 182, ${alpha * 1.3})`; // Rose Pink
-              } else if (isThinking) {
-                ctx.strokeStyle = `rgba(168, 85, 247, ${alpha * 1.3})`; // Purple
-              } else if (isActing) {
-                ctx.strokeStyle = `rgba(52, 211, 153, ${alpha * 1.3})`; // Mint Emerald
-              } else {
-                ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 1.2})`; // Sky Cyan
-              }
-            } else {
-              // Male Palette: Cobalt Blue, Neon Emerald, Amber Gold
-              if (isSpeaking) {
-                ctx.strokeStyle = `rgba(251, 146, 60, ${alpha * 1.3})`; // Neon Amber
-              } else if (isThinking) {
-                ctx.strokeStyle = `rgba(99, 102, 241, ${alpha * 1.3})`; // Electric Indigo
-              } else if (isActing) {
-                ctx.strokeStyle = `rgba(16, 185, 129, ${alpha * 1.3})`; // Emerald
-              } else {
-                ctx.strokeStyle = `rgba(14, 165, 233, ${alpha * 1.2})`; // Deep Cobalt
-              }
-            }
-
-            ctx.beginPath();
-            ctx.moveTo(projectedNodes[i].px, projectedNodes[i].py);
-            ctx.lineTo(projectedNodes[j].px, projectedNodes[j].py);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Draw Synaptic Nodes
-      for (let i = 0; i < projectedNodes.length; i++) {
-        const node = projectedNodes[i];
-        const r = Math.max(1.2, 2.5 * node.scale);
-
-        ctx.beginPath();
-        ctx.arc(node.px, node.py, r, 0, Math.PI * 2);
-
-        if (isFemale) {
-          ctx.fillStyle = isSpeaking
-            ? `rgba(255, 182, 217, ${node.brightness})`
-            : isThinking
-            ? `rgba(216, 180, 254, ${node.brightness})`
-            : `rgba(186, 230, 253, ${node.brightness})`;
-        } else {
-          ctx.fillStyle = isSpeaking
-            ? `rgba(254, 215, 170, ${node.brightness})`
-            : isThinking
-            ? `rgba(199, 210, 254, ${node.brightness})`
-            : `rgba(186, 230, 253, ${node.brightness})`;
-        }
-
-        ctx.fill();
-      }
-
-      // Center Core Hologram Aura
-      const coreGrad = ctx.createRadialGradient(cx, cy, 5, cx, cy, 75 + audioPulse);
-      if (isFemale) {
-        coreGrad.addColorStop(0, isSpeaking ? "rgba(236, 72, 153, 0.4)" : isThinking ? "rgba(168, 85, 247, 0.4)" : "rgba(6, 182, 212, 0.35)");
-        coreGrad.addColorStop(0.6, isSpeaking ? "rgba(219, 39, 119, 0.15)" : "rgba(59, 130, 246, 0.1)");
-        coreGrad.addColorStop(1, "rgba(0,0,0,0)");
-      } else {
-        coreGrad.addColorStop(0, isSpeaking ? "rgba(249, 115, 22, 0.4)" : isThinking ? "rgba(99, 102, 241, 0.4)" : "rgba(2, 132, 199, 0.35)");
-        coreGrad.addColorStop(0.6, isSpeaking ? "rgba(234, 88, 12, 0.15)" : "rgba(16, 185, 129, 0.1)");
-        coreGrad.addColorStop(1, "rgba(0,0,0,0)");
-      }
-
-      ctx.fillStyle = coreGrad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 75 + audioPulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      animIdRef.current = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      if (animIdRef.current) cancelAnimationFrame(animIdRef.current);
-    };
-  }, [isOpen, isFemale, isListening, isThinking, isActing, isSpeaking]);
-
-  if (!isOpen) return null;
+  const avatarSrc = isFemale ? "/avatars/avatar_female.jpg" : "/avatars/avatar_male.jpg";
 
   return (
     <AnimatePresence>
@@ -286,288 +93,438 @@ export default function VoiceAssistant({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#06080e] text-white overflow-hidden select-none"
+        className="fixed inset-0 z-[200] flex flex-col bg-[#030712] text-white overflow-hidden select-none font-sans"
       >
-        {/* Dynamic Background Atmosphere */}
+        {/* Ambient Chromatic Grid & Lighting */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <motion.div
-            animate={{
-              scale: isListening ? [1, 1.2, 1] : isSpeaking ? [1.1, 1.35, 1.1] : [1, 1.1, 1],
-              opacity: isListening ? [0.2, 0.4, 0.2] : isSpeaking ? [0.35, 0.55, 0.35] : 0.2,
+          <div
+            className="absolute inset-0 opacity-[0.03]"
+            style={{
+              backgroundImage: `linear-gradient(to right, #38bdf8 1px, transparent 1px), linear-gradient(to bottom, #38bdf8 1px, transparent 1px)`,
+              backgroundSize: "40px 40px",
             }}
-            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full blur-[150px] transition-colors duration-1000 ${
+          />
+          <div
+            className={`absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[850px] h-[550px] rounded-full blur-[160px] transition-colors duration-1000 ${
               isFemale
                 ? isSpeaking
-                  ? "bg-gradient-to-tr from-pink-500/30 via-rose-500/25 to-purple-600/30"
+                  ? "bg-pink-600/20"
                   : isThinking
-                  ? "bg-gradient-to-tr from-purple-600/35 via-fuchsia-600/25 to-indigo-600/30"
-                  : "bg-gradient-to-tr from-cyan-500/25 via-sky-600/20 to-purple-600/25"
+                  ? "bg-purple-600/25"
+                  : "bg-cyan-600/20"
                 : isSpeaking
-                ? "bg-gradient-to-tr from-orange-500/30 via-amber-500/25 to-blue-600/30"
+                ? "bg-amber-600/20"
                 : isThinking
-                ? "bg-gradient-to-tr from-indigo-600/35 via-violet-600/25 to-cyan-600/30"
-                : "bg-gradient-to-tr from-blue-600/30 via-cyan-500/20 to-emerald-600/25"
+                ? "bg-indigo-600/25"
+                : "bg-blue-600/20"
             }`}
           />
         </div>
 
-        {/* Top Bar Controls */}
-        <div className="absolute top-6 left-0 right-0 px-8 flex items-center justify-between z-50">
-          {/* Persona Badge with Quick Voice Switcher */}
-          <div className="relative">
+        {/* Top Header Bar */}
+        <header className="relative z-50 flex items-center justify-between px-8 py-5 border-b border-white/10 bg-black/40 backdrop-blur-xl">
+          <div className="flex items-center gap-3.5">
+            {/* Glowing System Icon */}
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-purple-500/20 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+              <Cpu size={20} className="text-cyan-400 animate-pulse" />
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-extrabold tracking-wider text-white uppercase">
+                  {character.name} Neural AI
+                </h1>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 uppercase tracking-wider">
+                  v2.5 Pro
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 font-medium">Next-Gen Autonomous Voice Assistant</p>
+            </div>
+          </div>
+
+          {/* Quick Voice Persona Switcher & Controls */}
+          <div className="flex items-center gap-3">
+            {/* Voice Switcher Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowVoicePicker((p) => !p)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold text-gray-200 transition-all cursor-pointer shadow-md"
+              >
+                <Radio size={14} className="text-cyan-400" />
+                <span>Voice: {character.name} ({character.gender})</span>
+                <RefreshCw size={12} className="text-gray-400 ml-1" />
+              </button>
+
+              <AnimatePresence>
+                {showVoicePicker && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.95 }}
+                    className="absolute right-0 top-full mt-2 w-64 bg-zinc-950/95 border border-white/15 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-1"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-3 py-1">
+                      Choose Neural Persona
+                    </p>
+                    {availableCharacters.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectCharacter?.(c.id);
+                          setShowVoicePicker(false);
+                        }}
+                        className={`flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs font-medium transition-all ${
+                          character.id === c.id
+                            ? "bg-gradient-to-r from-cyan-500/25 to-blue-500/25 border border-cyan-500/40 text-white"
+                            : "hover:bg-white/10 text-gray-300"
+                        }`}
+                      >
+                        <div>
+                          <span className="font-bold text-white">{c.name}</span>
+                          <span className="text-[10px] text-gray-400 ml-1.5 capitalize">({c.gender})</span>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{c.desc}</p>
+                        </div>
+                        {character.id === c.id && <CheckCircle2 size={14} className="text-cyan-400" />}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Close Button */}
             <button
               type="button"
-              onClick={() => setShowPersonaMenu((p) => !p)}
-              className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/10 backdrop-blur-md transition-all active:scale-95 cursor-pointer shadow-lg"
-              title="Click to change AI Voice Persona"
+              onClick={onClose}
+              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 hover:text-rose-400 active:scale-95 transition-all cursor-pointer border border-white/10"
+              title="Close Voice Assistant"
             >
-              <span className="text-xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
-                {character.emoji}
-              </span>
-              <div className="flex flex-col text-left">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white tracking-wide">{character.name}</span>
-                  <span
-                    className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${
-                      isFemale ? "bg-pink-500/20 text-pink-300" : "bg-cyan-500/20 text-cyan-300"
-                    }`}
-                  >
-                    {character.gender}
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        {/* Main 3-Column Command Dashboard */}
+        <main className="relative z-20 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
+          {/* ════════════════════════════════════════════════════════════════════
+              LEFT COLUMN: Neural Activity, Telemetry & Capabilities
+              ════════════════════════════════════════════════════════════════════ */}
+          <section className="lg:col-span-3 flex flex-col gap-4">
+            {/* Real-time Listening Wave Card */}
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 backdrop-blur-xl shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${isListening ? "bg-cyan-400 animate-ping" : isSpeaking ? "bg-orange-400" : "bg-purple-400"}`} />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300">
+                    {isListening ? "Listening..." : isThinking ? "Processing..." : isActing ? "Executing..." : "Speaking..."}
                   </span>
                 </div>
-                <span className="text-[10px] text-gray-400 font-medium">{character.desc}</span>
+                <Volume2 size={14} className="text-gray-400" />
               </div>
-              <RefreshCw size={12} className="text-gray-400 ml-1" />
-            </button>
 
-            {/* Quick Persona Dropdown */}
-            <AnimatePresence>
-              {showPersonaMenu && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                  className="absolute top-full left-0 mt-2 w-64 bg-zinc-900/95 border border-white/15 rounded-2xl p-2 shadow-2xl backdrop-blur-xl z-50 flex flex-col gap-1"
-                >
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-3 py-1">
-                    Select Neural Voice Persona
-                  </p>
-                  {availableCharacters.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        onSelectCharacter?.(c.id);
-                        setShowPersonaMenu(false);
+              {/* Dynamic Soundwave Spectrum */}
+              <div className="flex items-center justify-center gap-1 h-10 px-2 bg-black/40 rounded-xl border border-white/5">
+                {Array.from({ length: 18 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{
+                      height: isSpeaking
+                        ? [6, 22 + ((i * 5) % 14), 8, 30, 6]
+                        : isListening
+                        ? [4, 12 + ((i * 3) % 8), 5, 18, 4]
+                        : [3, 6, 3],
+                    }}
+                    transition={{
+                      duration: isSpeaking ? 0.6 : 1.3,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                      delay: (i * 0.04) % 0.6,
+                    }}
+                    className={`w-1 rounded-full ${
+                      isSpeaking
+                        ? "bg-gradient-to-t from-orange-500 to-amber-300"
+                        : isThinking
+                        ? "bg-gradient-to-t from-purple-500 to-pink-400"
+                        : "bg-gradient-to-t from-cyan-400 to-blue-500"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* 3D Neural Brain Activity Card */}
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 backdrop-blur-xl shadow-lg flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Brain size={16} className="text-purple-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-200">
+                    Neural Network Activity
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-cyan-400">99.8% ACC</span>
+              </div>
+
+              {/* 3D Holographic Brain Image */}
+              <div className="relative rounded-xl overflow-hidden border border-purple-500/20 bg-black/60 aspect-video flex items-center justify-center group">
+                <img
+                  src="/avatars/neural_brain.jpg"
+                  alt="3D Neural Network Brain"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[10px] text-gray-300 font-mono">
+                  <span>SYNAPSE: ACTIVE</span>
+                  <span className="text-cyan-400 animate-pulse">● LIVE</span>
+                </div>
+              </div>
+
+              {/* Neural Synaptic Channels */}
+              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] font-medium text-gray-300">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
+                  <span>Language</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_6px_#c084fc]" />
+                  <span>Memory</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_#60a5fa]" />
+                  <span>Reasoning</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-pink-400 shadow-[0_0_6px_#f472b6]" />
+                  <span>Understanding</span>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Capabilities Card */}
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 backdrop-blur-xl shadow-lg flex flex-col gap-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                Core Capabilities
+              </span>
+              <ul className="flex flex-col gap-2 text-xs text-gray-300">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={13} className="text-cyan-400 shrink-0" />
+                  <span>Understand natural speech</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={13} className="text-cyan-400 shrink-0" />
+                  <span>Real-time web knowledge</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={13} className="text-cyan-400 shrink-0" />
+                  <span>Autonomous browser automation</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={13} className="text-cyan-400 shrink-0" />
+                  <span>Conversational Gemini intelligence</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          {/* ════════════════════════════════════════════════════════════════════
+              CENTER COLUMN: Photorealistic AI Avatar & Chest Neural Core
+              ════════════════════════════════════════════════════════════════════ */}
+          <section className="lg:col-span-6 flex flex-col items-center justify-center relative min-h-[460px]">
+            {/* Avatar Frame with Cybernetic Lighting */}
+            <div className="relative w-full max-w-md h-[460px] rounded-3xl overflow-hidden border border-white/15 bg-gradient-to-b from-zinc-900/80 to-black shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col items-center justify-end group">
+              {/* Photorealistic AI Avatar Image (Female or Male) */}
+              <img
+                src={avatarSrc}
+                alt={`${character.name} AI Avatar`}
+                className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105"
+              />
+
+              {/* Gradient Shade Overlays */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80" />
+
+              {/* Chest Neural Core Glow */}
+              <motion.div
+                animate={{
+                  scale: isSpeaking ? [1, 1.25, 1] : isListening ? [1, 1.1, 1] : [1, 1.05, 1],
+                  opacity: isSpeaking ? [0.8, 1, 0.8] : 0.6,
+                }}
+                transition={{ duration: isSpeaking ? 0.8 : 2, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute bottom-28 w-16 h-16 rounded-full bg-cyan-400/40 blur-xl pointer-events-none"
+              />
+
+              {/* Central Chest Reactor Pulse Button (Click to Interrupt/Listen) */}
+              <button
+                type="button"
+                onClick={onInterrupt}
+                className="absolute bottom-28 w-14 h-14 rounded-full border-2 border-cyan-400 bg-cyan-500/20 backdrop-blur-md flex items-center justify-center cursor-pointer shadow-[0_0_25px_rgba(6,182,212,0.6)] hover:scale-110 active:scale-95 transition-all z-30"
+                title="Tap to interrupt or speak"
+              >
+                <div className="w-5 h-5 rounded-full bg-cyan-400 shadow-[0_0_12px_#22d3ee] animate-pulse" />
+              </button>
+
+              {/* Chest Frequency Wave Ribbon */}
+              <div className="absolute bottom-16 left-6 right-6 z-20 flex flex-col items-center gap-2">
+                <div className="flex items-center justify-center gap-1 w-full h-8">
+                  {Array.from({ length: 28 }).map((_, i) => (
+                    <motion.div
+                      key={i}
+                      animate={{
+                        height: isSpeaking
+                          ? [4, 18 + ((i * 7) % 14), 6, 26, 4]
+                          : isListening
+                          ? [3, 8 + ((i * 3) % 8), 4, 12, 3]
+                          : [2, 4, 2],
                       }}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all ${
-                        character.id === c.id
-                          ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-white"
-                          : "hover:bg-white/10 text-gray-300"
+                      transition={{
+                        duration: isSpeaking ? 0.5 : 1.2,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                        delay: (i * 0.03) % 0.5,
+                      }}
+                      className={`w-1 rounded-full ${
+                        isFemale
+                          ? "bg-gradient-to-t from-cyan-400 to-pink-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]"
+                          : "bg-gradient-to-t from-cyan-400 to-blue-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]"
                       }`}
-                    >
-                      <span className="text-xl">{c.emoji}</span>
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-white">{c.name}</span>
-                          <span className="text-[9px] text-gray-400 capitalize">({c.gender})</span>
-                        </div>
-                        <span className="text-[10px] text-gray-400">{c.desc}</span>
-                      </div>
-                    </button>
+                    />
                   ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                </div>
 
-          {/* Close Button */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-3 rounded-full bg-white/10 hover:bg-white/20 hover:text-rose-400 active:scale-95 transition-all cursor-pointer shadow-lg"
-            title="Close Voice Assistant"
-          >
-            <X size={20} />
-          </button>
-        </div>
+                {/* Subtitle / Processing status */}
+                <div className="text-center">
+                  <p className="text-xs font-bold text-white uppercase tracking-widest drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
+                    {isListening ? "Listening Actively..." : isThinking ? "Thinking..." : isActing ? "Executing Task..." : "Speaking..."}
+                  </p>
+                  <p className="text-[10px] text-gray-300 font-medium drop-shadow-[0_0_6px_rgba(0,0,0,0.9)]">
+                    {character.name} is ready for continuous conversation
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
 
-        {/* Live Status Pill */}
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 z-40">
-          <motion.span
-            key={status}
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`text-[11px] font-black uppercase tracking-[0.25em] px-6 py-2 rounded-full border backdrop-blur-md transition-all shadow-lg ${
-              isListening
-                ? "text-cyan-300 bg-cyan-500/15 border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.25)]"
-                : isThinking
-                ? "text-violet-300 bg-violet-500/15 border-violet-500/30 shadow-[0_0_20px_rgba(139,92,246,0.25)]"
-                : isActing
-                ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.25)] animate-pulse"
-                : isSpeaking
-                ? isFemale
-                  ? "text-pink-300 bg-pink-500/15 border-pink-500/30 shadow-[0_0_20px_rgba(236,72,153,0.25)]"
-                  : "text-orange-300 bg-orange-500/15 border-orange-500/30 shadow-[0_0_20px_rgba(249,115,22,0.25)]"
-                : "text-cyan-300 bg-cyan-500/15 border-cyan-500/30"
-            }`}
-          >
-            {isListening
-              ? "Listening..."
-              : isThinking
-              ? "Thinking..."
-              : isActing
-              ? "Executing Action..."
-              : isSpeaking
-              ? "Speaking..."
-              : "Listening..."}
-          </motion.span>
-        </div>
+          {/* ════════════════════════════════════════════════════════════════════
+              RIGHT COLUMN: Real-Time Conversation Cards & Telemetry
+              ════════════════════════════════════════════════════════════════════ */}
+          <section className="lg:col-span-3 flex flex-col gap-4">
+            {/* Live Conversation Stream Card */}
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 backdrop-blur-xl shadow-lg flex flex-col gap-3 flex-1 min-h-[220px]">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={15} className="text-cyan-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-200">
+                    Live Conversation
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-gray-400">REALTIME</span>
+              </div>
 
-        {/* 3D Neural Network Avatar Core (Interactive & Clickable to Interrupt) */}
-        <div
-          className="relative flex items-center justify-center my-4 cursor-pointer group"
-          onClick={onInterrupt}
-          title="Click to interrupt or speak"
-        >
-          {/* Outer Hologram Ring */}
-          <motion.div
-            animate={{
-              rotate: [0, 360],
-              scale: isSpeaking ? [1, 1.06, 1] : [1, 1.02, 1],
-            }}
-            transition={{
-              rotate: { duration: isThinking ? 8 : 22, repeat: Infinity, ease: "linear" },
-              scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" },
-            }}
-            className={`absolute w-[330px] h-[330px] rounded-full border-2 border-dashed transition-colors duration-700 pointer-events-none ${
-              isFemale
-                ? isSpeaking
-                  ? "border-pink-500/40 shadow-[0_0_30px_rgba(236,72,153,0.2)]"
-                  : isThinking
-                  ? "border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.2)]"
-                  : "border-cyan-500/30 shadow-[0_0_30px_rgba(6,182,212,0.15)]"
-                : isSpeaking
-                ? "border-orange-500/40 shadow-[0_0_30px_rgba(249,115,22,0.2)]"
-                : isThinking
-                ? "border-indigo-500/40 shadow-[0_0_30px_rgba(99,102,241,0.2)]"
-                : "border-sky-500/30 shadow-[0_0_30px_rgba(14,165,233,0.15)]"
-            }`}
-          />
-
-          {/* 3D Neural Canvas Simulation */}
-          <canvas
-            ref={canvasRef}
-            className="w-[340px] h-[340px] z-10 transition-transform duration-300 group-hover:scale-105"
-          />
-
-          {/* Central AI Entity Badge inside Neural Core */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20">
-            <span className="text-4xl filter drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] animate-pulse">
-              {character.emoji}
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/90 mt-1.5 drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
-              {character.name}
-            </span>
-          </div>
-        </div>
-
-        {/* Dynamic Frequency Equalizer Spectrum */}
-        <div className="flex items-center justify-center gap-1.5 h-8 mb-4">
-          {Array.from({ length: 22 }).map((_, i) => (
-            <motion.div
-              key={i}
-              animate={{
-                height: isSpeaking
-                  ? [5, 20 + ((i * 7) % 18), 8, 28, 5]
-                  : isListening
-                  ? [4, 10 + ((i * 3) % 8), 5, 14, 4]
-                  : [3, 5, 3],
-              }}
-              transition={{
-                duration: isSpeaking ? 0.6 : 1.4,
-                repeat: Infinity,
-                ease: "easeInOut",
-                delay: (i * 0.035) % 0.5,
-              }}
-              className={`w-1 rounded-full ${
-                isFemale
-                  ? isSpeaking
-                    ? "bg-gradient-to-t from-pink-500 to-rose-400"
-                    : isActing
-                    ? "bg-gradient-to-t from-emerald-400 to-cyan-400"
-                    : "bg-gradient-to-t from-cyan-400 to-purple-400 opacity-70"
-                  : isSpeaking
-                  ? "bg-gradient-to-t from-orange-500 to-amber-400"
-                  : isActing
-                  ? "bg-gradient-to-t from-emerald-400 to-cyan-400"
-                  : "bg-gradient-to-t from-sky-400 to-indigo-400 opacity-70"
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Live Conversation Transcript & Response Box */}
-        <div className="max-w-2xl w-full px-8 text-center min-h-[65px] flex items-center justify-center">
-          <AnimatePresence mode="wait">
-            {transcript ? (
-              <motion.p
-                key="transcript"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="text-lg md:text-xl text-gray-100 font-medium leading-relaxed"
-              >
-                {isThinking ? (
-                  <span className="text-violet-300 italic">Thinking: {transcript}</span>
-                ) : isActing ? (
-                  <span className="text-emerald-300">{transcript}</span>
-                ) : (
-                  <span>{transcript}</span>
+              {/* Live Transcript / Assistant Message Bubbles */}
+              <div className="flex flex-col gap-2.5 flex-1 overflow-y-auto max-h-[190px] pr-1">
+                {/* User Voice Bubble */}
+                {transcript && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="self-end max-w-[90%] p-3 rounded-2xl rounded-tr-sm bg-gradient-to-r from-blue-600/60 to-purple-600/60 border border-blue-400/30 text-xs text-white shadow-md leading-relaxed"
+                  >
+                    <p className="font-semibold text-[10px] text-blue-200 mb-0.5">You (Voice)</p>
+                    <p>{transcript}</p>
+                  </motion.div>
                 )}
-              </motion.p>
-            ) : responseText ? (
-              <motion.p
-                key="response"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-base md:text-lg text-gray-300 leading-relaxed italic"
-              >
-                {responseText}
-              </motion.p>
-            ) : (
-              <p className="text-xs md:text-sm text-gray-400 font-light tracking-wide animate-pulse">
-                {isFemale ? "Aria Neural AI is listening... Speak naturally." : "Echo Cybernetic AI is listening... Speak naturally."}
-              </p>
-            )}
-          </AnimatePresence>
-        </div>
 
-        {/* Bottom Pause / Interrupt Control Button */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4">
-          <button
-            type="button"
-            onClick={onInterrupt}
-            className={`px-7 py-2.5 rounded-full font-bold text-xs uppercase tracking-wider active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-lg backdrop-blur-md ${
-              isSpeaking
-                ? isFemale
-                  ? "bg-pink-600 text-white hover:bg-pink-500 shadow-pink-600/30"
-                  : "bg-orange-600 text-white hover:bg-orange-500 shadow-orange-600/30"
-                : "bg-white/10 text-gray-200 hover:bg-white/20 border border-white/10"
-            }`}
-          >
-            <Square size={13} fill="currentColor" />
-            {isSpeaking ? "Interrupt Speech" : "Pause"}
-          </button>
-        </div>
+                {/* AI Assistant Spoken Bubble */}
+                {responseText ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="self-start max-w-[95%] p-3 rounded-2xl rounded-tl-sm bg-zinc-800/80 border border-white/10 text-xs text-gray-200 shadow-md leading-relaxed"
+                  >
+                    <p className="font-semibold text-[10px] text-cyan-400 mb-0.5">{character.name} (AI)</p>
+                    <p>{responseText}</p>
+                  </motion.div>
+                ) : !transcript ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center py-6 text-gray-500">
+                    <Radio size={22} className="text-gray-600 mb-2 animate-pulse" />
+                    <p className="text-xs font-medium">Speak naturally into your microphone</p>
+                    <p className="text-[10px] text-gray-600 mt-0.5">Voice queries will appear here in real time</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
 
-        {/* Gemini Live Footer Indicator */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
-          <p className="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
-            {isSpeaking ? "Tap neural core to interrupt" : "3D Neural Network Engine Active"}
-          </p>
-        </div>
+            {/* Live Task & Execution Pipeline Checklist */}
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 backdrop-blur-xl shadow-lg flex flex-col gap-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                Live Execution Pipeline
+              </span>
+              <div className="flex flex-col gap-2 text-xs">
+                <div className="flex items-center justify-between text-gray-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className="text-cyan-400" />
+                    <span>Understanding speech</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-400 font-mono">100%</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className={isThinking || isActing || isSpeaking ? "text-cyan-400" : "text-gray-600"} />
+                    <span>Analyzing intent</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono">{isThinking ? "RUNNING" : "READY"}</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className={isActing ? "text-emerald-400 animate-pulse" : "text-gray-600"} />
+                    <span>Executing tools / browser</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono">{isActing ? "ACTIVE" : "STANDBY"}</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={13} className={isSpeaking ? "text-orange-400 animate-pulse" : "text-gray-600"} />
+                    <span>Neural speech synthesis</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono">{isSpeaking ? "OUTPUT" : "STANDBY"}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        {/* Bottom Control Dock & Floating Bar */}
+        <footer className="relative z-50 px-8 py-4 border-t border-white/10 bg-black/60 backdrop-blur-xl flex items-center justify-between">
+          <div className="flex items-center gap-4 text-[11px] text-gray-400">
+            <span className="font-mono text-cyan-400">Voice Assistant v2.5.0</span>
+            <span className="hidden sm:inline">•</span>
+            <span className="hidden sm:inline">Playwright Automation Ready</span>
+          </div>
+
+          {/* Central Action Bar */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onInterrupt}
+              className={`px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-wider active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-lg backdrop-blur-md ${
+                isSpeaking
+                  ? "bg-rose-600 text-white hover:bg-rose-500 shadow-rose-600/30"
+                  : "bg-white/10 text-gray-200 hover:bg-white/20 border border-white/10"
+              }`}
+            >
+              <Square size={13} fill="currentColor" />
+              {isSpeaking ? "Interrupt Speech" : "Pause"}
+            </button>
+          </div>
+
+          {/* Right Security Badge */}
+          <div className="flex items-center gap-2 text-[11px] text-gray-400">
+            <Lock size={12} className="text-emerald-400" />
+            <span className="hidden sm:inline font-medium">Secure • Private • Gemini Core</span>
+          </div>
+        </footer>
       </motion.div>
     </AnimatePresence>
   );
