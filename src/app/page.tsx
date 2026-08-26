@@ -533,7 +533,7 @@ export default function ChatPage() {
   }, []);
   const recognitionRef = useRef<any>(null);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'acting' | 'speaking'>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const voiceRecognitionRef = useRef<any>(null);
   const isSpeakingRef = useRef(false);
@@ -807,7 +807,14 @@ export default function ChatPage() {
     }
   };
 
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const processVoiceQuery = async (text: string) => {
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+
     // Cut off any ongoing speech immediately if user asks a new question
     window.speechSynthesis.cancel();
     isSpeakingRef.current = false;
@@ -844,8 +851,44 @@ export default function ChatPage() {
 
         if (voiceRes.ok) {
           const voiceData = await voiceRes.json();
-          if (voiceData.success && voiceData.text) {
-            fullContent = voiceData.text;
+          if (voiceData.success) {
+            fullContent = voiceData.text || '';
+
+            // Handle client navigation action
+            if (voiceData.clientAction) {
+              if (voiceData.clientAction === "open_pricing") setIsPricingOpen(true);
+              else if (voiceData.clientAction === "open_account") setIsProfileModalOpen(true);
+              else if (voiceData.clientAction === "new_chat") {
+                setMessages([]);
+                setActiveConversationId(null);
+              }
+            }
+
+            // Handle browser automation task
+            if (voiceData.browserTask) {
+              setVoiceStatus('acting');
+              setLiveTranscript(`Executing browser task: ${voiceData.browserTask.task}...`);
+              try {
+                const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+                const agentUrl = apiBase ? `${apiBase}/api/browser-agent` : '/api/browser-agent';
+                const browserRes = await fetch(agentUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    task: voiceData.browserTask.task,
+                    startUrl: voiceData.browserTask.targetUrl,
+                  }),
+                });
+                if (browserRes.ok) {
+                  const browserData = await browserRes.json();
+                  if (browserData.answer) {
+                    fullContent = `${fullContent} ${browserData.answer}`;
+                  }
+                }
+              } catch (bErr) {
+                console.warn("[Voice Assistant] Browser agent execution error:", bErr);
+              }
+            }
           }
         }
       } catch (voiceErr) {
@@ -896,8 +939,12 @@ export default function ChatPage() {
       setVoiceStatus('speaking');
       setLiveTranscript('');
       speakText(fullContent, () => {
-        if (isVoiceMode) startVoiceListeningCycle();
-        else setVoiceStatus('idle');
+        if (isVoiceMode) {
+          setVoiceStatus('listening');
+          startVoiceListeningCycle();
+        } else {
+          setVoiceStatus('idle');
+        }
       });
     } catch {
       setVoiceStatus('idle');
@@ -910,6 +957,7 @@ export default function ChatPage() {
       // Interrupt the AI and immediately start listening again
       window.speechSynthesis.cancel();
       isSpeakingRef.current = false;
+      setVoiceStatus('listening');
       startVoiceListeningCycle();
     } else if (voiceStatus === 'idle') {
       startVoiceListeningCycle();
@@ -944,7 +992,7 @@ export default function ChatPage() {
     } catch (err: any) {
       // Permission denied or no mic
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setLiveTranscript("Microphone blocked. Click the lock icon in the address bar → Allow microphone → then try again.");
+        setLiveTranscript("Microphone permission required. Click the lock icon next to the address bar to allow microphone access, then tap to start.");
       } else if (err.name === 'NotFoundError') {
         setLiveTranscript("No microphone found. Please connect a microphone.");
       } else {
@@ -988,8 +1036,8 @@ export default function ChatPage() {
       
       // 2. Enhanced Barge-in Logic
       // If AI is speaking and user says something meaningful (not just a filler word)
-      if (isSpeakingRef.current && currentText.length > 5) {
-        const fillers = ["the", "and", "but", "yes", "no", "okay"];
+      if (isSpeakingRef.current && currentText.length > 3) {
+        const fillers = ["the", "and", "but", "yes", "no", "okay", "um", "uh"];
         const isFiller = fillers.includes(currentText.toLowerCase());
         
         if (!isFiller) {
@@ -1004,10 +1052,27 @@ export default function ChatPage() {
         setLiveTranscript(currentText);
       }
 
-      // Automatically process if user stops talking for a moment (handled by recognition.stop in onresult for final)
+      // Voice Activity Detection Silence Debounce: Auto-send after 1.2s silence when speech is detected
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+
+      if (currentText.length >= 2 && !finalResultProcessed && !isSpeakingRef.current) {
+        silenceTimeoutRef.current = setTimeout(() => {
+          if (!finalResultProcessed && isVoiceMode && !isSpeakingRef.current) {
+            finalResultProcessed = true;
+            try { recognition.stop(); } catch(e) {}
+            processVoiceQuery(currentText);
+          }
+        }, 1200);
+      }
+
+      // Automatically process if user stops talking and browser emits final
       if (final && !finalResultProcessed && !isSpeakingRef.current) {
         finalResultProcessed = true;
-        recognition.stop();
+        if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+        try { recognition.stop(); } catch(e) {}
         processVoiceQuery(final.trim());
       }
     };
@@ -1016,13 +1081,13 @@ export default function ChatPage() {
       console.error("Speech Recognition Error:", e.error);
 
       if (e.error === 'not-allowed') {
-        setLiveTranscript("Microphone blocked by browser. Click the lock/camera icon in the address bar → reset microphone permission → Allow → refresh page.");
+        setLiveTranscript("Microphone blocked. Click the lock icon in the address bar → Allow microphone → refresh page.");
         setVoiceStatus('idle');
         return;
       }
       if (e.error === 'no-speech') {
-        if (isVoiceMode) {
-          setTimeout(startVoiceListeningCycle, 500);
+        if (isVoiceMode && !isSpeakingRef.current) {
+          setTimeout(startVoiceListeningCycle, 400);
         }
         return;
       }
@@ -1032,20 +1097,21 @@ export default function ChatPage() {
         return;
       }
       if (e.error === 'network') {
-        setLiveTranscript("Network error. Check your internet connection.");
-        setVoiceStatus('idle');
+        setLiveTranscript("Network issue. Reconnecting voice listener...");
+        if (isVoiceMode && !isSpeakingRef.current) {
+          setTimeout(startVoiceListeningCycle, 600);
+        }
         return;
       }
 
-      if (isVoiceMode && e.error !== 'aborted') {
+      if (isVoiceMode && e.error !== 'aborted' && !isSpeakingRef.current) {
         setTimeout(startVoiceListeningCycle, 500);
       }
     };
 
     recognition.onend = () => {
       // 3. Robust Lifecycle Management
-      // Only restart if we are not currently processing a query or speaking
-      if (isVoiceMode && voiceStatus !== 'thinking' && voiceStatus !== 'speaking') {
+      if (isVoiceMode && voiceStatus !== 'thinking' && voiceStatus !== 'acting' && voiceStatus !== 'speaking') {
         if (voiceStatus === 'listening' && !finalResultProcessed) {
           setLiveTranscript(prev => {
             if (prev.trim().length > 1) {
@@ -1055,8 +1121,8 @@ export default function ChatPage() {
             return prev;
           });
         }
-        if (!finalResultProcessed) {
-           setTimeout(startVoiceListeningCycle, 100);
+        if (!finalResultProcessed && !isSpeakingRef.current) {
+          setTimeout(startVoiceListeningCycle, 100);
         }
       }
     };

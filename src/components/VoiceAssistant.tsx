@@ -6,7 +6,7 @@ import { Mic, X, AudioLines, Brain, Square } from "lucide-react";
 
 interface VoiceAssistantProps {
   isOpen: boolean;
-  status: "idle" | "listening" | "thinking" | "speaking";
+  status: "idle" | "listening" | "thinking" | "acting" | "speaking";
   transcript: string;
   responseText: string;
   onToggleListening: () => void;
@@ -27,8 +27,9 @@ export default function VoiceAssistant({
 
   const isListening = status === "listening";
   const isThinking = status === "thinking";
+  const isActing = status === "acting";
   const isSpeaking = status === "speaking";
-  const isActive = isListening || isThinking || isSpeaking;
+  const isActive = isListening || isThinking || isActing || isSpeaking;
 
   return (
     <AnimatePresence>
@@ -46,6 +47,8 @@ export default function VoiceAssistant({
                 ? "bg-cyan-500/15"
                 : isThinking
                 ? "bg-violet-500/15"
+                : isActing
+                ? "bg-emerald-500/15"
                 : isSpeaking
                 ? "bg-orange-500/10"
                 : "bg-transparent"
@@ -72,6 +75,8 @@ export default function VoiceAssistant({
                 ? "text-cyan-400 bg-cyan-500/10 border-cyan-500/20"
                 : isThinking
                 ? "text-violet-400 bg-violet-500/10 border-violet-500/20"
+                : isActing
+                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 animate-pulse"
                 : isSpeaking
                 ? "text-orange-400 bg-orange-500/10 border-orange-500/20"
                 : "text-gray-400 bg-white/5 border-white/10"
@@ -81,6 +86,8 @@ export default function VoiceAssistant({
               ? "Listening"
               : isThinking
               ? "Thinking"
+              : isActing
+              ? "Executing Action"
               : isSpeaking
               ? "Speaking"
               : "Voice Assistant"}
