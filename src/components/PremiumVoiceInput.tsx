@@ -19,7 +19,7 @@ export default function PremiumVoiceInput({
   onSend,
   theme = "dark",
 }: PremiumVoiceInputProps) {
-  const [state, setState] = useState<VoiceState>("idle");
+  const [state, setState] = useState<VoiceState>("listening");
   const [amplitude, setAmplitude] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [partialText, setPartialText] = useState("");
@@ -27,21 +27,26 @@ export default function PremiumVoiceInput({
   const [error, setError] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const finalTranscriptRef = useRef("");
+  const mountedRef = useRef(true);
 
-  const SILENCE_TIMEOUT = 2000;
   const isDark = theme === "dark";
 
   // Cleanup function
   const cleanup = useCallback(() => {
+    isListeningRef.current = false;
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.stop();
+      } catch {}
       recognitionRef.current = null;
     }
     if (streamRef.current) {
@@ -49,18 +54,19 @@ export default function PremiumVoiceInput({
       streamRef.current = null;
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
+      try { audioContextRef.current.close(); } catch {}
       audioContextRef.current = null;
     }
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
   // Amplitude analyzer loop
   const startAmplitudeAnalysis = useCallback((stream: MediaStream) => {
     try {
-      const ctx = new AudioContext();
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
       audioContextRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
@@ -71,6 +77,7 @@ export default function PremiumVoiceInput({
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       const loop = () => {
+        if (!isListeningRef.current || !mountedRef.current) return;
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
@@ -82,50 +89,54 @@ export default function PremiumVoiceInput({
     } catch {}
   }, []);
 
-  // Reset silence timer on speech
-  const resetSilenceTimer = useCallback(() => {
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    silenceTimerRef.current = setTimeout(() => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
-      }
-    }, SILENCE_TIMEOUT);
-  }, []);
-
   // Start recording
   const startRecording = useCallback(async () => {
+    if (!mountedRef.current) return;
     setError(null);
-    setPartialText("");
-    setFinalText("");
-    finalTranscriptRef.current = "";
     setElapsed(0);
     setState("listening");
+    isListeningRef.current = true;
 
-    // Request mic
+    // 1. Request microphone permission
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current || !isListeningRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       startAmplitudeAnalysis(stream);
     } catch (err: any) {
-      setError(err.name === "NotAllowedError"
-        ? "Microphone blocked. Allow mic access and try again."
-        : "No microphone found.");
+      console.warn("[Voice Input] Mic permission error:", err);
+      setError(
+        err.name === "NotAllowedError" || err.name === "PermissionDeniedError"
+          ? "Microphone blocked. Please allow mic access in your browser bar."
+          : "Could not access microphone."
+      );
       setState("idle");
+      isListeningRef.current = false;
       return;
     }
 
-    // Start timer
-    timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
+    // 2. Start timer
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsed((p) => p + 1);
+    }, 1000);
 
-    // Start speech recognition
+    // 3. Initialize SpeechRecognition
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      setError("Speech recognition not supported. Use Chrome or Edge.");
+      setError("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.");
       cleanup();
       setState("idle");
       return;
+    }
+
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
     }
 
     const recognition = new SpeechRecognition();
@@ -134,8 +145,9 @@ export default function PremiumVoiceInput({
     recognition.lang = "en-US";
 
     recognition.onstart = () => {
-      setState("listening");
-      resetSilenceTimer();
+      if (mountedRef.current && isListeningRef.current) {
+        setState("listening");
+      }
     };
 
     recognition.onresult = (event: any) => {
@@ -151,56 +163,86 @@ export default function PremiumVoiceInput({
         }
       }
 
-      // Append final, never replace
       if (newFinal) {
-        finalTranscriptRef.current += newFinal;
+        finalTranscriptRef.current += (finalTranscriptRef.current ? " " : "") + newFinal.trim();
         setFinalText(finalTranscriptRef.current);
         setPartialText(interim);
         setState("transcribing");
-        onTranscript(finalTranscriptRef.current + " " + interim, false);
+        onTranscript(finalTranscriptRef.current + (interim ? " " + interim : ""), false);
       } else if (interim) {
         setPartialText(interim);
-        onTranscript(finalTranscriptRef.current + " " + interim, false);
+        setState("transcribing");
+        const fullCurrent = finalTranscriptRef.current ? `${finalTranscriptRef.current} ${interim}` : interim;
+        onTranscript(fullCurrent, false);
       }
-
-      resetSilenceTimer();
     };
 
     recognition.onerror = (e: any) => {
       if (e.error === "no-speech") {
-        // Silence, handled by silence timer
+        // Natural pause — maintain listening state
         return;
       }
       if (e.error === "not-allowed") {
-        setError("Microphone blocked.");
+        setError("Microphone blocked. Click lock icon in URL bar to enable.");
         cleanup();
         setState("idle");
+        return;
+      }
+      if (e.error === "network") {
+        console.warn("[Voice Input] Speech recognition network warning");
         return;
       }
     };
 
     recognition.onend = () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-      const finalCombined = finalTranscriptRef.current.trim();
-      if (finalCombined) {
-        setState("ready");
-        onTranscript(finalCombined, true);
+      // Auto-reconnect if user is still in listening mode (handles browser timeout)
+      if (mountedRef.current && isListeningRef.current) {
+        try {
+          recognition.start();
+        } catch {
+          setTimeout(() => {
+            if (mountedRef.current && isListeningRef.current) {
+              try { recognition.start(); } catch {}
+            }
+          }, 200);
+        }
       } else {
-        setState("idle");
+        const finalCombined = (finalTranscriptRef.current + (partialText ? " " + partialText : "")).trim();
+        if (finalCombined) {
+          setState("ready");
+          onTranscript(finalCombined, true);
+        } else {
+          setState("idle");
+        }
       }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
-  }, [cleanup, onTranscript, resetSilenceTimer, startAmplitudeAnalysis]);
+
+    try {
+      recognition.start();
+    } catch (startErr) {
+      console.warn("[Voice Input] Recognition start warning:", startErr);
+    }
+  }, [cleanup, onTranscript, partialText, startAmplitudeAnalysis]);
 
   // Stop recording
   const stopRecording = useCallback(() => {
+    isListeningRef.current = false;
+    if (timerRef.current) clearInterval(timerRef.current);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     }
-  }, []);
+    const currentCombined = (finalTranscriptRef.current + (partialText ? " " + partialText : "")).trim();
+    if (currentCombined) {
+      setFinalText(currentCombined);
+      setPartialText("");
+      setState("ready");
+      onTranscript(currentCombined, true);
+    } else {
+      setState("idle");
+    }
+  }, [onTranscript, partialText]);
 
   // Cancel
   const handleCancel = useCallback(() => {
@@ -217,7 +259,7 @@ export default function PremiumVoiceInput({
 
   // Send
   const handleSend = useCallback(() => {
-    const text = finalText.trim();
+    const text = (finalTranscriptRef.current + (partialText ? " " + partialText : "")).trim();
     if (text) {
       onSend(text);
     }
@@ -228,12 +270,17 @@ export default function PremiumVoiceInput({
     setAmplitude(0);
     setElapsed(0);
     setState("idle");
-  }, [cleanup, finalText, onSend]);
+  }, [cleanup, onSend, partialText]);
 
-  // Cleanup on unmount
+  // Auto-start recording on mount
   useEffect(() => {
-    return () => cleanup();
-  }, [cleanup]);
+    mountedRef.current = true;
+    startRecording();
+    return () => {
+      mountedRef.current = false;
+      cleanup();
+    };
+  }, [cleanup, startRecording]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -255,7 +302,7 @@ export default function PremiumVoiceInput({
         className={cn(
           "fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center",
           isDark ? "bg-[#1a1d27]/95" : "bg-white/95",
-          "backdrop-blur-xl border-t",
+          "backdrop-blur-xl border-t shadow-2xl",
           isDark ? "border-white/10" : "border-black/10"
         )}
         style={{ paddingBottom: "env(safe-area-inset-bottom, 16px)" }}
@@ -264,7 +311,7 @@ export default function PremiumVoiceInput({
         <div className="flex items-center gap-3 py-3 px-6 w-full max-w-lg justify-between">
           <div className="flex items-center gap-2">
             {/* Pulsing mic indicator */}
-            {state === "listening" && (
+            {(state === "listening" || state === "transcribing") && (
               <motion.div
                 animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
                 transition={{ repeat: Infinity, duration: 1.5 }}
@@ -276,8 +323,8 @@ export default function PremiumVoiceInput({
               isDark ? "text-gray-400" : "text-gray-600"
             )}>
               {state === "idle" && "Tap mic to start"}
-              {state === "listening" && "Listening..."}
-              {state === "transcribing" && "Transcribing..."}
+              {state === "listening" && "Listening... speak now"}
+              {state === "transcribing" && "Listening..."}
               {state === "ready" && "Ready to send"}
             </span>
           </div>
@@ -285,21 +332,22 @@ export default function PremiumVoiceInput({
           <div className="flex items-center gap-3">
             {state !== "idle" && (
               <span className={cn(
-                "text-xs font-mono",
-                isDark ? "text-gray-500" : "text-gray-400"
+                "text-xs font-mono font-medium",
+                isDark ? "text-gray-400" : "text-gray-600"
               )}>
                 {formatTime(elapsed)}
               </span>
             )}
 
-            {state === "listening" && (
+            {(state === "listening" || state === "transcribing") && (
               <button
+                type="button"
                 onClick={stopRecording}
                 className={cn(
-                  "px-3 py-1 rounded-full text-xs font-semibold transition-all",
+                  "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer",
                   isDark
-                    ? "bg-white/10 text-white hover:bg-white/15"
-                    : "bg-black/5 text-gray-900 hover:bg-black/10"
+                    ? "bg-white/10 text-white hover:bg-white/15 active:scale-95"
+                    : "bg-black/5 text-gray-900 hover:bg-black/10 active:scale-95"
                 )}
               >
                 Stop
@@ -309,11 +357,11 @@ export default function PremiumVoiceInput({
         </div>
 
         {/* Waveform */}
-        {state === "listening" && (
+        {(state === "listening" || state === "transcribing") && (
           <div className="flex items-center justify-center gap-[3px] h-12 px-6 w-full max-w-lg">
             {Array.from({ length: bars }).map((_, i) => {
               const distance = Math.abs(i - bars / 2) / (bars / 2);
-              const height = Math.max(4, amplitude * 40 * (1 - distance * 0.6));
+              const height = Math.max(4, (amplitude > 0.05 ? amplitude : 0.15) * 40 * (1 - distance * 0.6));
               return (
                 <motion.div
                   key={i}
@@ -322,7 +370,7 @@ export default function PremiumVoiceInput({
                   className="w-[3px] rounded-full"
                   style={{
                     background: `linear-gradient(180deg, #7c3aed, #06b6d4)`,
-                    opacity: 0.5 + amplitude * 0.5,
+                    opacity: 0.6 + amplitude * 0.4,
                   }}
                 />
               );
@@ -332,16 +380,14 @@ export default function PremiumVoiceInput({
 
         {/* Transcript preview */}
         {displayText && (
-          <div className={cn(
-            "w-full max-w-lg px-6 pb-3 min-h-[24px]",
-          )}>
+          <div className="w-full max-w-lg px-6 pb-3 min-h-[24px]">
             <p className={cn(
               "text-sm leading-relaxed",
-              isDark ? "text-gray-300" : "text-gray-700"
+              isDark ? "text-gray-200" : "text-gray-800"
             )}>
               {finalText && <span>{finalText}</span>}
               {partialText && (
-                <span className={isDark ? "text-gray-500" : "text-gray-400"}>
+                <span className={isDark ? "text-cyan-400 italic" : "text-cyan-600 italic"}>
                   {finalText ? " " : ""}{partialText}
                 </span>
               )}
@@ -352,59 +398,65 @@ export default function PremiumVoiceInput({
         {/* Error */}
         {error && (
           <div className="w-full max-w-lg px-6 pb-3">
-            <p className="text-xs text-red-400">{error}</p>
+            <p className="text-xs text-red-400 font-medium">{error}</p>
           </div>
         )}
 
         {/* Bottom controls */}
         <div className="flex items-center gap-4 py-4 px-6 w-full max-w-lg justify-center">
           {/* Cancel */}
-          {(state === "listening" || state === "transcribing" || state === "ready") && (
-            <button
-              onClick={handleCancel}
-              className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center transition-all",
-                isDark
-                  ? "bg-white/10 text-gray-400 hover:text-white hover:bg-white/15"
-                  : "bg-black/5 text-gray-500 hover:text-gray-900 hover:bg-black/10"
-              )}
-            >
-              <X size={20} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleCancel}
+            className={cn(
+              "w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer",
+              isDark
+                ? "bg-white/10 text-gray-400 hover:text-white hover:bg-white/15"
+                : "bg-black/5 text-gray-500 hover:text-gray-900 hover:bg-black/10"
+            )}
+            title="Cancel"
+          >
+            <X size={20} />
+          </button>
 
           {/* Main mic / send button */}
           {state === "idle" ? (
             <button
+              type="button"
               onClick={startRecording}
               className={cn(
-                "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300",
+                "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer shadow-lg",
                 isDark
-                  ? "bg-white/10 text-gray-300 hover:bg-white/15 hover:scale-105"
-                  : "bg-black/5 text-gray-700 hover:bg-black/10 hover:scale-105"
+                  ? "bg-white/10 text-gray-300 hover:bg-white/20 hover:scale-105"
+                  : "bg-black/5 text-gray-700 hover:bg-black/15 hover:scale-105"
               )}
+              title="Start Recording"
             >
               <Mic size={24} />
             </button>
           ) : state === "listening" || state === "transcribing" ? (
             <button
+              type="button"
               onClick={stopRecording}
-              className="w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 bg-gradient-to-br from-violet-600 to-cyan-500 text-white shadow-[0_0_30px_rgba(139,92,246,0.4)] animate-pulse"
+              className="w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 bg-gradient-to-br from-violet-600 to-cyan-500 text-white shadow-[0_0_30px_rgba(139,92,246,0.5)] animate-pulse hover:scale-105 cursor-pointer"
+              title="Stop Recording"
             >
               <MicOff size={24} />
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleSend}
-              disabled={!finalText.trim()}
+              disabled={!displayText.trim()}
               className={cn(
-                "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                finalText.trim()
-                  ? "bg-gradient-to-br from-violet-600 to-cyan-500 text-white shadow-[0_0_30px_rgba(139,92,246,0.4)] hover:scale-105"
+                "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer",
+                displayText.trim()
+                  ? "bg-gradient-to-br from-violet-600 to-cyan-500 text-white shadow-[0_0_30px_rgba(139,92,246,0.5)] hover:scale-105 active:scale-95"
                   : isDark
-                    ? "bg-white/10 text-gray-500"
-                    : "bg-black/5 text-gray-400"
+                    ? "bg-white/10 text-gray-500 cursor-not-allowed"
+                    : "bg-black/5 text-gray-400 cursor-not-allowed"
               )}
+              title="Send Message"
             >
               <ArrowUp size={24} strokeWidth={2.5} />
             </button>

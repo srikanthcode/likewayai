@@ -3290,24 +3290,18 @@ export default function ChatPage() {
         {showVoiceInput && (
           <PremiumVoiceInput
             theme={theme}
-            onTranscript={(text, isFinal) => {
+            onTranscript={(text) => {
               setInput(text);
-              if (isFinal) {
-                // Auto-send on final transcript
-                setTimeout(() => {
-                  handleSend();
-                  setShowVoiceInput(false);
-                }, 300);
-              }
             }}
             onCancel={() => {
               setShowVoiceInput(false);
               setIsRecording(false);
             }}
             onSend={(text) => {
-              setInput(text);
               setShowVoiceInput(false);
-              setTimeout(() => handleSend(), 100);
+              setIsRecording(false);
+              setInput(text);
+              handleSend(undefined, text);
             }}
           />
         )}
