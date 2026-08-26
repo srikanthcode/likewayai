@@ -455,9 +455,12 @@ function findChromeExecutable(pw?: any): string | undefined {
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     process.env.HOME + '/Library/Caches/ms-playwright/chromium*/chrome-mac/Chromium.app/Contents/MacOS/Chromium',
     // Windows
+    process.env.LOCALAPPDATA + '\\ms-playwright\\chromium*\\chrome-win64\\chrome.exe',
+    process.env.LOCALAPPDATA + '\\ms-playwright\\chromium*\\chrome-win\\chrome.exe',
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    process.env.LOCALAPPDATA + '\\ms-playwright\\chromium*\\chrome-win\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
     // Linux
     '/usr/bin/google-chrome',
     '/usr/bin/chromium-browser',

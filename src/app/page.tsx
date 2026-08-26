@@ -535,10 +535,14 @@ export default function ChatPage() {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'acting' | 'speaking'>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
+  const [activeAppLaunch, setActiveAppLaunch] = useState<{ name: string; url: string; status?: string } | null>(null);
   const voiceRecognitionRef = useRef<any>(null);
+  const voiceRecognitionActiveRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const currentSpeakingTextRef = useRef('');
   const utteranceRef = useRef<any>(null);
+  const speechWatchdogRef = useRef<NodeJS.Timeout | null>(null);
+  const speechHeartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const micPermissionGrantedRef = useRef(false);
   const [showVoiceCharSelector, setShowVoiceCharSelector] = useState(false);
   const [pendingVoiceLaunch, setPendingVoiceLaunch] = useState(false);
@@ -757,42 +761,80 @@ export default function ChatPage() {
 
   const speakText = (text: string, onEnd?: () => void) => {
     window.speechSynthesis.cancel();
+    if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
+    if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
     
     // 1. Strip Artifacts and Tags for Speech
-    // We want to skip reading code blocks entirely, but maybe mention they exist.
     let cleaned = text;
-    
-    // Remove all <artifact> tags and their contents if they are code
     cleaned = cleaned.replace(/<artifact\s+type="code"[\s\S]*?<\/artifact>/gi, '[Code block shared]');
-    // Remove just the tags for docs/other artifacts but keep the content
     cleaned = cleaned.replace(/<artifact[\s\S]*?>/gi, '').replace(/<\/artifact>/gi, '');
-    
-    // Remove Markdown formatting
     cleaned = cleaned.replace(/[#*`_~>\[\]()!]/g, '')
-                     .replace(/https?:\/\/\S+/g, 'link') // Don't read long URLs
+                     .replace(/https?:\/\/\S+/g, 'link')
                      .replace(/\n+/g, ' ')
                      .trim();
+
+    if (!cleaned) {
+      isSpeakingRef.current = false;
+      onEnd?.();
+      return;
+    }
 
     currentSpeakingTextRef.current = cleaned;
     
     const utterance = new SpeechSynthesisUtterance(cleaned);
     utteranceRef.current = utterance; 
+    (window as any).__currentUtterance = utterance; // Pin to window to prevent Chromium GC freeze bug
     
-    utterance.rate = 1.05; // Slightly faster for modern feel
+    utterance.rate = 1.05;
     utterance.pitch = selectedVoiceChar === 'spark' ? 1.15 : selectedVoiceChar === 'luna' ? 0.9 : 1.0;
+
+    let hasEnded = false;
+    const cleanupAndEnd = () => {
+      if (hasEnded) return;
+      hasEnded = true;
+      if (speechWatchdogRef.current) {
+        clearTimeout(speechWatchdogRef.current);
+        speechWatchdogRef.current = null;
+      }
+      if (speechHeartbeatRef.current) {
+        clearInterval(speechHeartbeatRef.current);
+        speechHeartbeatRef.current = null;
+      }
+      isSpeakingRef.current = false;
+      currentSpeakingTextRef.current = '';
+      (window as any).__currentUtterance = null;
+      onEnd?.();
+    };
     
     const assignVoiceAndSpeak = () => {
       const voice = findVoiceForChar(selectedVoiceChar);
       if (voice) utterance.voice = voice;
       isSpeakingRef.current = true;
+
+      // Estimated duration + 4 second grace period watchdog to guarantee onEnd fires
+      const estimatedMs = Math.max(3500, Math.ceil((cleaned.length / 10) * 1000) + 4000);
+      speechWatchdogRef.current = setTimeout(() => {
+        if (isSpeakingRef.current) {
+          console.warn("[Voice] Speech synthesis watchdog triggered completion recovery");
+          cleanupAndEnd();
+        }
+      }, estimatedMs);
+
+      // Speech synthesis heartbeat (un-pauses Chromium audio engine if backgrounded)
+      speechHeartbeatRef.current = setInterval(() => {
+        if (isSpeakingRef.current && window.speechSynthesis.speaking) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        } else {
+          if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
+        }
+      }, 7500);
+
       utterance.onend = () => { 
-        isSpeakingRef.current = false; 
-        currentSpeakingTextRef.current = '';
-        onEnd?.(); 
+        cleanupAndEnd(); 
       };
       utterance.onerror = () => {
-        isSpeakingRef.current = false;
-        onEnd?.();
+        cleanupAndEnd();
       };
       window.speechSynthesis.speak(utterance);
     };
@@ -818,6 +860,8 @@ export default function ChatPage() {
 
     // Cut off any ongoing speech immediately if user asks a new question
     window.speechSynthesis.cancel();
+    if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
+    if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
     isSpeakingRef.current = false;
 
     if (!text.trim()) {
@@ -865,13 +909,33 @@ export default function ChatPage() {
               }
             }
 
-            // Handle browser automation task (e.g. open whatsapp, open youtube, etc.)
-            if (voiceData.browserTask) {
+            // Handle direct App Launch (e.g. WhatsApp, YouTube, Google, etc.)
+            if (voiceData.appLaunch) {
+              const launchInfo = {
+                name: voiceData.appLaunch.appName || voiceData.appLaunch.siteName || "Application",
+                url: voiceData.appLaunch.targetUrl,
+                status: "Opening...",
+              };
+              setActiveAppLaunch(launchInfo);
+              setVoiceStatus('acting');
+              setLiveTranscript(`Opening ${launchInfo.name}...`);
+
+              // Open web application in a new window/tab
+              try {
+                const w = window.open(launchInfo.url, '_blank', 'noopener,noreferrer');
+                if (w) {
+                  launchInfo.status = "Opened";
+                  setActiveAppLaunch({ ...launchInfo });
+                }
+              } catch (wErr) {
+                console.warn("[Voice Assistant] Window open blocked by browser popup settings:", wErr);
+              }
+            } else if (voiceData.browserTask) {
+              // Handle deep autonomous browser task
               setVoiceStatus('acting');
               const targetName = voiceData.browserTask.siteName || voiceData.browserTask.targetUrl || 'web page';
-              setLiveTranscript(`Opening ${targetName}...`);
+              setLiveTranscript(`Navigating to ${targetName}...`);
 
-              // Open web application immediately in a new tab
               if (voiceData.browserTask.targetUrl) {
                 try {
                   window.open(voiceData.browserTask.targetUrl, '_blank', 'noopener,noreferrer');
@@ -880,26 +944,27 @@ export default function ChatPage() {
                 }
               }
 
-              // Also run browser agent if deep task requested
-              try {
-                const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
-                const agentUrl = apiBase ? `${apiBase}/api/browser-agent` : '/api/browser-agent';
-                const browserRes = await fetch(agentUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    task: voiceData.browserTask.task,
-                    startUrl: voiceData.browserTask.targetUrl,
-                  }),
-                });
-                if (browserRes.ok) {
-                  const browserData = await browserRes.json();
-                  if (browserData.answer) {
-                    fullContent = `${fullContent} ${browserData.answer}`;
+              if (!voiceData.browserTask.isDirectLaunch) {
+                try {
+                  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+                  const agentUrl = apiBase ? `${apiBase}/api/browser-agent` : '/api/browser-agent';
+                  const browserRes = await fetch(agentUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      task: voiceData.browserTask.task,
+                      startUrl: voiceData.browserTask.targetUrl,
+                    }),
+                  });
+                  if (browserRes.ok) {
+                    const browserData = await browserRes.json();
+                    if (browserData.answer) {
+                      fullContent = `${fullContent} ${browserData.answer}`;
+                    }
                   }
+                } catch (bErr) {
+                  console.warn("[Voice Assistant] Browser agent execution error:", bErr);
                 }
-              } catch (bErr) {
-                console.warn("[Voice Assistant] Browser agent execution error:", bErr);
               }
             }
           }
@@ -969,6 +1034,8 @@ export default function ChatPage() {
     if (voiceStatus === 'speaking') {
       // Interrupt the AI and immediately start listening again
       window.speechSynthesis.cancel();
+      if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
+      if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
       isSpeakingRef.current = false;
       setVoiceStatus('listening');
       startVoiceListeningCycle();
@@ -1017,7 +1084,13 @@ export default function ChatPage() {
 
     // Permission granted — start speech recognition
     if (voiceRecognitionRef.current) {
-      try { voiceRecognitionRef.current.stop(); } catch(e) {}
+      try { 
+        voiceRecognitionRef.current.onstart = null;
+        voiceRecognitionRef.current.onresult = null;
+        voiceRecognitionRef.current.onerror = null;
+        voiceRecognitionRef.current.onend = null;
+        voiceRecognitionRef.current.stop(); 
+      } catch(e) {}
     }
     const recognition = new SpeechRecognition();
     voiceRecognitionRef.current = recognition;
@@ -1028,6 +1101,7 @@ export default function ChatPage() {
     let finalResultProcessed = false;
 
     recognition.onstart = () => {
+      voiceRecognitionActiveRef.current = true;
       if (!isSpeakingRef.current) {
         setVoiceStatus('listening');
       }
@@ -1058,6 +1132,8 @@ export default function ChatPage() {
         
         if (!isFiller) {
           window.speechSynthesis.cancel();
+          if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
+          if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
           isSpeakingRef.current = false;
           setVoiceStatus('listening');
           setLiveTranscript(currentText);
@@ -1095,6 +1171,7 @@ export default function ChatPage() {
 
     recognition.onerror = (e: any) => {
       console.error("Speech Recognition Error:", e.error);
+      voiceRecognitionActiveRef.current = false;
 
       if (e.error === 'not-allowed') {
         setLiveTranscript("Microphone blocked. Click the lock icon in the address bar → Allow microphone → refresh page.");
@@ -1126,7 +1203,8 @@ export default function ChatPage() {
     };
 
     recognition.onend = () => {
-      // 3. Robust Lifecycle Management
+      voiceRecognitionActiveRef.current = false;
+      // Robust Lifecycle Management
       if (isVoiceMode && voiceStatus !== 'thinking' && voiceStatus !== 'acting' && voiceStatus !== 'speaking') {
         if (voiceStatus === 'listening' && !finalResultProcessed) {
           setLiveTranscript(prev => {
@@ -1138,7 +1216,7 @@ export default function ChatPage() {
           });
         }
         if (!finalResultProcessed && !isSpeakingRef.current) {
-          setTimeout(startVoiceListeningCycle, 100);
+          setTimeout(startVoiceListeningCycle, 150);
         }
       }
     };
@@ -1147,6 +1225,23 @@ export default function ChatPage() {
       recognition.start();
     } catch(e) {}
   };
+
+  // Keep continuous voice recognition alive with watchdog timer
+  useEffect(() => {
+    if (!isVoiceMode) return;
+    const interval = setInterval(() => {
+      if (
+        isVoiceMode &&
+        (voiceStatus === 'listening' || voiceStatus === 'idle') &&
+        !isSpeakingRef.current &&
+        !voiceRecognitionActiveRef.current
+      ) {
+        console.log("[Voice Watchdog] Re-arming voice listening cycle...");
+        startVoiceListeningCycle();
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isVoiceMode, voiceStatus]);
 
   const startVoiceAssistant = () => {
     const hasChosen = localStorage.getItem('likeway_voice_char');
@@ -1162,15 +1257,20 @@ export default function ChatPage() {
   const launchVoiceAssistant = () => {
     setIsVoiceMode(true);
     setVoiceStatus('listening');
+    setActiveAppLaunch(null);
     setTimeout(() => startVoiceListeningCycle(), 300);
   };
 
   const stopVoiceAssistant = () => {
     window.speechSynthesis.cancel();
+    if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
+    if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
+    voiceRecognitionActiveRef.current = false;
     voiceRecognitionRef.current?.stop();
     isSpeakingRef.current = false;
     setIsVoiceMode(false);
     setVoiceStatus('idle');
+    setActiveAppLaunch(null);
     setInput('');
     setLiveTranscript('');
   };
@@ -3290,6 +3390,8 @@ export default function ChatPage() {
             responseText={messages.length > 0 ? messages[messages.length - 1].content : ""}
             character={VOICE_CHARACTERS.find(c => c.id === selectedVoiceChar) || VOICE_CHARACTERS[0]}
             availableCharacters={VOICE_CHARACTERS}
+            activeAppLaunch={activeAppLaunch}
+            onDismissLaunch={() => setActiveAppLaunch(null)}
             onSelectCharacter={(id) => {
               setSelectedVoiceChar(id);
               localStorage.setItem('likeway_voice_char', id);

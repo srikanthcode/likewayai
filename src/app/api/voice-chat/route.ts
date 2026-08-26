@@ -58,14 +58,19 @@ const KNOWN_SITES: Record<string, { url: string; name: string }> = {
   wikipedia: { url: "https://www.wikipedia.org", name: "Wikipedia" },
   maps: { url: "https://maps.google.com", name: "Google Maps" },
   "google maps": { url: "https://maps.google.com", name: "Google Maps" },
+  claude: { url: "https://claude.ai", name: "Claude AI" },
+  telegram: { url: "https://web.telegram.org", name: "Telegram Web" },
+  discord: { url: "https://discord.com/app", name: "Discord" },
 };
 
 // Intent detection helper
 function analyzeVoiceIntent(prompt: string): {
-  type: "browser_action" | "web_search" | "client_action" | "general_qa";
+  type: "app_launch" | "browser_action" | "web_search" | "client_action" | "general_qa";
   actionName?: string;
   targetUrl?: string;
   siteName?: string;
+  appName?: string;
+  isDirectLaunch?: boolean;
   searchQuery?: string;
 } {
   const p = prompt.toLowerCase().trim();
@@ -81,44 +86,53 @@ function analyzeVoiceIntent(prompt: string): {
     return { type: "client_action", actionName: "open_account" };
   }
 
-  // 2. Direct Website / Application matching
+  // 2. Direct Website / Application matching (e.g. "Can you open WhatsApp?", "launch YouTube", "open google")
   for (const [key, site] of Object.entries(KNOWN_SITES)) {
-    const siteRegex = new RegExp(`\\b(?:open|launch|go to|navigate to|search on|play on|show me)\\s+${key}\\b|\\b${key}\\b`, "i");
-    if (siteRegex.test(p) && (p.includes("open") || p.includes("go to") || p.includes("launch") || p.includes("play") || p.includes("show"))) {
+    const siteRegex = new RegExp(`(?:can\\s+you\\s+|please\\s+)?(?:open|launch|go\\s+to|start|view)\\s+${key}\\b|\\b${key}\\b`, "i");
+    const isExplicitAction = /(?:open|launch|go to|start|view|load|navigate)/i.test(p);
+    if (siteRegex.test(p) && (isExplicitAction || p.length <= key.length + 6)) {
       return {
-        type: "browser_action",
-        actionName: "browser_automation",
+        type: "app_launch",
+        actionName: "open_app",
         targetUrl: site.url,
         siteName: site.name,
+        appName: site.name,
+        isDirectLaunch: true,
       };
     }
   }
 
-  // 3. Generic Browser Automation & Domain matching (e.g. "open example.com", "open google.com")
-  const domainMatch = p.match(/\b(?:open|go to|navigate to|launch)\s+([a-z0-9\-]+\.(?:com|org|in|io|net|co|app|ai))\b/i);
+  // 3. Generic Browser URL & Domain matching (e.g. "open example.com", "go to github.com")
+  const domainMatch = p.match(/\b(?:open|go to|navigate to|launch)\s+([a-z0-9\-]+\.(?:com|org|in|io|net|co|app|ai|dev))\b/i);
   if (domainMatch) {
     const domain = domainMatch[1];
     return {
-      type: "browser_action",
-      actionName: "browser_automation",
+      type: "app_launch",
+      actionName: "open_app",
       targetUrl: `https://${domain}`,
       siteName: domain,
+      appName: domain,
+      isDirectLaunch: true,
     };
   }
 
   // 4. Any general "open <something>"
-  const openGeneralMatch = p.match(/\b(?:open|launch|go to|navigate to)\s+([a-z0-9\-]+)\b/i);
-  if (openGeneralMatch && !["new chat", "pricing", "account", "settings", "profile", "camera", "mic"].includes(openGeneralMatch[1])) {
-    const appTarget = openGeneralMatch[1];
-    return {
-      type: "browser_action",
-      actionName: "browser_automation",
-      targetUrl: `https://www.google.com/search?q=${encodeURIComponent(appTarget)}`,
-      siteName: appTarget,
-    };
+  const openGeneralMatch = p.match(/\b(?:open|launch|go to|navigate to)\s+([a-z0-9\s\-]+)$/i);
+  if (openGeneralMatch) {
+    const target = openGeneralMatch[1].trim();
+    if (!["new chat", "pricing", "account", "settings", "profile", "camera", "mic"].includes(target)) {
+      return {
+        type: "app_launch",
+        actionName: "open_app",
+        targetUrl: `https://www.google.com/search?q=${encodeURIComponent(target)}`,
+        siteName: target,
+        appName: target,
+        isDirectLaunch: true,
+      };
+    }
   }
 
-  // 5. Web Search / Real-time info intents
+  // 5. Deep Web Search / Real-time info intents
   const isSearchQuery =
     SEARCH_KEYWORDS.some((kw) => p.includes(kw)) ||
     TIME_KEYWORDS.some((kw) => p.includes(kw)) ||
@@ -141,7 +155,8 @@ async function callGeminiDirect(
   apiKey: string,
   contextInfo?: string
 ): Promise<string> {
-  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"];
+  // Use current Google Gemini models (gemini-3.6-flash active, with fallbacks)
+  const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-3.1-pro-preview"];
 
   const contents: any[] = [];
 
@@ -246,7 +261,8 @@ export async function POST(req: NextRequest) {
     const intent = analyzeVoiceIntent(prompt);
     let actionResultText = "";
     let clientAction: string | undefined;
-    let browserTask: { targetUrl?: string; task: string } | undefined;
+    let appLaunch: { targetUrl: string; siteName: string; appName: string; isDirectLaunch: boolean } | undefined;
+    let browserTask: { targetUrl?: string; task: string; isDirectLaunch?: boolean } | undefined;
 
     // 2. Handle In-App Client Navigation
     if (intent.type === "client_action") {
@@ -260,7 +276,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Handle Web Search
+    // 3. Handle Direct App Launch (e.g., "Can you open WhatsApp?")
+    if (intent.type === "app_launch" && intent.targetUrl) {
+      appLaunch = {
+        targetUrl: intent.targetUrl,
+        siteName: intent.siteName || "Application",
+        appName: intent.appName || intent.siteName || "Application",
+        isDirectLaunch: true,
+      };
+      browserTask = {
+        targetUrl: intent.targetUrl,
+        task: prompt,
+        isDirectLaunch: true,
+      };
+      actionResultText = `Opening ${intent.siteName || "application"} for you right now.`;
+    }
+
+    // 4. Handle Deep Browser Automation Intent
+    if (intent.type === "browser_action") {
+      browserTask = {
+        targetUrl: intent.targetUrl,
+        task: prompt,
+        isDirectLaunch: false,
+      };
+      actionResultText = intent.siteName
+        ? `Navigating to ${intent.siteName} and executing your task.`
+        : "Launching autonomous browser agent for your task.";
+    }
+
+    // 5. Handle Web Search
     let contextInfo = "";
     if (intent.type === "web_search" && intent.searchQuery) {
       try {
@@ -273,33 +317,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Handle Browser Automation Intent
-    if (intent.type === "browser_action") {
-      browserTask = {
-        targetUrl: intent.targetUrl,
-        task: prompt,
-      };
-      if (intent.siteName) {
-        actionResultText = `Opening ${intent.siteName} for you right now.`;
-      } else {
-        actionResultText = "Opening the web application for you now.";
-      }
-    }
-
     let replyText = actionResultText;
-    let providerUsed = "gemini-direct";
+    let providerUsed = "intent-engine";
 
-    // 5. Generate AI Voice Response if not already handled by client action
+    // 6. Generate AI Voice Response if not an immediate action
     if (!replyText) {
       if (geminiKey) {
         try {
           replyText = await callGeminiDirect(prompt, history, geminiKey, contextInfo);
+          providerUsed = "gemini-direct";
         } catch (err: any) {
           console.warn("[Voice API] Direct Gemini failed, falling back to multi-provider router:", err.message);
         }
       }
 
-      // Fallback router
+      // Fallback router via OpenRouter
       if (!replyText) {
         providerUsed = "fallback-router";
         const messages = [
@@ -345,6 +377,7 @@ export async function POST(req: NextRequest) {
       provider: providerUsed,
       intent: intent.type,
       clientAction,
+      appLaunch,
       browserTask,
     });
   } catch (error: any) {
