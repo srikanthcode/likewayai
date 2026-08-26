@@ -26,27 +26,27 @@ export default function VoiceCharacterSelector({
   onConfirm?: () => void;
 }) {
   return (
-    <div className="w-full max-w-lg bg-zinc-950/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 md:p-6 shadow-2xl relative overflow-hidden flex flex-col gap-4 font-sans select-none">
+    <div className="w-[92vw] max-w-md bg-zinc-950/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-4 sm:p-6 shadow-2xl relative overflow-hidden flex flex-col gap-3.5 font-sans select-none max-h-[85vh] overflow-y-auto">
       {/* Subtle Ambient Glow */}
       <div className="absolute -top-24 -right-24 w-64 h-64 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header */}
       <div className="text-center relative">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider mb-1">
           <Sparkles size={11} />
           Neural Voice Matrix
         </div>
-        <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">
+        <h2 className="text-lg sm:text-xl font-black tracking-tight text-white">
           Choose Your AI Persona
         </h2>
-        <p className="text-zinc-400 text-xs mt-0.5">
+        <p className="text-zinc-400 text-[11px] sm:text-xs mt-0.5">
           Select a voice. Tap to choose or double-click to preview sound.
         </p>
       </div>
 
-      {/* Compact 3x2 Grid */}
-      <div className="grid grid-cols-3 gap-2.5 py-1">
+      {/* Responsive Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5 py-0.5">
         {characters.map((char) => {
           const isSelected = selectedId === char.id;
           const isFemale = char.gender === "female";
