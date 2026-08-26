@@ -6,15 +6,15 @@ import { createPortal } from "react-dom";
 import {
   User, Settings, LogOut, Folder, CreditCard, HelpCircle,
   Monitor, Sun, Moon, ChevronRight, Palette, Cpu, Briefcase, BarChart3,
-  BookOpen, Code, MessageSquare, Zap, Shield, Check,
+  Shield,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth, UserInfo } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { getCurrentPlan, PLANS, PlanType } from "@/lib/plans";
+import { getCurrentPlan, PlanType } from "@/lib/plans";
 
-import { useToast } from "@/components/Toast";
+
 
 type ThemeMode = "dark" | "light" | "system";
 
@@ -100,7 +100,7 @@ function getPlanDisplay(plan: string): { label: string; color: string } {
 }
 
 export default function AccountMenu() {
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
@@ -157,6 +157,12 @@ export default function AccountMenu() {
 
   const totalItems = 1 + quickActions.length + menuItems.length + themes.length + 1;
 
+  const closeMenu = () => {
+    setIsOpen(false);
+    setShowLogoutConfirm(false);
+    triggerRef.current?.focus();
+  };
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!isOpen) return;
     switch (e.key) {
@@ -179,7 +185,7 @@ export default function AccountMenu() {
         }
         break;
     }
-  }, [isOpen, totalItems]);
+  }, [isOpen, totalItems, focusedIndex]);
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
@@ -190,12 +196,6 @@ export default function AccountMenu() {
     if (isOpen) setFocusedIndex(0);
     else setFocusedIndex(-1);
   }, [isOpen]);
-
-  const closeMenu = () => {
-    setIsOpen(false);
-    setShowLogoutConfirm(false);
-    triggerRef.current?.focus();
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -444,7 +444,7 @@ export default function AccountMenu() {
                           onMouseEnter={() => setFocusedIndex(idx)}
                           role="menuitem"
                           tabIndex={focusedIndex === idx ? 0 : -1}
-                          aria-pressed={theme === t.id}
+                          aria-checked={theme === t.id}
                           className={cn(
                             "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-150",
                             theme === t.id

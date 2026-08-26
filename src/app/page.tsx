@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Send,
   PanelLeft,
   Settings,
   Trash2,
@@ -16,10 +15,8 @@ import {
   Image as ImageIcon,
   Search,
   MessageSquare,
-  MessageSquarePlus,
   Plus,
   Globe,
-  Code,
   History,
   Briefcase,
   Star,
@@ -43,7 +40,9 @@ import {
   Sparkles,
   BookOpen,
   Cpu,
-  Lock
+  Lock,
+  FileText,
+  Download
 } from "lucide-react";
 
 
@@ -51,7 +50,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import ReactMarkdown from "react-markdown";
 import { MODELS } from "@/lib/models";
-import { PLANS, getCurrentPlan, PlanType, isFeatureUnlocked, isBrowserTrialActive, getBrowserAutomationRemaining, startBrowserTrial } from "@/lib/plans";
+import { PLANS, getCurrentPlan, PlanType, getBrowserAutomationRemaining, startBrowserTrial } from "@/lib/plans";
 import { AgentMode } from "@/lib/agents";
 import ArtifactPanel, { ArtifactType } from "@/components/ArtifactPanel";
 import PersonaManager from "@/components/PersonaManager";
@@ -113,33 +112,6 @@ function formatAIResponse(content: string) {
 }
 
 // ── Settings Helper Components ─────────────────────────────────────────
-function SettingsSection({ title, icon, children, theme }: { title: string; icon: React.ReactNode; children: React.ReactNode; theme: string }) {
-  return (
-    <div className={cn("py-3 border-t", theme === 'dark' ? "border-white/5" : "border-black/5")}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-cyan-400">{icon}</span>
-        <p className={cn("text-xs font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>{title}</p>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function SettingsItem({ label, onClick, theme }: { label: string; onClick?: () => void; theme: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "w-full flex items-center justify-between py-2 text-left transition-colors",
-        onClick ? "hover:opacity-70" : "cursor-default"
-      )}
-    >
-      <span className={cn("text-xs", theme === 'dark' ? "text-gray-300" : "text-gray-700")}>{label}</span>
-      {onClick && <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />}
-    </button>
-  );
-}
-
 // Source Badge Component for inline citations
 function SourceBadge({ name, url }: { name: string; url?: string }) {
   const getInitials = (n: string) => {
@@ -503,7 +475,7 @@ const VOICE_CHARACTERS = [
 ];
 
 export default function ChatPage() {
-  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [messages, setMessages] = useState<{ id?: string; role: string; content: string; status?: 'thinking' | 'typing' | 'streaming' | 'done' | 'searching' | 'generating'; animationPlayed?: boolean }[]>([]);
   const [input, setInput] = useState("");
@@ -853,37 +825,72 @@ export default function ChatPage() {
     setMessages(prev => [...prev, { id: `msg_${Date.now()}_user`, role: 'user', content: text }]);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': userId
-        },
-        body: JSON.stringify({ 
-          prompt: text, 
-          modelId: selectedModel.id, 
-          history, 
-          mode: selectedMode, 
-          plan: currentPlan, 
-          isVoiceInteraction: isVoiceMode,
-          userId: userId
-        }),
-      });
-      if (!res.ok || !res.body) throw new Error('API Error');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
       let fullContent = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n').filter(l => l.startsWith('data: '))) {
-          const data = line.slice(6);
-          if (data === '[DONE]') break;
-          try { fullContent += JSON.parse(data).choices?.[0]?.delta?.content || ''; } catch {}
+
+      // 1. First attempt: Dedicated real-time Gemini Voice Chat API
+      try {
+        const voiceRes = await fetch('/api/voice-chat', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-user-id': userId
+          },
+          body: JSON.stringify({ 
+            prompt: text, 
+            history, 
+            userId: userId
+          }),
+        });
+
+        if (voiceRes.ok) {
+          const voiceData = await voiceRes.json();
+          if (voiceData.success && voiceData.text) {
+            fullContent = voiceData.text;
+          }
+        }
+      } catch (voiceErr) {
+        console.warn("[Voice Assistant] /api/voice-chat error, attempting standard chat fallback:", voiceErr);
+      }
+
+      // 2. Fallback attempt: Standard streaming chat route
+      if (!fullContent) {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-user-id': userId
+          },
+          body: JSON.stringify({ 
+            prompt: text, 
+            modelId: selectedModel.id, 
+            history, 
+            mode: selectedMode, 
+            plan: currentPlan, 
+            isVoiceInteraction: isVoiceMode,
+            userId: userId
+          }),
+        });
+
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split('\n').filter(l => l.startsWith('data: '))) {
+              const data = line.slice(6);
+              if (data === '[DONE]') break;
+              try { fullContent += JSON.parse(data).choices?.[0]?.delta?.content || ''; } catch {}
+            }
+          }
         }
       }
+
+      if (!fullContent) {
+        fullContent = "I heard you, but I couldn't get a clear response. Could you please repeat that?";
+      }
+
       setMessages(prev => [...prev, { id: `msg_${Date.now()}_voice`, role: 'assistant', content: fullContent, status: 'done', animationPlayed: true }]);
       setInput('');
       setVoiceStatus('speaking');
@@ -1085,94 +1092,6 @@ export default function ChatPage() {
     setInput('');
     setLiveTranscript('');
   };
-
-  const toggleRecording = async () => {
-    if (isRecording) {
-      recognitionRef.current?.stop();
-      setIsRecording(false);
-      return;
-    }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isStandalone = (window as any).navigator?.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
-
-      let message = "Speech recognition is not supported in this browser.";
-      if (isIOS && !isStandalone) {
-        message = "To use voice on iPhone:\n\n1. Tap the Share button\n2. Tap 'Add to Home Screen'\n3. Open Likeway from your home screen\n\nOr open this page in Safari.";
-      } else if (isIOS && isStandalone) {
-        message = "Voice not working? Try closing and reopening from your home screen.";
-      } else {
-        message = "Speech recognition is not supported. Please use Chrome, Edge, or Safari.";
-      }
-
-      setInput(message);
-      return;
-    }
-
-    // Request microphone permission first
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setInput("Microphone blocked. Click the lock icon in address bar → Allow microphone → try again.");
-      } else if (err.name === 'NotFoundError') {
-        setInput("No microphone found.");
-      } else {
-        setInput("Could not access microphone: " + err.message);
-      }
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    
-    recognition.onstart = () => {
-      setIsRecording(true);
-      setInput(""); // Clear input on new recording
-    };
-
-    recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
-      
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-      setInput(finalTranscript || interimTranscript);
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error", event.error);
-
-      if (event.error === 'not-allowed') {
-        setInput("Microphone blocked. Click lock icon in address bar → reset permission → Allow → refresh.");
-      } else if (event.error === 'no-speech') {
-        // No speech detected
-      } else if (event.error === 'audio-capture') {
-        setInput("No microphone found.");
-      } else if (event.error === 'network') {
-        setInput("Network error. Check your connection.");
-      }
-
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
   const [settings, setSettings] = useState({
     experimental: false,
     highVelocity: true,
@@ -1328,9 +1247,10 @@ export default function ChatPage() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
-  async function handleSend(e?: React.FormEvent) {
-    e?.preventDefault();
-    if (!input.trim() || isLoading) return;
+  async function handleSend(e?: React.FormEvent, overrideMessage?: string) {
+    if (e) e.preventDefault();
+    const messageToSend = overrideMessage || input.trim();
+    if (!messageToSend || isLoading) return;
 
     // Mark sending state to prevent history load from clearing messages
     isSendingRef.current = true;
@@ -1342,7 +1262,7 @@ export default function ChatPage() {
       setVoiceStatus('idle');
     }
 
-    const userMessage = input.trim();
+    const userMessage = messageToSend;
     // Exclude system message placeholding states (thinking, typing, searching) and messages with empty content from history payload
     const history = messages
       .filter(m => m.content && m.content.trim() !== "" && m.role !== "system")
@@ -2645,6 +2565,20 @@ export default function ChatPage() {
                               <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all" title="Bad response">
                                 <ThumbsDown size={14} />
                               </button>
+                              <button 
+                                onClick={() => {
+                                  // Copy as clean markdown (strip status indicators)
+                                  const cleanContent = m.content
+                                    .replace(/\n> \*\*🔄 Generating\.\.\.\*\*/g, '')
+                                    .replace(/\n> \*\*🔍 Searching\.\.\.\*\*/g, '')
+                                    .trim();
+                                  navigator.clipboard.writeText(cleanContent);
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
+                                title="Copy as Markdown"
+                              >
+                                <FileText size={14} />
+                              </button>
                               <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all" title="Share">
                                 <Share2 size={14} />
                               </button>
@@ -2657,16 +2591,38 @@ export default function ChatPage() {
                                           break;
                                       }
                                   }
-                                  setInput(lastUserMsg);
-                                  handleSend();
+                                  if (lastUserMsg) handleSend(undefined, lastUserMsg);
                                 }}
                                 className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
                                 title="Regenerate"
                               >
                                 <RefreshCw size={14} />
                               </button>
-                              <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all" title="More">
-                                <MoreHorizontal size={14} />
+                              <button 
+                                onClick={() => {
+                                  // Export full conversation as markdown
+                                  const convMarkdown = messages
+                                    .filter(m => m.content && m.content.trim())
+                                    .map(m => {
+                                      const role = m.role === 'user' ? '**You**' : '**LikeWay**';
+                                      return `### ${role}\n\n${m.content}\n\n---\n`;
+                                    })
+                                    .join('\n');
+                                  const header = `# Chat Conversation\n\n*Exported on ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}*\n\n---\n\n`;
+                                  const blob = new Blob([header + convMarkdown], { type: 'text/markdown;charset=utf-8' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `likeway-chat-${new Date().toISOString().slice(0,10)}.md`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  URL.revokeObjectURL(url);
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
+                                title="Export chat as Markdown"
+                              >
+                                <Download size={14} />
                               </button>
                               {/* Dynamic Sources Badge */}
                               {(() => {

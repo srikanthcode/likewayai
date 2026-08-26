@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { amount, currency = "INR", receipt } = await req.json();
+    const { amount, receipt } = await req.json();
 
     if (!amount || amount < 100) {
       return NextResponse.json({ error: "Invalid amount. Minimum amount is 100 paise (₹1)" }, { status: 400 });

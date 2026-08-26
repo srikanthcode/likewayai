@@ -66,7 +66,7 @@ function Particles() {
 }
 
 export default function AccountPage() {
-  const { user, isLoading, isAuthenticated, logout, updateProfile, refreshUser } = useAuth();
+  const { user, isLoading, isAuthenticated, logout, updateProfile } = useAuth();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("profile");
   const [name, setName] = useState("");
@@ -90,15 +90,6 @@ export default function AccountPage() {
     if (user) setName(user.name);
   }, [user]);
 
-  useEffect(() => {
-    if (tab === "sessions") {
-      fetchSessions();
-    }
-    if (tab === "apikeys") {
-      fetchApiKeys();
-    }
-  }, [tab]);
-
   const fetchSessions = async () => {
     try {
       const res = await fetch("/api/auth/session");
@@ -118,6 +109,15 @@ export default function AccountPage() {
       }
     } catch {}
   };
+
+  useEffect(() => {
+    if (tab === "sessions") {
+      fetchSessions();
+    }
+    if (tab === "apikeys") {
+      fetchApiKeys();
+    }
+  }, [tab]);
 
   const handleSaveProfile = async () => {
     setSaving(true);

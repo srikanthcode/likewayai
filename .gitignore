@@ -65,3 +65,6 @@ likeway-backend/
 h origin HEAD
 .env*
 .aider*
+.claude/
+.mimocode/
+*.zip

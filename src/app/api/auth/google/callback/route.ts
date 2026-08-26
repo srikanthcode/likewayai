@@ -26,17 +26,15 @@ export async function GET(req: NextRequest) {
 
   // ── Handle OAuth errors from Google ─────────────────────────────────────
   if (error) {
-    return NextResponse.redirect(new URL(`/login?error=google_${error}`, appUrl));
+    return NextResponse.redirect(new URL(`/login?error=google_${error}`, req.url));
   }
 
   if (!code) {
-    return NextResponse.redirect(new URL("/login?error=no_code", appUrl));
-  }
-
-  // ── CSRF: verify state token ─────────────────────────────────────────────
+    return NextResponse.redirect(new URL("/login?error=no_code", req.url));
+  }    // ── CSRF: verify state token ─────────────────────────────────────────────
   const storedState = req.cookies.get("google_oauth_state")?.value;
   if (!storedState || storedState !== state) {
-    return NextResponse.redirect(new URL("/login?error=invalid_state", appUrl));
+    return NextResponse.redirect(new URL("/login?error=invalid_state", req.url));
   }
 
   try {
@@ -56,7 +54,7 @@ export async function GET(req: NextRequest) {
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
       console.error("[Google OAuth] Token exchange failed:", errText);
-      return NextResponse.redirect(new URL("/login?error=token_exchange_failed", appUrl));
+      return NextResponse.redirect(new URL("/login?error=token_exchange_failed", req.url));
     }
 
     const tokens = await tokenRes.json();
@@ -67,7 +65,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!userInfoRes.ok) {
-      return NextResponse.redirect(new URL("/login?error=userinfo_failed", appUrl));
+      return NextResponse.redirect(new URL("/login?error=userinfo_failed", req.url));
     }
 
     const gUser = await userInfoRes.json();
@@ -76,7 +74,7 @@ export async function GET(req: NextRequest) {
     const avatar = gUser.picture || "";
 
     if (!email) {
-      return NextResponse.redirect(new URL("/login?error=no_email", appUrl));
+      return NextResponse.redirect(new URL("/login?error=no_email", req.url));
     }
 
     // ── Find or create user ───────────────────────────────────────────────
@@ -107,7 +105,7 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
       console.error("[Google OAuth] create_user_failed — findUserByEmail returned null, then createUser also returned null for email:", email);
-      return NextResponse.redirect(new URL("/login?error=create_user_failed", appUrl));
+      return NextResponse.redirect(new URL("/login?error=create_user_failed", req.url));
     }
 
     // ── Create session + issue JWT tokens ─────────────────────────────────
@@ -149,7 +147,8 @@ export async function GET(req: NextRequest) {
 
     const cookies = setAuthCookies(accessToken, refreshToken);
 
-    const res = NextResponse.redirect(new URL(redirectPath, appUrl));
+    // Use req.url (same origin) to ensure cookies are set for the right domain
+    const res = NextResponse.redirect(new URL(redirectPath, req.url));
     // Clear state & query cookies
     res.cookies.set("google_oauth_state", "", { maxAge: 0, path: "/" });
     res.cookies.set("lw_oauth_query", "", { maxAge: 0, path: "/" });
@@ -159,6 +158,6 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (err: any) {
     console.error("[Google OAuth] Callback error:", err);
-    return NextResponse.redirect(new URL("/login?error=internal_error", appUrl));
+    return NextResponse.redirect(new URL("/login?error=internal_error", req.url));
   }
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, BookOpen, Code, Brain, Calculator, MessageCircle, ChevronRight, Clock, HelpCircle, Award } from "lucide-react";
+import { ArrowLeft, BookOpen, Code, ChevronRight, Clock, HelpCircle, Award } from "lucide-react";
 import { SUBJECTS, Subject, Course } from "@/lib/learn/subjects";
 
 export default function LearnPage() {
@@ -96,7 +96,7 @@ export default function LearnPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {selectedSubject.courses.map((course) => (
-                <CourseCard key={course.id} course={course} subjectId={selectedSubject.id} />
+                <CourseCard key={course.id} course={course} />
               ))}
             </div>
           </>
@@ -106,7 +106,7 @@ export default function LearnPage() {
   );
 }
 
-function CourseCard({ course, subjectId }: { course: Course; subjectId: string }) {
+function CourseCard({ course }: { course: Course }) {
   return (
     <Link
       href={`/learn/practice?course=${course.id}`}

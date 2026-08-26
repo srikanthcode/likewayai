@@ -22,6 +22,7 @@ export const API_KEYS = {
   firecrawl: process.env.FIRECRAWL_API_KEY || "",
   stability: getKeys("STABILITY_API_KEY"),
   huggingface: process.env.HF_TOKEN || "",
+  gemini: process.env.GEMINI_API_KEY || "",
 };
 
 // Helper function to get user-specific API keys
@@ -60,6 +61,7 @@ export async function getMergedApiKeys(userId: string): Promise<Record<string, s
     firecrawl: userKeys.firecrawl || API_KEYS.firecrawl,
     stability: userKeys.stability ? [userKeys.stability] : API_KEYS.stability,
     huggingface: userKeys.huggingface || API_KEYS.huggingface,
+    gemini: userKeys.gemini || API_KEYS.gemini,
   };
 }
 

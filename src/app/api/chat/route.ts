@@ -4,7 +4,7 @@ import { MODELS, getProviderForModel } from "@/lib/models";
 import { SYSTEM_PROMPTS, AgentMode } from "@/lib/agents";
 import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { executeDeepResearch } from "@/lib/deep-research";
-import { saveMessage, getHistory, getConversationContext, getUserPreferences, summarizeConversation } from "@/lib/memory";
+import { saveMessage, getHistory, getConversationContext, getUserPreferences } from "@/lib/memory";
 import { generateImage, editImage } from "@/lib/tools";
 import { PLANS, PlanType, normalizePlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
@@ -19,7 +19,9 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import { detectPromptInjection, sanitizeInput } from "@/lib/security";
-import { logger, generateRequestId, recordAiMetric } from "@/lib/logger";
+import { logger, generateRequestId } from "@/lib/logger";
+import { orchestrator, analyzeIntent } from "@/lib/orchestrator";
+import type { OrchestratorContext } from "@/lib/orchestrator";
 import crypto from "crypto";
 
 // Lazy import — browser-engine has heavy deps that crash on Vercel serverless
@@ -106,7 +108,7 @@ export async function POST(req: NextRequest) {
       mode = "General",
       projectId = "default",
       customInstructions = "",
-      experimental = false,
+      experimental: _experimental = false,
       extendedThinking = false,
       conversationId,
       startUrl = "",
@@ -136,15 +138,17 @@ export async function POST(req: NextRequest) {
         pattern: injectionCheck.pattern,
         userId 
       });
-      // Don't block - just log and continue with sanitized input
     }
+
+    // Sanitize input to prevent XSS in stored messages
+    const sanitizedPrompt = sanitizeInput(prompt);
 
     // Log request
     reqLogger.info("Chat request received", {
       userId,
       mode,
       modelId,
-      promptLength: prompt.length,
+      promptLength: sanitizedPrompt.length,
       hasImages: images.length > 0,
     });
 
@@ -185,15 +189,27 @@ export async function POST(req: NextRequest) {
     }
 
     // Save user message to memory
-    saveMessage(userId, { role: "user", content: prompt }, projectId, conversationId).catch((error) => {
+    saveMessage(userId, { role: "user", content: sanitizedPrompt }, projectId, conversationId).catch((error) => {
       console.error("[Chat API] Failed to save user message:", error);
+    });
+
+    // ── Orchestrator: understand the task BEFORE routing ──────────────
+    // Every request gets a structured plan (type, complexity, steps, tools,
+    // model recommendation). Routing decisions below are driven by the plan.
+    const taskPlan = analyzeIntent(sanitizedPrompt, mode);
+    reqLogger.info("Task plan created", {
+      userId,
+      planType: taskPlan.type,
+      complexity: taskPlan.complexity,
+      steps: taskPlan.steps.length,
+      requiredTools: taskPlan.requiredTools,
     });
 
     // Determine if this is a deep research request
     const isDeepResearch = mode === "Researcher" || mode === "deep-research";
     if (isDeepResearch) {
       const deepRes = await executeDeepResearch(
-        prompt,
+        sanitizedPrompt,
         modelId || "google/gemini-2.5-flash",
         history,
         plan as PlanType,
@@ -231,13 +247,12 @@ export async function POST(req: NextRequest) {
             const send = (text: string) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
             };
-            send(`> **LikeWay Browser v6** — Forwarding to \`${renderUrl}\`...\n\n`);
-            send(`> Task: ${prompt}\n\n`);
-            try {
-              const res = await fetch(`${renderUrl}/api/browser-agent`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ task: prompt, startUrl, headless: true }),
+            send(`> **LikeWay Browser v6** — Forwarding to \`${renderUrl}\`...\n\n`);              send(`> Task: ${sanitizedPrompt}\n\n`);
+              try {
+                const res = await fetch(`${renderUrl}/api/browser-agent`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ task: sanitizedPrompt, startUrl, headless: true }),
                 // Timeout matches the Vercel serverless maxDuration (120s)
                 signal: AbortSignal.timeout(115000),
               });
@@ -286,7 +301,7 @@ export async function POST(req: NextRequest) {
           };
 
           send(`> **LikeWay Browser v6** — Launching autonomous browser agent...\n\n`);
-          send(`> Task: ${prompt}\n\n`);
+          send(`> Task: ${sanitizedPrompt}\n\n`);
 
           try {
             let lastSubGoal = "";
@@ -294,7 +309,7 @@ export async function POST(req: NextRequest) {
             // Use headless=true on Vercel/Render (no display)
             const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
             const browserSessionId = crypto.randomUUID();
-            const result = await runBrowserEngine(prompt, {
+            const result = await runBrowserEngine(sanitizedPrompt, {
               provider: browserProvider,
               modelId: browserModelId,
               fetchAI,
@@ -367,12 +382,12 @@ export async function POST(req: NextRequest) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
             };
             send(`> **Automation Mode** — Forwarding to \`${renderUrl}\`...\n\n`);
-            send(`> Task: ${prompt}\n\n`);
+            send(`> Task: ${sanitizedPrompt}\n\n`);
             try {
               const res = await fetch(`${renderUrl}/api/browser-agent`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ task: prompt, headless: true }),
+                body: JSON.stringify({ task: sanitizedPrompt, headless: true }),
                 signal: AbortSignal.timeout(180000),
               });
               const data = await res.json();
@@ -420,13 +435,13 @@ export async function POST(req: NextRequest) {
           };
 
           send(`> **Automation Mode** — Launching browser agent...\n\n`);
-          send(`> Task: ${prompt}\n\n`);
+          send(`> Task: ${sanitizedPrompt}\n\n`);
 
           try {
             let lastSubGoal = "";
             const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
             const autoSessionId = crypto.randomUUID();
-            const result = await runBrowserEngine(prompt, {
+            const result = await runBrowserEngine(sanitizedPrompt, {
               provider: automationProvider,
               modelId: automationModelId,
               fetchAI,
@@ -461,7 +476,85 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      saveMessage(userId, { role: "assistant", content: `Automation: ${prompt}` }, projectId, conversationId).catch(() => {});
+      saveMessage(userId, { role: "assistant", content: `Automation: ${sanitizedPrompt}` }, projectId, conversationId).catch(() => {});
+
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
+    }
+
+    // ── Orchestrated Execution (search / multi-step tasks) ─────────────
+    // Tasks that need tools or multiple coordinated steps run through the
+    // AIOrchestrator instead of a single-shot LLM call. Explicit modes
+    // (Browser, Automation, Researcher) were already handled above.
+    // Spreadsheet-shaped data-analysis requests get the full pipeline
+    // (broad "analyze" phrasing alone stays on the fast chat path)
+    const SPREADSHEET_HINT = /\b(excel|xlsx|csv|spreadsheet|dataset)\b/i;
+    const shouldOrchestrate =
+      taskPlan.type === "multi-step" ||
+      taskPlan.type === "document" ||
+      (taskPlan.type === "search" && taskPlan.complexity !== "simple") ||
+      (taskPlan.type === "data-analysis" && SPREADSHEET_HINT.test(sanitizedPrompt));
+
+    if (shouldOrchestrate) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (text: string) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+          };
+
+          send(`> **Task Plan:** ${taskPlan.type} (${taskPlan.complexity}) — ${taskPlan.steps.length} steps\n\n`);
+
+          try {
+            const orchContext: OrchestratorContext = {
+              userId,
+              projectId,
+              conversationId,
+              plan: plan as string,
+              history: history.slice(-10),
+              customInstructions,
+            };
+
+            const result = await orchestrator.execute(
+              taskPlan,
+              sanitizedPrompt,
+              orchContext,
+              {
+                modelId: modelId || taskPlan.modelRecommendation,
+                extendedThinking,
+                onStep: (stepAction, status) => {
+                  const icon = status === "running" ? "▶" : status === "completed" ? "✓" : "✗";
+                  send(`> ${icon} ${stepAction} — ${status}\n\n`);
+                },
+              }
+            );
+
+            send("\n---\n\n");
+
+            // Stream the compiled output progressively for smooth UX
+            const CHUNK = 220;
+            for (let i = 0; i < result.finalOutput.length; i += CHUNK) {
+              send(result.finalOutput.slice(i, i + CHUNK));
+              await new Promise((r) => setTimeout(r, 12));
+            }
+
+            const toolSummary = result.metadata.toolsUsed.length > 0 ? ` · tools: ${result.metadata.toolsUsed.join(", ")}` : "";
+            send(`\n\n> Completed in ${(result.totalDuration / 1000).toFixed(1)}s${toolSummary}\n`);
+
+            if (userId !== "anonymous") {
+              saveMessage(userId, { role: "assistant", content: result.finalOutput }, projectId, conversationId).catch((error) => {
+                console.error("[Chat API] Failed to save orchestrated message:", error);
+              });
+            }
+          } catch (err: any) {
+            send(`\n> **Orchestrator error:** ${err.message}\n`);
+          }
+
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
 
       return new Response(stream, {
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
@@ -475,25 +568,25 @@ export async function POST(req: NextRequest) {
 
     // Intent: Image Understanding (user uploaded image(s) and asks about them)
     const isImageUnderstanding = hasImages && (
-      /\b(what|what's|what is|explain|describe|tell|read|analyze|look|see|identify|recognize|detect|find|show|understand)\b/i.test(prompt) ||
-      /\b(in this image|in the picture|in this photo|this screenshot|this diagram|this image|this picture)\b/i.test(prompt)
+      /\b(what|what's|what is|explain|describe|tell|read|analyze|look|see|identify|recognize|detect|find|show|understand)\b/i.test(sanitizedPrompt) ||
+      /\b(in this image|in the picture|in this photo|this screenshot|this diagram|this image|this picture)\b/i.test(sanitizedPrompt)
     );
 
     // Intent: Image Editing (user wants to modify uploaded image)
     const isImageEditing = hasImages && (
-      /\b(edit|modify|change|transform|convert|turn|make|remove|add|replace|background|anime|realistic|cartoon|sketch|enhance|improve|colorize|restore|upscale|blur|sharpen)\b/i.test(prompt)
+      /\b(edit|modify|change|transform|convert|turn|make|remove|add|replace|background|anime|realistic|cartoon|sketch|enhance|improve|colorize|restore|upscale|blur|sharpen)\b/i.test(sanitizedPrompt)
     );
 
     // Intent: Image Generation (text-to-image, no images attached)
     const isImageGenRequest = !hasImages && (
-      /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(prompt) ||
+      /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(sanitizedPrompt) ||
       mode === "Visionary"
     );
 
     // ── Image Generation Route ───────────────────────────────────────────
     if (isImageGenRequest) {
       try {
-        const imageResult = await generateImage(prompt);
+        const imageResult = await generateImage(sanitizedPrompt);
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           start(controller) {
@@ -515,7 +608,7 @@ export async function POST(req: NextRequest) {
     if (isImageEditing) {
       try {
         const imageUrl = images[0].url;
-        const editedImage = await editImage(imageUrl, prompt);
+        const editedImage = await editImage(imageUrl, sanitizedPrompt);
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           start(controller) {
@@ -540,11 +633,10 @@ export async function POST(req: NextRequest) {
         ? modelId
         : "google/gemini-2.5-flash";
 
-      const visionProvider = getProviderForModel(visionModel);
       const visionUrl = "https://openrouter.ai/api/v1/chat/completions";
 
       // Build multimodal content array
-      const multimodalContent: any[] = [{ type: "text", text: prompt }];
+      const multimodalContent: any[] = [{ type: "text", text: sanitizedPrompt }];
       for (const img of images) {
         multimodalContent.push({
           type: "image_url",
@@ -602,20 +694,20 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Determine if the query needs web search ─────────────────────────
-    const isCodingQ = CODING_KEYWORDS_PATTERN.test(prompt) && CODING_ACTION_PATTERN.test(prompt);
+    const isCodingQ = CODING_KEYWORDS_PATTERN.test(sanitizedPrompt) && CODING_ACTION_PATTERN.test(sanitizedPrompt);
 
-    const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(prompt);
+    const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(sanitizedPrompt);
 
     const needsSearch =
       hasRealTimeTerm ||
-      SEARCH_KEYWORDS.some((w) => prompt.toLowerCase().includes(w)) ||
-      (TIME_KEYWORDS.some((w) => prompt.toLowerCase().includes(w)) && !isCodingQ);
+      SEARCH_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) ||
+      (TIME_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) && !isCodingQ);
 
     // Build search context if needed
     let searchContext = "";
     if (needsSearch) {
       try {
-        const info = await getVerifiedLatestInfo(prompt);
+        const info = await getVerifiedLatestInfo(sanitizedPrompt);
         if (info.context && info.confidence > 20) {
           searchContext = `\n\n[VERIFIED WEB CONTEXT — Confidence: ${info.confidence}%]\n${info.context}\n[END WEB CONTEXT]\n`;
         }
@@ -757,12 +849,12 @@ The capital of France is **Paris**. It is the largest city in France, located in
     }
 
     // Add user content (with file context if files provided)
-    let userContent = prompt;
+    let userContent = sanitizedPrompt;
     if (files && files.length > 0) {
       const fileContext = files
         .map((f: string, i: number) => `[Attached File ${i + 1}]: ${f}`)
         .join("\n");
-      userContent = `${fileContext}\n\n${prompt}`;
+      userContent = `${fileContext}\n\n${sanitizedPrompt}`;
     }
     messages.push({ role: "user", content: userContent });
 

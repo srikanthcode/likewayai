@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
-import { getProviderForModel } from "@/lib/models";
+
 
 export const maxDuration = 60;
 

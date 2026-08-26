@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import { Loader2, ArrowRight } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 

@@ -6,7 +6,6 @@ import {
   clearAuthCookies,
 } from "@/lib/auth";
 import {
-  findSessionByToken,
   deleteSessionByToken,
   deleteAllUserSessions,
 } from "@/lib/auth-models";

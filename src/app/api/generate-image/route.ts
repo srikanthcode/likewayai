@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateWithComfyUI, checkComfyUIHealth, enhancePrompt, selectModel } from "@/lib/comfyui";
 import { generateImage } from "@/lib/tools";
-import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, width = 1024, height = 1024, model, style } = body;
+    const { prompt, width = 1024, height = 1024, model } = body;
 
     if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
@@ -16,14 +15,6 @@ export async function POST(req: NextRequest) {
 
     if (prompt.length > 2000) {
       return NextResponse.json({ error: "Prompt too long (max 2000 chars)" }, { status: 400 });
-    }
-
-    // Get userId from session
-    let userId = "anonymous";
-    const tokens = getTokenFromCookies(req);
-    if (tokens.access) {
-      const payload = verifyAccessToken(tokens.access);
-      if (payload) userId = payload.sub;
     }
 
     // Check if ComfyUI is available

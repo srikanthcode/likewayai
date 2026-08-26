@@ -4,20 +4,6 @@ import { logger, generateRequestId } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 export const revalidate = 300; // Cache for 5 minutes
 
-// Free news APIs (no API key required)
-const NEWS_SOURCES = [
-  {
-    name: "NewsAPI.org",
-    url: "https://newsapi.org/v2/top-headlines",
-    getKey: () => process.env.NEWS_API_KEY,
-  },
-  {
-    name: "GNews",
-    url: "https://gnews.io/api/v4/top-headlines",
-    getKey: () => process.env.GNEWS_API_KEY,
-  },
-];
-
 interface NewsArticle {
   title: string;
   description: string;

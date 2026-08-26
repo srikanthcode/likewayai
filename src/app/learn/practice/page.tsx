@@ -26,8 +26,8 @@ function PracticeContent() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [state, setState] = useState<PracticeState>("select");
-  const [selectedModule, setSelectedModule] = useState<Module | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>("beginner");
+  const [selectedModule, setSelectedModule] = useState<Module | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -35,12 +35,13 @@ function PracticeContent() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
   const [xpEarned, setXpEarned] = useState(0);
-  const [answers, setAnswers] = useState<{ questionId: string; correct: boolean; xp: number }[]>([]);
+  const [_answers, setAnswers] = useState<{ questionId: string; correct: boolean; xp: number }[]>([]);
   
   // Interaction states
   const [inputMode, setInputMode] = useState<"click" | "type" | "voice">("click");
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
