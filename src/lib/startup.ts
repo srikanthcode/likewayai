@@ -4,6 +4,8 @@
  * Runs critical setup tasks when the server starts:
  * - MongoDB index creation
  * - Environment validation
+ * - Browser Automation Worker startup (Render / Docker / standalone)
+ * - WebSocket streaming server startup
  * - Session cleanup
  */
 
@@ -51,7 +53,20 @@ export async function initializeApp(): Promise<void> {
     }
   }
 
-  // 4. Schedule periodic cleanup
+  // 4. Initialize Browser Automation Worker
+  // Start worker on Render / Docker or in Node.js server environment (not on Vercel serverless functions)
+  const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
+  if (!isOnVercel || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+    try {
+      const { browserWorker } = await import("./automation/browser-worker");
+      browserWorker.start();
+      logger.info("Browser Automation Worker initialized and running");
+    } catch (error: any) {
+      logger.warn("Browser Automation Worker initialization skipped", { error: error.message });
+    }
+  }
+
+  // 5. Schedule periodic cleanup
   scheduleCleanup();
 
   initialized = true;
@@ -90,6 +105,13 @@ export function setupGracefulShutdown(server: any) {
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, starting graceful shutdown...`);
     
+    // Stop browser worker if running
+    try {
+      const { browserWorker } = await import("./automation/browser-worker");
+      browserWorker.stop();
+      logger.info("Browser worker stopped");
+    } catch {}
+
     // Stop accepting new connections
     if (server) {
       server.close(() => {

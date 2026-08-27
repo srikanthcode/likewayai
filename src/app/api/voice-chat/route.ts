@@ -22,8 +22,8 @@ MULTILINGUAL & TAMIL (தமிழ்) FLUENCY:
 
 YOUR CAPABILITIES & EXECUTION AUTHORITY:
 - You HAVE REAL-TIME AUTONOMOUS BROWSER AUTOMATION, web navigation, application launching, and live web search.
-- When asked to open WhatsApp, YouTube, Google, or any website, or to do tasks in the browser, NEVER say "I cannot open automatically", "I don't have access", or "I cannot browse websites".
-- ALWAYS confirm positively, naturally, and warmly in the user's language (e.g. in English: "Opening WhatsApp Web in autonomous browser automation now", or in Tamil: "வாட்ஸ்அப் செயலியை உங்களுக்காக இப்போது திறக்கிறேன்.").
+- When asked to do tasks in the browser, automate web tasks, search on Amazon, navigate to Wikipedia, or open WhatsApp/YouTube/Google, NEVER say "I cannot open automatically", "I don't have access", or "I cannot browse websites".
+- ALWAYS confirm positively, naturally, and warmly in the user's language (e.g. in English: "Executing autonomous browser automation for your task now", or in Tamil: "உங்களுக்காக பிரவுசர் ஆட்டோமேஷன் பணியை உடனடியாகத் தொடங்குகிறேன்.").
 
 CRITICAL RULES FOR VOICE RESPONSES:
 1. Speak naturally, warmly, and concisely (typically 1 to 2 conversational sentences).
@@ -83,21 +83,60 @@ function analyzeVoiceIntent(prompt: string): {
   appName?: string;
   isDirectLaunch?: boolean;
   searchQuery?: string;
+  language?: "tamil" | "english" | "tanglish";
 } {
   const p = prompt.toLowerCase().trim();
 
+  // Detect language
+  const isTamil = /[\u0B80-\u0BFF]/.test(prompt);
+  const isTanglish = /\b(pesunga|pannu|sollu|paaru|eduthu|kudu|epdi|irukkeenga|vanakkam|nandri)\b/i.test(p);
+  const language = isTamil ? "tamil" : isTanglish ? "tanglish" : "english";
+
   // 1. In-App Client navigation intents
   if (/\b(open|go to|show|view)\s+(pricing|plans|subscription)\b/i.test(p)) {
-    return { type: "client_action", actionName: "open_pricing" };
+    return { type: "client_action", actionName: "open_pricing", language };
   }
   if (/\b(new\s+chat|start\s+new\s+conversation|clear\s+chat|reset\s+chat)\b/i.test(p)) {
-    return { type: "client_action", actionName: "new_chat" };
+    return { type: "client_action", actionName: "new_chat", language };
   }
   if (/\b(open|go to|show)\s+(account|settings|profile)\b/i.test(p)) {
-    return { type: "client_action", actionName: "open_account" };
+    return { type: "client_action", actionName: "open_account", language };
   }
 
-  // 2. WhatsApp matching (covers any variation like "open whatsapp", "can you open whatsapp", "whatsapp web", "launch whatsapp")
+  // 2. Deep Browser Automation / Action Tasks (Multi-step automation on target websites)
+  // E.g. "Automate browser to search for laptops on Amazon", "Go to Wikipedia and read about AI", "Search for flights on Google Flights"
+  const isBrowserAutomationVerb = /\b(automate|browser automation|scrape|extract|fill out|click on|search.*on|find.*on|look up.*on|check.*on|navigate to.*and|go to.*and|open.*and|search panni|automation pannu|paathu sollu)\b/i.test(p);
+  
+  if (isBrowserAutomationVerb || /\b(browser automation|automate browser|automated browser|autonomous browser)\b/i.test(p)) {
+    let resolvedUrl = "https://www.google.com";
+    let matchedSiteName = "Web";
+
+    for (const [key, site] of Object.entries(KNOWN_SITES)) {
+      if (p.includes(key)) {
+        resolvedUrl = site.url;
+        matchedSiteName = site.name;
+        break;
+      }
+    }
+
+    const domainMatch = p.match(/\b(?:on|at|in|to)\s+([a-z0-9\-]+\.(?:com|org|in|io|net|co|app|ai|dev))\b/i);
+    if (domainMatch) {
+      resolvedUrl = `https://${domainMatch[1]}`;
+      matchedSiteName = domainMatch[1];
+    }
+
+    return {
+      type: "browser_action",
+      actionName: "browser_automation",
+      targetUrl: resolvedUrl,
+      siteName: matchedSiteName,
+      appName: matchedSiteName,
+      isDirectLaunch: false, // Executes via Playwright Chromium Worker!
+      language,
+    };
+  }
+
+  // 3. Simple Direct Website / App Launch (e.g. "open whatsapp", "open youtube", "launch google")
   if (/\b(whatsapp|what's\s*app|whats\s*app)\b/i.test(p)) {
     return {
       type: "browser_action",
@@ -106,19 +145,22 @@ function analyzeVoiceIntent(prompt: string): {
       siteName: "WhatsApp Web",
       appName: "WhatsApp Web",
       isDirectLaunch: true,
+      language,
     };
   }
 
-  // 3. Direct Website / Application matching
   for (const [key, site] of Object.entries(KNOWN_SITES)) {
     if (p.includes(key)) {
+      // If it contains action verbs like "search for", "find", it's an automation task
+      const isTask = /\b(search|find|buy|check|get|read|show me|tell me|look for)\b/i.test(p);
       return {
         type: "browser_action",
         actionName: "browser_automation",
         targetUrl: site.url,
         siteName: site.name,
         appName: site.name,
-        isDirectLaunch: true,
+        isDirectLaunch: !isTask,
+        language,
       };
     }
   }
@@ -134,22 +176,11 @@ function analyzeVoiceIntent(prompt: string): {
       siteName: domain,
       appName: domain,
       isDirectLaunch: true,
+      language,
     };
   }
 
-  // 5. Browser Automation / Search commands (e.g. "search for laptops", "open google and find", "browser automation")
-  if (/\b(browser|automation|automate|web\s*browser)\b/i.test(p)) {
-    return {
-      type: "browser_action",
-      actionName: "browser_automation",
-      targetUrl: "https://www.google.com",
-      siteName: "Web Browser",
-      appName: "Web Browser",
-      isDirectLaunch: true,
-    };
-  }
-
-  // 6. Any general "open <something>"
+  // 5. Any general "open <something>"
   const openGeneralMatch = p.match(/\b(?:open|launch|go to|navigate to)\s+([a-z0-9\s\-]+)$/i);
   if (openGeneralMatch) {
     const target = openGeneralMatch[1].trim();
@@ -161,11 +192,12 @@ function analyzeVoiceIntent(prompt: string): {
         siteName: target,
         appName: target,
         isDirectLaunch: true,
+        language,
       };
     }
   }
 
-  // 7. Deep Web Search / Real-time info intents
+  // 6. Deep Web Search / Real-time info intents
   const isSearchQuery =
     SEARCH_KEYWORDS.some((kw) => p.includes(kw)) ||
     TIME_KEYWORDS.some((kw) => p.includes(kw)) ||
@@ -176,10 +208,11 @@ function analyzeVoiceIntent(prompt: string): {
     return {
       type: "web_search",
       searchQuery: prompt,
+      language,
     };
   }
 
-  return { type: "general_qa" };
+  return { type: "general_qa", language };
 }
 
 async function callGeminiDirect(
@@ -188,9 +221,7 @@ async function callGeminiDirect(
   apiKey: string,
   contextInfo?: string
 ): Promise<string> {
-  // Use current Google Gemini models (gemini-3.6-flash active, with fallbacks)
   const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-3.1-pro-preview"];
-
   const contents: any[] = [];
 
   // Add recent history
@@ -244,7 +275,6 @@ async function callGeminiDirect(
         const errText = await res.text();
         console.warn(`[Voice API] Gemini model ${model} returned ${res.status}:`, errText.slice(0, 150));
 
-        // Bearer token fallback
         if (res.status === 400 || res.status === 401 || res.status === 403) {
           const authRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
             method: "POST",
@@ -295,49 +325,62 @@ export async function POST(req: NextRequest) {
     let actionResultText = "";
     let clientAction: string | undefined;
     let appLaunch: { targetUrl: string; siteName: string; appName: string; isDirectLaunch: boolean } | undefined;
-    let browserTask: { targetUrl?: string; task: string; isDirectLaunch?: boolean } | undefined;
+    let browserTask: { targetUrl?: string; siteName?: string; task: string; isDirectLaunch: boolean; autoRun?: boolean } | undefined;
 
     // 2. Handle In-App Client Navigation
     if (intent.type === "client_action") {
       clientAction = intent.actionName;
       if (clientAction === "open_pricing") {
-        actionResultText = "Opening our plans and pricing for you.";
+        actionResultText = intent.language === "tamil"
+          ? "நமது திட்டங்கள் மற்றும் விலைப் பட்டியலை உங்களுக்காகத் திறக்கிறேன்."
+          : "Opening our plans and pricing for you.";
       } else if (clientAction === "new_chat") {
-        actionResultText = "Starting a fresh conversation. What would you like to explore?";
+        actionResultText = intent.language === "tamil"
+          ? "புதிய உரையாடலைத் தொடங்குகிறேன். என்ன பேசலாம்?"
+          : "Starting a fresh conversation. What would you like to explore?";
       } else if (clientAction === "open_account") {
-        actionResultText = "Opening your account and profile settings.";
+        actionResultText = intent.language === "tamil"
+          ? "உங்கள் கணக்கு அமைப்புகளைத் திறக்கிறேன்."
+          : "Opening your account and profile settings.";
       }
     }
 
-    // 3. Handle Direct App Launch (e.g., "Can you open WhatsApp?")
-    if (intent.type === "app_launch" && intent.targetUrl) {
-      appLaunch = {
-        targetUrl: intent.targetUrl,
-        siteName: intent.siteName || "Application",
-        appName: intent.appName || intent.siteName || "Application",
-        isDirectLaunch: true,
-      };
-      browserTask = {
-        targetUrl: intent.targetUrl,
-        task: prompt,
-        isDirectLaunch: true,
-      };
-      actionResultText = `Opening ${intent.siteName || "application"} for you right now.`;
-    }
-
-    // 4. Handle Deep Browser Automation Intent
+    // 3. Handle Direct App Launch vs Deep Browser Automation
     if (intent.type === "browser_action") {
-      browserTask = {
-        targetUrl: intent.targetUrl,
-        task: prompt,
-        isDirectLaunch: false,
-      };
-      actionResultText = intent.siteName
-        ? `Navigating to ${intent.siteName} and executing your task.`
-        : "Launching autonomous browser agent for your task.";
+      if (intent.isDirectLaunch && intent.targetUrl) {
+        appLaunch = {
+          targetUrl: intent.targetUrl,
+          siteName: intent.siteName || "Application",
+          appName: intent.appName || intent.siteName || "Application",
+          isDirectLaunch: true,
+        };
+        browserTask = {
+          targetUrl: intent.targetUrl,
+          siteName: intent.siteName,
+          task: prompt,
+          isDirectLaunch: true,
+        };
+        actionResultText = intent.language === "tamil"
+          ? `${intent.siteName || "செயலியை"} உங்களுக்காக இப்போது திறக்கிறேன்.`
+          : `Opening ${intent.siteName || "application"} for you right now.`;
+      } else {
+        // Deep Autonomous Browser Automation
+        browserTask = {
+          targetUrl: intent.targetUrl,
+          siteName: intent.siteName,
+          task: prompt,
+          isDirectLaunch: false,
+          autoRun: true,
+        };
+        actionResultText = intent.language === "tamil"
+          ? `${intent.siteName || "பிரவுசரில்"} உங்கள் பணியை தன்னாட்சி முறையில் (autonomous browser automation) நிறைவேற்றுகிறேன்.`
+          : intent.siteName
+          ? `Navigating to ${intent.siteName} and executing your autonomous browser task.`
+          : "Launching autonomous browser agent to execute your request.";
+      }
     }
 
-    // 5. Handle Web Search
+    // 4. Handle Web Search
     let contextInfo = "";
     if (intent.type === "web_search" && intent.searchQuery) {
       try {
@@ -353,7 +396,7 @@ export async function POST(req: NextRequest) {
     let replyText = actionResultText;
     let providerUsed = "intent-engine";
 
-    // 6. Generate AI Voice Response if not an immediate action
+    // 5. Generate AI Voice Response if not an immediate action
     if (!replyText) {
       if (geminiKey) {
         try {

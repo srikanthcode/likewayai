@@ -3,6 +3,7 @@ import { fetchAI } from "@/lib/api-manager";
 import { getProviderForModel } from "@/lib/models";
 import { planAutomation, AutomationStep } from "@/lib/automation/tasks";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { browserJobQueue } from "@/lib/automation/job-queue";
 
 export const maxDuration = 120;
 
@@ -39,7 +40,7 @@ async function getPlaywright() {
     _pwInitialized = false;
     throw new Error(
       "Browser automation is not available directly on Vercel serverless. " +
-      "Use Render backend at https://likewayai.onrender.com/api/browser-agent or /api/automation instead."
+      "Use Render backend or Job Queue instead."
     );
   }
 
@@ -82,10 +83,13 @@ async function getBrowser(): Promise<{ browser: any }> {
     headless: isProduction,
     args: [
       "--no-sandbox",
+      "--disable-setuid-sandbox",
       "--disable-blink-features=AutomationControlled",
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--disable-infobars",
+      "--no-first-run",
+      "--no-zygote",
     ],
     timeout: 60000,
   };
@@ -162,17 +166,62 @@ async function executeStep(
   }
 }
 
-// POST — plan + execute automation
+// POST — plan + execute automation (or enqueue if async: true / on Vercel)
 export async function POST(req: NextRequest) {
   try {
+    const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
+    const isRender = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+
     const tokens = getTokenFromCookies(req);
     const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+    const userId = payload?.sub || req.headers.get("x-user-id") || "anonymous";
 
     const body = await req.json();
-    const { task, modelId: requestedModel } = body;
+    const { task, modelId: requestedModel, async: isAsync, startUrl } = body;
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
       return NextResponse.json({ error: "Task description is required" }, { status: 400, headers: corsHeaders });
+    }
+
+    // If requested async mode, enqueue to Job Queue immediately
+    if (isAsync) {
+      const job = await browserJobQueue.enqueueJob({
+        userId,
+        task: task.trim(),
+        startUrl,
+        modelId: requestedModel,
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          async: true,
+          jobId: job.id,
+          status: job.status,
+          message: "Job enqueued. Track progress via /api/automation/jobs/" + job.id,
+        },
+        { status: 202, headers: corsHeaders }
+      );
+    }
+
+    // If running on Vercel without local Chromium, proxy to Render worker backend
+    if (isOnVercel && !isRender) {
+      const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+      const selfUrl = req.nextUrl.origin;
+
+      if (renderUrl !== selfUrl && !renderUrl.startsWith(selfUrl + "/")) {
+        const res = await fetch(`${renderUrl}/api/automation`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(req.headers.get("authorization") ? { Authorization: req.headers.get("authorization")! } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        return NextResponse.json(data, { status: res.status, headers: corsHeaders });
+      }
     }
 
     // Select model for planning
@@ -251,7 +300,8 @@ export async function GET() {
     {
       status: "ready",
       browserActive: !!browser?.isConnected(),
-      message: "Automation API ready. Send POST with { task: 'your instruction' }",
+      jobQueueActive: true,
+      message: "Automation API ready. Send POST with { task: 'your instruction' } or { async: true }",
     },
     { headers: corsHeaders }
   );

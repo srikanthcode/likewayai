@@ -3,6 +3,8 @@ import { runAgent } from "@/lib/automation/browser-engine";
 import type { AgentOptions } from "@/lib/automation/browser-engine";
 import { fetchAI } from "@/lib/api-manager";
 import { getProviderForModel } from "@/lib/models";
+import { browserJobQueue } from "@/lib/automation/job-queue";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import crypto from "crypto";
 
 export const maxDuration = 180;
@@ -11,13 +13,17 @@ export const maxDuration = 180;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
   "Access-Control-Max-Age": "86400",
 };
 
 // Use headless=false locally so user can see the browser
 // Use headless=true on Vercel/Render (no display)
-const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
+const isProduction =
+  process.env.VERCEL_ENV === "production" ||
+  process.env.VERCEL_ENV === "preview" ||
+  !!process.env.RENDER ||
+  process.env.NODE_ENV === "production";
 
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
@@ -25,14 +31,62 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
+    const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
+    const isRender = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+
+    const tokens = getTokenFromCookies(req);
+    const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+    const userId = payload?.sub || req.headers.get("x-user-id") || "anonymous";
+
     const body = await req.json();
-    const { task, modelId: requestedModel, startUrl, headless = isProduction } = body;
+    const { task, modelId: requestedModel, startUrl, headless = isProduction, async: isAsync } = body;
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
       return NextResponse.json(
         { error: "Task description is required" },
         { status: 400, headers: corsHeaders }
       );
+    }
+
+    // If requested async mode, enqueue to Job Queue immediately
+    if (isAsync) {
+      const job = await browserJobQueue.enqueueJob({
+        userId,
+        task: task.trim(),
+        startUrl: startUrl?.trim(),
+        modelId: requestedModel,
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          async: true,
+          jobId: job.id,
+          status: job.status,
+          message: "Job enqueued. Track progress via /api/automation/jobs/" + job.id,
+        },
+        { status: 202, headers: corsHeaders }
+      );
+    }
+
+    // If running on Vercel without local Chromium, forward to Render worker backend
+    if (isOnVercel && !isRender) {
+      const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+      const selfUrl = req.nextUrl.origin;
+
+      if (renderUrl !== selfUrl && !renderUrl.startsWith(selfUrl + "/")) {
+        const res = await fetch(`${renderUrl}/api/browser-agent`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(req.headers.get("authorization") ? { Authorization: req.headers.get("authorization")! } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        return NextResponse.json(data, { status: res.status, headers: corsHeaders });
+      }
     }
 
     const modelId = requestedModel || "mistral-small-latest";
@@ -100,7 +154,8 @@ export async function GET() {
   return NextResponse.json({
     status: "ready",
     name: "LikeWay Browser",
-    version: "6.0",
-    message: "Unified browser agent v6 (accessibility-first, adaptive recovery, goal decomposition). POST with { task: 'your instruction' }",
+    version: "7.0",
+    jobQueue: true,
+    message: "Unified browser agent v7 (accessibility-first, job queue, adaptive recovery). POST with { task: 'your instruction' } or { async: true }",
   }, { headers: corsHeaders });
 }

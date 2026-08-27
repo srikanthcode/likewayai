@@ -284,8 +284,8 @@ export class ToolRegistry {
         goal: { type: "string", required: false, description: "Goal or extraction instructions" },
       },
       executor: async ({ url, goal }: any) => {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-        const agentUrl = apiBase ? `${apiBase}/api/browser-agent` : "http://localhost:3000/api/browser-agent";
+        const apiBase = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+        const agentUrl = `${apiBase}/api/browser-agent`;
 
         const res = await fetch(agentUrl, {
           method: "POST",

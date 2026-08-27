@@ -1012,7 +1012,8 @@ export default function ChatPage() {
 
               if (!voiceData.browserTask.isDirectLaunch) {
                 try {
-                  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+                  setLiveTranscript(`Executing browser task: "${voiceData.browserTask.task}"...`);
+                  const apiBase = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || '';
                   const agentUrl = apiBase ? `${apiBase}/api/browser-agent` : '/api/browser-agent';
                   const browserRes = await fetch(agentUrl, {
                     method: 'POST',
@@ -1025,7 +1026,19 @@ export default function ChatPage() {
                   if (browserRes.ok) {
                     const browserData = await browserRes.json();
                     if (browserData.answer) {
-                      fullContent = `${fullContent} ${browserData.answer}`;
+                      fullContent = browserData.answer;
+                    }
+                    if (browserData.lastScreenshot) {
+                      // Attach screenshot to conversation for visual verification
+                      setMessages(prev => [
+                        ...prev,
+                        {
+                          id: `msg_${Date.now()}_screenshot`,
+                          role: 'assistant',
+                          content: `![Browser Result](${browserData.lastScreenshot})\n\n**Browser Automation Result:** ${browserData.answer || 'Task completed.'}`,
+                          status: 'done',
+                        }
+                      ]);
                     }
                   }
                 } catch (bErr) {
