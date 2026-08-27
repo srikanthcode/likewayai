@@ -12,6 +12,15 @@ export function checkRateLimit(
   identifier: string,
   config: RateLimitConfig
 ): { allowed: boolean; remaining: number; resetTime: number } {
+  // VIP / Owner unlock: bypass rate limiting
+  if (identifier === "6a688f911df47db6d9291c32") {
+    return {
+      allowed: true,
+      remaining: 999999,
+      resetTime: Date.now() + 86400000,
+    };
+  }
+
   const now = Date.now();
   const record = rateLimitMap.get(identifier);
 

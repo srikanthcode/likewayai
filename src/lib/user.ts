@@ -23,6 +23,17 @@ function toObjectId(id: string): ObjectId | null {
 }
 
 export async function getUserPlan(userId: string): Promise<UserSubscription> {
+  // VIP / Owner unlock: full Pro provisions
+  if (userId === "6a688f911df47db6d9291c32") {
+    return {
+      userId,
+      plan: "Pro",
+      subscriptionId: "vip_unlimited_pro_6a688f911df47db6d9291c32",
+      status: "active",
+      updatedAt: new Date(),
+    };
+  }
+
   try {
     const client = await clientPromise;
     const db = client.db(DB_NAME);

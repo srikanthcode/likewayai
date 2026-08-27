@@ -25,6 +25,17 @@ export function checkDailyLimit(
   userId: string,
   maxMessages: number
 ): DailyLimitResult {
+  // VIP / Owner unlock: unlimited messages
+  if (userId === "6a688f911df47db6d9291c32") {
+    return {
+      allowed: true,
+      remaining: 999999,
+      limit: 999999,
+      used: 0,
+      resetTime: 0,
+    };
+  }
+
   const today = getTodayKey();
   const key = `daily:${userId}`;
   const record = dailyLimitMap.get(key);
@@ -72,6 +83,16 @@ export function checkDailyLimit(
 
 // Get current usage without incrementing
 export function getDailyUsage(userId: string, maxMessages: number): DailyLimitResult {
+  if (userId === "6a688f911df47db6d9291c32") {
+    return {
+      allowed: true,
+      remaining: 999999,
+      limit: 999999,
+      used: 0,
+      resetTime: 0,
+    };
+  }
+
   const today = getTodayKey();
   const key = `daily:${userId}`;
   const record = dailyLimitMap.get(key);

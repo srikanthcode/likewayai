@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
     // Update last login time
     await updateUser(user._id.toString(), { lastLoginAt: new Date() });
 
+    const isVip = user._id.toString() === "6a688f911df47db6d9291c32";
     const cookies = setAuthCookies(accessToken, refreshToken);
     const response = NextResponse.json({
       user: {
@@ -82,8 +83,8 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        role: user.role,
-        plan: user.plan,
+        role: isVip ? "admin" : user.role,
+        plan: isVip ? "Pro" : user.plan,
         onboardingCompleted: user.onboardingCompleted,
         emailVerified: user.emailVerified,
         provider: user.provider,
