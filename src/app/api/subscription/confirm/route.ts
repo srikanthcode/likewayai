@@ -10,6 +10,7 @@ import {
   createRefreshToken,
   setAuthCookies,
   generateSessionId,
+  isVipUser,
 } from "@/lib/auth";
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -85,16 +86,16 @@ export async function POST(req: NextRequest) {
     // Re-fetch user to get the freshest DB state
     const updatedUser = await findUserById(userId);
     if (updatedUser) {
-      const isVip = userId === "6a688f911df47db6d9291c32";
+      const vip = isVipUser(userId, updatedUser.email);
       // VIP always gets Pro regardless of what they paid for
-      const effectivePlan = isVip ? "Pro" : planId;
+      const effectivePlan = vip ? "Pro" : planId;
 
       // Issue new tokens with the upgraded plan — reusing existing sessionId
       const newAccessToken = createAccessToken(
         {
           id: userId,
           email: updatedUser.email,
-          role: isVip ? "admin" : updatedUser.role,
+          role: vip ? "admin" : updatedUser.role,
           plan: effectivePlan,
         },
         existingSessionId

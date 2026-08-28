@@ -17,7 +17,7 @@ import {
 } from "@/lib/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
-import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { getTokenFromCookies, verifyAccessToken, isVipUser } from "@/lib/auth";
 import { detectPromptInjection, sanitizeInput } from "@/lib/security";
 import { logger, generateRequestId } from "@/lib/logger";
 import { orchestrator, analyzeIntent } from "@/lib/orchestrator";
@@ -121,7 +121,8 @@ export async function POST(req: NextRequest) {
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
     let plan = normalizePlan(tokenPayload?.plan) || "Core";
-    if (userId === "6a688f911df47db6d9291c32" || tokenPayload?.sub === "6a688f911df47db6d9291c32") {
+    // Check by userId AND by email claim in the token (email-based VIP match)
+    if (isVipUser(userId, tokenPayload?.email as string | undefined)) {
       plan = "Pro";
     }
 

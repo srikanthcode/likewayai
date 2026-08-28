@@ -1,5 +1,6 @@
 import clientPromise from "./mongodb";
 import { ObjectId, Collection } from "mongodb";
+import { isVipUser } from "./auth";
 
 const DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
 
@@ -23,12 +24,12 @@ function toObjectId(id: string): ObjectId | null {
 }
 
 export async function getUserPlan(userId: string): Promise<UserSubscription> {
-  // VIP / Owner unlock: full Pro provisions
-  if (userId === "6a688f911df47db6d9291c32") {
+  // VIP / Owner unlock: full Pro provisions (check by ID)
+  if (isVipUser(userId)) {
     return {
       userId,
       plan: "Pro",
-      subscriptionId: "vip_unlimited_pro_6a688f911df47db6d9291c32",
+      subscriptionId: "vip_unlimited_pro",
       status: "active",
       updatedAt: new Date(),
     };
@@ -56,6 +57,17 @@ export async function getUserPlan(userId: string): Promise<UserSubscription> {
         userId,
         plan: "Core",
         status: "pending",
+        updatedAt: new Date(),
+      };
+    }
+
+    // VIP check by email too (covers mismatched MongoDB _id)
+    if (isVipUser(user._id?.toString(), user.email)) {
+      return {
+        userId,
+        plan: "Pro",
+        subscriptionId: "vip_unlimited_pro",
+        status: "active",
         updatedAt: new Date(),
       };
     }

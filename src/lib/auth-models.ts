@@ -1,5 +1,6 @@
 import { Collection, ObjectId } from "mongodb";
 import clientPromise from "./mongodb";
+import { isVipUser } from "./auth";
 
 const DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
 
@@ -84,17 +85,18 @@ export async function findUserById(id: string): Promise<User | null> {
     if (!oid) return null;
     const user: any = await db.collection<User>("users").findOne({ _id: oid as any });
     if (user) {
-      if (id === "6a688f911df47db6d9291c32" || user._id?.toString() === "6a688f911df47db6d9291c32") {
+      // VIP check: match by _id OR by email (owner may have any MongoDB _id)
+      if (isVipUser(user._id?.toString(), user.email)) {
         user.plan = "pro";
         user.role = "admin";
       }
       return user;
     }
-    if (id === "6a688f911df47db6d9291c32") {
+    if (isVipUser(id)) {
       return {
         _id: oid,
         name: "Pro User",
-        email: "vip@likeway.ai",
+        email: "srikanthz1011@gmail.com",
         avatar: "",
         provider: "email",
         emailVerified: true,

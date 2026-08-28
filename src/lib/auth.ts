@@ -1,5 +1,22 @@
 import crypto from "crypto";
 
+// ── VIP / Owner identity ────────────────────────────────────────────────────
+// Match by EITHER the MongoDB _id OR the owner email so the VIP unlock works
+// regardless of which ID MongoDB actually assigned to this account.
+export const VIP_USER_IDS   = new Set(["6a688f911df47db6d9291c32"]);
+export const VIP_USER_EMAILS = new Set(["srikanthz1011@gmail.com"]);
+
+/**
+ * Returns true if the given id or email belongs to a VIP / owner account.
+ * Pass as many identifiers as you have available — any match is enough.
+ */
+export function isVipUser(id?: string | null, email?: string | null): boolean {
+  if (id    && VIP_USER_IDS.has(id.trim()))                    return true;
+  if (email && VIP_USER_EMAILS.has(email.trim().toLowerCase())) return true;
+  return false;
+}
+
+
 // ── Secrets ────────────────────────────────────────────────────────────────
 // Lazy getter — never throws at module load time (build has no env vars).
 // Validation happens when JWT operations are actually called at runtime.
@@ -111,13 +128,14 @@ export function createAccessToken(
   user: { id: string; email?: string; role: string; plan: string },
   sessionId: string
 ): string {
-  const isVip = user.id === "6a688f911df47db6d9291c32";
+  // Check BOTH id AND email — email catches cases where the DB _id differs
+  const vip = isVipUser(user.id, user.email);
   const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: user.id,
     email: user.email,
-    role: isVip ? "admin" : user.role,
-    plan: isVip ? "Pro" : user.plan,
+    role: vip ? "admin" : user.role,
+    plan: vip ? "Pro" : user.plan,
     type: "access",
     sessionId,
     exp: now + JWT_ACCESS_EXPIRY,
@@ -127,12 +145,12 @@ export function createAccessToken(
 }
 
 export function createRefreshToken(userId: string, sessionId: string): string {
-  const isVip = userId === "6a688f911df47db6d9291c32";
+  const vip = isVipUser(userId);
   const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: userId,
-    role: isVip ? "admin" : "user",
-    plan: isVip ? "Pro" : "free",
+    role: vip ? "admin" : "user",
+    plan: vip ? "Pro" : "free",
     type: "refresh",
     sessionId,
     exp: now + JWT_REFRESH_EXPIRY,
@@ -143,7 +161,8 @@ export function createRefreshToken(userId: string, sessionId: string): string {
 
 export function verifyAccessToken(token: string): TokenPayload | null {
   const payload = verify(token, getJwtSecret()) as TokenPayload | null;
-  if (payload && payload.sub === "6a688f911df47db6d9291c32") {
+  // Re-apply VIP override on every verify — catches ID or email match
+  if (payload && isVipUser(payload.sub, payload.email as string | undefined)) {
     payload.plan = "Pro";
     payload.role = "admin";
   }
