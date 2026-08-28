@@ -1,30 +1,40 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setCurrentPlan } from "@/lib/plans";
 import { motion } from "framer-motion";
-
-import { useState } from "react";
-
 import { useAuth } from "@/components/AuthProvider";
 
 export default function SuccessPage() {
   const router = useRouter();
   const { refreshUser } = useAuth();
   const [upgradedPlan, setUpgradedPlan] = useState("Plus");
+  const [isRefreshing, setIsRefreshing] = useState(true);
 
   useEffect(() => {
-    // Read planId dynamically from search query safely on client side
+    // Read planId dynamically from search query on client side
     const params = new URLSearchParams(window.location.search);
     const planId = (params.get("planId") || "Plus") as any;
     setUpgradedPlan(planId);
-    
-    // Update local state plan
+
+    // Immediately persist to localStorage so the app state is correct
     setCurrentPlan(planId);
 
-    // Refresh user session state dynamically
-    refreshUser().catch(err => console.error("Failed to refresh user subscription:", err));
+    // Refresh user session state from the SERVER — this is the authoritative
+    // source of truth. We must await this so the AuthProvider cache and JWT
+    // cookie reflect the new plan before we redirect.
+    const doRefresh = async () => {
+      try {
+        await refreshUser();
+      } catch (err) {
+        console.error("Failed to refresh user subscription:", err);
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    doRefresh();
 
     const timer = setTimeout(() => {
       router.push("/");
@@ -32,7 +42,6 @@ export default function SuccessPage() {
 
     return () => clearTimeout(timer);
   }, [router, refreshUser]);
-
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-white">
@@ -74,6 +83,23 @@ export default function SuccessPage() {
             Your <span className="font-extrabold text-cyan-400">{upgradedPlan}</span> plan is now active. Welcome to Likeway AI ✨
           </p>
         </motion.div>
+
+        {/* Session refresh indicator */}
+        {isRefreshing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="flex items-center justify-center gap-2 text-gray-500 text-xs"
+          >
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+              className="inline-block w-3 h-3 border border-gray-600 border-t-gray-300 rounded-full"
+            />
+            Activating your features...
+          </motion.div>
+        )}
 
         {/* Redirect hint */}
         <motion.p

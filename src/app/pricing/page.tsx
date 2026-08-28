@@ -72,6 +72,8 @@ export default function PricingPage() {
   const [selectedCurrency, setSelectedCurrency] = useState(CURRENCIES[0]);
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
   const currencyMenuRef = useRef<HTMLDivElement>(null);
+  // serverPlan: the plan returned from the server (authoritative — not localStorage)
+  const [serverPlan, setServerPlan] = useState<PlanType | null>(null);
 
   // Auto-select plan from URL after auth is loaded
   useEffect(() => {
@@ -89,14 +91,16 @@ export default function PricingPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.plan) {
-            setCurrentPlan(data.plan);
+            // Sync localStorage AND set authoritative server plan state
+            setCurrentPlan(data.plan as PlanType);
+            setServerPlan(data.plan as PlanType);
           }
         }
       } catch (e) {
         console.error("Failed to fetch current plan:", e);
       }
     };
-    
+
     fetchPlan();
 
     const handleNativePurchase = (event: Event) => {
@@ -129,10 +133,19 @@ export default function PricingPage() {
     }
 
     if (planId === "Core") {
-       setCurrentPlan(planId);
-       router.push("/");
-       return;
-     }
+      setCurrentPlan(planId);
+      router.push("/");
+      return;
+    }
+
+    // ── Guard: block re-payment if the user already owns this plan ─────────
+    // Use server-fetched plan (authoritative) to prevent double-charging.
+    const currentServerPlan = serverPlan || (getCurrentPlan() as PlanType);
+    if (currentServerPlan === planId) {
+      toast(`You already have the ${planId} plan! Your features are already active.`, "info");
+      router.push("/");
+      return;
+    }
 
     setSelectedPlanId(planId);
     setIsCheckoutOpen(true);
@@ -211,6 +224,7 @@ export default function PricingPage() {
             if (confirmData.error) throw new Error(confirmData.error);
 
             setCurrentPlan(planId);
+            setServerPlan(planId); // update server plan state immediately after payment
             await refreshUser();
             setCheckoutStep("success");
           } catch (err: any) {
@@ -403,7 +417,10 @@ export default function PricingPage() {
           {Object.values(PLANS).map((plan, index) => {
             const modelCount = getPlanModels(plan.id);
             const isPro = plan.id === "Pro";
-            const isCurrentPlan = plan.id === "Core" && getCurrentPlan() === "Core";
+            // Use server plan (authoritative) so the button reflects the real
+            // subscription state — not just what's in localStorage.
+            const effectiveCurrentPlan = serverPlan || (getCurrentPlan() as PlanType);
+            const isCurrentPlan = plan.id === effectiveCurrentPlan;
 
             return (
               <motion.div
@@ -494,18 +511,22 @@ export default function PricingPage() {
                 </div>
 
                 <button
-                  onClick={() => handleSelectPlan(plan.id)}
+                  onClick={() => !isCurrentPlan && handleSelectPlan(plan.id)}
+                  disabled={isCurrentPlan}
+                  aria-label={isCurrentPlan ? `${plan.id} is your current plan` : `Upgrade to ${plan.id}`}
                   className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg ${
-                    plan.id === "Go"
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-black hover:from-cyan-400 hover:to-blue-400 hover:shadow-cyan-500/25"
+                    isCurrentPlan
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default opacity-90"
+                      : plan.id === "Go"
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-black hover:from-cyan-400 hover:to-blue-400 hover:shadow-cyan-500/25 cursor-pointer"
                       : plan.id === "Pro"
-                      ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white hover:from-violet-400 hover:to-purple-400 hover:shadow-violet-500/25"
+                      ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white hover:from-violet-400 hover:to-purple-400 hover:shadow-violet-500/25 cursor-pointer"
                       : plan.id === "Plus"
-                      ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-400 hover:to-indigo-400 hover:shadow-blue-500/25"
-                      : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
-                  } ${hoveredPlan === plan.id ? "scale-[1.02]" : ""}`}
+                      ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-400 hover:to-indigo-400 hover:shadow-blue-500/25 cursor-pointer"
+                      : "bg-white/5 hover:bg-white/10 text-white border border-white/10 cursor-pointer"
+                  } ${!isCurrentPlan && hoveredPlan === plan.id ? "scale-[1.02]" : ""}`}
                 >
-                  {isCurrentPlan ? "Current Plan" : `Upgrade to ${plan.id}`}
+                  {isCurrentPlan ? "✓ Current Plan" : plan.id === "Core" ? "Start Free" : `Upgrade to ${plan.id}`}
                 </button>
               </motion.div>
             );

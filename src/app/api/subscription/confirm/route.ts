@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { updateUserSubscription } from "@/lib/user";
 import { findUserById } from "@/lib/auth-models";
-import { PLANS, PlanType } from "@/lib/plans";
-import { getTokenFromCookies, verifyAccessToken, createAccessToken, createRefreshToken, setAuthCookies } from "@/lib/auth";
+import { PLANS, PlanType, normalizePlan } from "@/lib/plans";
+import {
+  getTokenFromCookies,
+  verifyAccessToken,
+  createAccessToken,
+  createRefreshToken,
+  setAuthCookies,
+  generateSessionId,
+} from "@/lib/auth";
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -22,6 +29,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = payload.sub;
+
+    // ── CRITICAL: Reuse the existing session ID so the DB session stays
+    // valid after payment. Generating a new UUID here would create a token
+    // that has no matching session in the DB, causing the next /api/auth/me
+    // call to fail and silently log the user out. ──────────────────────────
+    const existingSessionId = payload.sessionId || generateSessionId();
 
     const {
       planId,
@@ -66,26 +79,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid signature verification" }, { status: 400 });
     }
 
+    // Persist the plan upgrade to the DB
     await updateUserSubscription(userId, planId as PlanType, "active", orderId);
 
-    // Regenerate JWT access token with the new plan so features unlock immediately
+    // Re-fetch user to get the freshest DB state
     const updatedUser = await findUserById(userId);
     if (updatedUser) {
-      const sessionId = crypto.randomUUID();
+      const isVip = userId === "6a688f911df47db6d9291c32";
+      // VIP always gets Pro regardless of what they paid for
+      const effectivePlan = isVip ? "Pro" : planId;
+
+      // Issue new tokens with the upgraded plan — reusing existing sessionId
       const newAccessToken = createAccessToken(
-        { id: userId, email: updatedUser.email, role: updatedUser.role, plan: updatedUser.plan },
-        sessionId
+        {
+          id: userId,
+          email: updatedUser.email,
+          role: isVip ? "admin" : updatedUser.role,
+          plan: effectivePlan,
+        },
+        existingSessionId
       );
-      const newRefreshToken = createRefreshToken(userId, sessionId);
-      const response = NextResponse.json({ status: "success", message: "Subscription confirmed successfully" });
+      const newRefreshToken = createRefreshToken(userId, existingSessionId);
+
+      const response = NextResponse.json({
+        status: "success",
+        message: "Subscription confirmed successfully",
+        plan: normalizePlan(effectivePlan),
+      });
+
       const cookies = setAuthCookies(newAccessToken, newRefreshToken);
       for (const c of cookies) {
         response.cookies.set(c.name, c.value, c.options as any);
       }
-      console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${planId}`);
+
+      console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${effectivePlan}`);
       return response;
     }
 
+    // Fallback: DB fetch failed — still return success (plan was saved above)
     console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${planId}`);
     return NextResponse.json({ status: "success", message: "Subscription confirmed successfully" });
   } catch (error: any) {

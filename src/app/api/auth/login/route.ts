@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyPassword, createAccessToken, createRefreshToken, generateSessionId, setAuthCookies, fingerprint } from "@/lib/auth";
 import { findUserByEmail, createSession, updateUser, recordLogin } from "@/lib/auth-models";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { normalizePlan } from "@/lib/plans";
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,9 +55,19 @@ export async function POST(req: NextRequest) {
       location: "unknown",
     });
 
+    const isVip = user._id.toString() === "6a688f911df47db6d9291c32";
     const cookies = setAuthCookies(accessToken, refreshToken);
     const response = NextResponse.json({
-      user: { id: user._id.toString(), name: user.name, email: user.email, avatar: user.avatar, role: user.role, plan: user.plan, onboardingCompleted: user.onboardingCompleted },
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        // VIP override: always admin + Pro (must match token claims)
+        role: isVip ? "admin" : user.role,
+        plan: isVip ? "Pro" : normalizePlan(user.plan),
+        onboardingCompleted: user.onboardingCompleted,
+      },
       redirect: user.onboardingCompleted ? "/" : "/onboarding",
     });
     for (const c of cookies) {

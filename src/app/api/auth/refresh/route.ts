@@ -76,6 +76,11 @@ export async function POST(req: NextRequest) {
     await updateUser(user._id.toString(), { lastLoginAt: new Date() });
 
     const isVip = user._id.toString() === "6a688f911df47db6d9291c32";
+
+    // Normalize the plan from DB to client-facing capitalized form
+    const { normalizePlan } = await import("@/lib/plans");
+    const normalizedPlan = isVip ? "Pro" : normalizePlan(user.plan);
+
     const cookies = setAuthCookies(accessToken, refreshToken);
     const response = NextResponse.json({
       user: {
@@ -83,8 +88,9 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
+        // VIP override: always admin + Pro (must match token claims)
         role: isVip ? "admin" : user.role,
-        plan: isVip ? "Pro" : user.plan,
+        plan: normalizedPlan,
         onboardingCompleted: user.onboardingCompleted,
         emailVerified: user.emailVerified,
         provider: user.provider,
