@@ -101,7 +101,7 @@ export default function VoiceAssistant({
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[200] flex flex-col bg-[#030712] text-white overflow-hidden select-none font-sans"
       >
-        {/* Ambient Chromatic Glow */}
+        {/* Ambient Chromatic Glow — uses style prop to avoid Tailwind class recalculation */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div
             className="absolute inset-0 opacity-[0.03]"
@@ -111,19 +111,13 @@ export default function VoiceAssistant({
             }}
           />
           <div
-            className={`absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] lg:w-[850px] h-[450px] lg:h-[550px] rounded-full blur-[140px] transition-colors duration-1000 ${
-              isFemale
-                ? isSpeaking
-                  ? "bg-pink-600/20"
-                  : isThinking
-                  ? "bg-purple-600/25"
-                  : "bg-cyan-600/20"
-                : isSpeaking
-                ? "bg-amber-600/20"
-                : isThinking
-                ? "bg-indigo-600/25"
-                : "bg-blue-600/20"
-            }`}
+            className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] lg:w-[850px] h-[450px] lg:h-[550px] rounded-full blur-[140px]"
+            style={{
+              transition: "background-color 1s ease",
+              backgroundColor: isFemale
+                ? isSpeaking ? "rgba(219,39,119,0.20)" : isThinking ? "rgba(147,51,234,0.25)" : "rgba(8,145,178,0.20)"
+                : isSpeaking ? "rgba(217,119,6,0.20)"  : isThinking ? "rgba(79,70,229,0.25)"  : "rgba(37,99,235,0.20)",
+            }}
           />
         </div>
 
@@ -246,24 +240,25 @@ export default function VoiceAssistant({
                 <Volume2 size={13} className="text-gray-400" />
               </div>
 
-              {/* Soundwave Spectrum */}
+              {/* Soundwave Spectrum — reduced to 10 bars, GPU-accelerated, paused when not audio */}
               <div className="flex items-center justify-center gap-1 h-8 px-2 bg-black/40 rounded-xl border border-white/5">
-                {Array.from({ length: 16 }).map((_, i) => (
+                {Array.from({ length: 10 }).map((_, i) => (
                   <motion.div
                     key={i}
                     animate={{
                       height: isSpeaking
-                        ? [4, 18 + ((i * 5) % 12), 6, 24, 4]
+                        ? [4, 18 + ((i * 5) % 12), 6, 22, 4]
                         : isListening
-                        ? [3, 10 + ((i * 3) % 6), 4, 14, 3]
-                        : [2, 4, 2],
+                        ? [3, 10 + ((i * 3) % 6), 4, 13, 3]
+                        : [2, 3, 2],
                     }}
                     transition={{
-                      duration: isSpeaking ? 0.6 : 1.3,
-                      repeat: Infinity,
+                      duration: isSpeaking ? 0.65 : 1.4,
+                      repeat: (isThinking || isActing) ? 0 : Infinity,
                       ease: "easeInOut",
-                      delay: (i * 0.04) % 0.5,
+                      delay: (i * 0.06) % 0.5,
                     }}
+                    style={{ willChange: "transform" }}
                     className={`w-1 rounded-full ${
                       isSpeaking
                         ? "bg-gradient-to-t from-orange-500 to-amber-300"
@@ -384,8 +379,9 @@ export default function VoiceAssistant({
 
               {/* Chest Audio Waveform Ribbon */}
               <div className="absolute bottom-8 sm:bottom-10 left-4 right-4 z-20 flex flex-col items-center gap-1.5">
+                {/* Avatar waveform — reduced to 12 bars, GPU-accelerated, paused during non-audio states */}
                 <div className="flex items-center justify-center gap-1 w-full h-6 sm:h-7">
-                  {Array.from({ length: 22 }).map((_, i) => (
+                  {Array.from({ length: 12 }).map((_, i) => (
                     <motion.div
                       key={i}
                       animate={{
@@ -396,11 +392,12 @@ export default function VoiceAssistant({
                           : [2, 3, 2],
                       }}
                       transition={{
-                        duration: isSpeaking ? 0.5 : 1.2,
-                        repeat: Infinity,
+                        duration: isSpeaking ? 0.55 : 1.3,
+                        repeat: (isThinking || isActing) ? 0 : Infinity,
                         ease: "easeInOut",
-                        delay: (i * 0.03) % 0.5,
+                        delay: (i * 0.05) % 0.5,
                       }}
+                      style={{ willChange: "transform" }}
                       className={`w-1 rounded-full ${
                         isFemale
                           ? "bg-gradient-to-t from-cyan-400 to-pink-400"

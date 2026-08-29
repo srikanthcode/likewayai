@@ -791,7 +791,10 @@ export default function ChatPage() {
   const speakText = (text: string, onEnd?: () => void) => {
     window.speechSynthesis.cancel();
     if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
-    if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
+    if (speechHeartbeatRef.current) {
+      clearInterval(speechHeartbeatRef.current);
+      speechHeartbeatRef.current = null;
+    }
     
     // 1. Strip Artifacts and Tags for Speech
     let cleaned = text;
@@ -812,18 +815,11 @@ export default function ChatPage() {
     
     const isTamilText = /[\u0B80-\u0BFF]/.test(cleaned);
     const isHindiText = /[\u0900-\u097F]/.test(cleaned);
+    const isTamilChar = selectedVoiceChar === 'kani' || selectedVoiceChar === 'valluvar';
 
     const utterance = new SpeechSynthesisUtterance(cleaned);
     utteranceRef.current = utterance; 
     (window as any).__currentUtterance = utterance; // Pin to window to prevent Chromium GC freeze bug
-    
-    if (isTamilText || selectedVoiceChar === 'kani' || selectedVoiceChar === 'valluvar') {
-      utterance.lang = 'ta-IN';
-    } else if (isHindiText) {
-      utterance.lang = 'hi-IN';
-    } else {
-      utterance.lang = 'en-IN';
-    }
 
     utterance.rate = isTamilText ? 0.95 : 1.05;
     utterance.pitch = selectedVoiceChar === 'spark' ? 1.15 : selectedVoiceChar === 'luna' ? 0.9 : 1.0;
@@ -847,11 +843,42 @@ export default function ChatPage() {
     };
     
     const assignVoiceAndSpeak = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+
+      // Tamil voice check — Windows does NOT ship Tamil TTS by default.
+      // If user has Tamil character selected but no ta-IN voice is installed,
+      // fall back to Indian English so audio isn't silently skipped.
+      const tamilVoiceAvailable = allVoices.some(v =>
+        v.lang?.toLowerCase().startsWith('ta') ||
+        v.name.toLowerCase().includes('tamil') ||
+        v.name.includes('தமிழ்')
+      );
+
+      if (isTamilText && tamilVoiceAvailable) {
+        utterance.lang = 'ta-IN';
+      } else if (isTamilChar && tamilVoiceAvailable) {
+        utterance.lang = 'ta-IN';
+      } else if (isTamilChar && !tamilVoiceAvailable) {
+        // No Tamil TTS installed — speak in Indian English and inform user once
+        utterance.lang = 'en-IN';
+        const warnKey = 'likeway_tamil_tts_warned';
+        if (!sessionStorage.getItem(warnKey)) {
+          sessionStorage.setItem(warnKey, '1');
+          setLiveTranscript(
+            '⚠️ Tamil voice not installed on this device. Speaking in English. To enable Tamil voice: Settings → Time & Language → Speech → Add voices → Tamil (India)'
+          );
+        }
+      } else if (isHindiText) {
+        utterance.lang = 'hi-IN';
+      } else {
+        utterance.lang = 'en-IN';
+      }
+
       const voice = findVoiceForChar(selectedVoiceChar, cleaned);
       if (voice) utterance.voice = voice;
       isSpeakingRef.current = true;
 
-      // Estimated duration + 4 second grace period watchdog to guarantee onEnd fires
+      // Watchdog: estimated duration + 4s grace to guarantee onEnd fires
       const estimatedMs = Math.max(3500, Math.ceil((cleaned.length / 10) * 1000) + 4000);
       speechWatchdogRef.current = setTimeout(() => {
         if (isSpeakingRef.current) {
@@ -860,15 +887,8 @@ export default function ChatPage() {
         }
       }, estimatedMs);
 
-      // Speech synthesis heartbeat (un-pauses Chromium audio engine if backgrounded)
-      speechHeartbeatRef.current = setInterval(() => {
-        if (isSpeakingRef.current && window.speechSynthesis.speaking) {
-          window.speechSynthesis.pause();
-          window.speechSynthesis.resume();
-        } else {
-          if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
-        }
-      }, 7500);
+      // NOTE: Heartbeat interval removed — pause/resume every 7.5s caused main-thread jank.
+      // Modern Chrome/Edge (90+) no longer needs this workaround.
 
       utterance.onend = () => { 
         cleanupAndEnd(); 
@@ -1343,6 +1363,16 @@ export default function ChatPage() {
     setIsVoiceMode(true);
     setVoiceStatus('listening');
     setActiveAppLaunch(null);
+    // Preload voice list so it's warm when speakText() is called
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        // Trigger async load — browser fires onvoiceschanged once loaded
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.onvoiceschanged = null;
+        };
+      }
+    }
     setTimeout(() => startVoiceListeningCycle(), 300);
   };
 
