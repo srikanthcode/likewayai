@@ -1,4 +1,4 @@
-import { Collection, ObjectId } from "mongodb";
+import { ObjectId } from "mongodb";
 import clientPromise from "./mongodb";
 
 const DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
@@ -66,9 +66,6 @@ async function getDb() {
   return client.db(DB_NAME);
 }
 
-// No hardcoded, in-memory, or implicitly-privileged accounts exist.
-// Every user (including admins) is persisted in MongoDB with an explicit role.
-
 // ── Users ──────────────────────────────────────────────────────────────────
 export async function findUserByEmail(email: string): Promise<User | null> {
   const normEmail = (email || "").toLowerCase().trim();
@@ -103,7 +100,6 @@ export async function createUser(user: Omit<User, "_id" | "createdAt">): Promise
     }
     return doc;
   } catch (err: any) {
-    // Duplicate key error — user was inserted by another request/race
     if (err?.code === 11000) {
       console.warn("[AuthModels] createUser: duplicate key for email:", user.email, "— falling back to findUserByEmail");
       const existing = await findUserByEmail(user.email);
@@ -150,6 +146,45 @@ export async function findSessionByToken(refreshToken: string): Promise<Session 
     const db = await getDb();
     return db.collection<Session>("sessions").findOne({ refreshToken }) as any;
   } catch { return null; }
+}
+
+/**
+ * CRITICAL FIX: When upgrading a paying user's plan in /api/subscription/confirm,
+ * a new refreshToken JWT is minted with the updated plan claim. We must update
+ * the stored refreshToken in the `sessions` collection (or insert a session if
+ * none matched) so subsequent /api/auth/refresh calls do NOT fail with
+ * "Session revoked" and log the paying user out.
+ */
+export async function rotateSessionRefreshToken(
+  userId: string,
+  oldRefreshToken: string | undefined,
+  newRefreshToken: string,
+  meta?: { userAgent?: string; ip?: string }
+): Promise<void> {
+  try {
+    const db = await getDb();
+    const col = db.collection<Session>("sessions");
+    if (oldRefreshToken) {
+      const updated = await col.updateOne(
+        { refreshToken: oldRefreshToken },
+        { $set: { refreshToken: newRefreshToken, lastActiveAt: new Date() } }
+      );
+      if (updated.matchedCount > 0) return;
+    }
+    // Fallback: create a fresh session record so the new refresh token is valid
+    await createSession({
+      userId,
+      refreshToken: newRefreshToken,
+      deviceName: (meta?.userAgent || "Web Browser").slice(0, 120),
+      browser: meta?.userAgent || "unknown",
+      operatingSystem: "unknown",
+      ipAddress: meta?.ip || "unknown",
+      location: "unknown",
+      lastActiveAt: new Date(),
+    });
+  } catch (err) {
+    console.error("[AuthModels] rotateSessionRefreshToken failed:", err);
+  }
 }
 
 export async function getUserSessions(userId: string): Promise<Session[]> {

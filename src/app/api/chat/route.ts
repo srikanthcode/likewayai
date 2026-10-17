@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
 import { MODELS, getProviderForModel } from "@/lib/models";
 import { SYSTEM_PROMPTS, AgentMode, LIKEWAY_RESPONSE_ARCHITECTURE } from "@/lib/agents";
@@ -7,7 +7,6 @@ import { executeDeepResearch } from "@/lib/deep-research";
 import { saveMessage, getHistory, getConversationContext, getUserPreferences } from "@/lib/memory";
 import { generateImage, editImage } from "@/lib/tools";
 import { PLANS, PlanType, normalizePlan } from "@/lib/plans";
-import { NextResponse } from "next/server";
 import {
   SEARCH_KEYWORDS,
   TIME_KEYWORDS,
@@ -17,7 +16,7 @@ import {
 } from "@/lib/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
-import { checkModelAccess, consumeEntitlement, entitlementDenied } from "@/lib/entitlements";
+import { checkModelAccess, consumeEntitlement, entitlementDenied, resolveEffectivePlan } from "@/lib/entitlements";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import { detectPromptInjection, sanitizeInput } from "@/lib/security";
 import { logger, generateRequestId } from "@/lib/logger";
@@ -37,70 +36,110 @@ let runBrowserEngine: any = null;
 
 export const maxDuration = 120;
 
-// ── Formatting Cleanup: Clean up messy output while preserving markdown tables ──────
+/**
+ * CRITICAL FIX: Never strip leading spaces/indentation (`\n[ \t]+`) on lines!
+ * Stripping leading spaces destroys Python code, nested Markdown lists, and
+ * code blocks. Also, never apply multi-line regexes to individual streaming
+ * token deltas — only normalize full messages when saving to DB.
+ */
 function cleanFormatting(text: string): string {
   if (!text) return text;
-
   return text
-    // Clean up flowchart arrows
     .replace(/(\n\s*[│┌┐└┘├┤┬┴┼─▼↑↓→←]+\s*\n)/g, "\n")
-    // Remove excessive blank lines (3+ to 2)
-    .replace(/\n{3,}/g, "\n\n")
-    // Remove leading/trailing whitespace on lines
-    .replace(/\n[ \t]+/g, "\n");
+    .replace(/\n{4,}/g, "\n\n\n");
 }
 
-// ── Likeway engine labels ──────────────────────────────────────────────────
-// Likeway is a MODEL ROUTER: it selects the best available upstream provider
-// per request, and that choice can change at any time. We therefore:
-//   1. Never claim a specific third-party model authored a response.
-//   2. Never rewrite model output to impersonate another company's model.
-// These are Likeway's own engine names. Upstream providers are disclosed in
-// the UI/API where relevant, not fabricated here.
 interface SuggestionStreamState {
   inBlock: boolean;
+  carry: string;
   raw: string;
 }
 
+const OPEN_SUG_TAG = "<suggestions>";
+const CLOSE_SUG_TAG = "</suggestions>";
+
 /**
- * Remove a trailing <suggestions>…</suggestions> block from the visible
- * content stream and collect it separately, so follow-up chips can be sent
- * as their own SSE event instead of leaking into the chat text.
+ * CRITICAL FIX: Chunk-safe streaming stripper for `<suggestions>...</suggestions>`.
+ * LLM token streams frequently split `<suggestions>` across multiple chunks
+ * (e.g. `"<"`, `"suggestions"`, `">"`). By holding any partial prefix of
+ * `<suggestions>` in `st.carry`, the tag is cleanly intercepted across chunk
+ * boundaries and never leaks into the visible chat text.
  */
 function stripSuggestions(delta: string, st: SuggestionStreamState): string {
+  let text = st.carry + delta;
+  st.carry = "";
   let out = "";
-  let rest = delta;
-  while (rest.length > 0) {
+
+  while (text.length > 0) {
     if (!st.inBlock) {
-      const open = rest.indexOf("<suggestions>");
-      if (open === -1) {
-        out += rest;
-        rest = "";
-      } else {
-        out += rest.slice(0, open);
+      const openIdx = text.indexOf(OPEN_SUG_TAG);
+      if (openIdx !== -1) {
+        out += text.slice(0, openIdx);
         st.inBlock = true;
-        rest = rest.slice(open + "<suggestions>".length);
+        text = text.slice(openIdx + OPEN_SUG_TAG.length);
+        continue;
       }
-    } else {
-      const close = rest.indexOf("</suggestions>");
-      if (close === -1) {
-        st.raw += rest;
-        rest = "";
+      // Check if the end of `text` is a partial prefix of `<suggestions>`
+      let matchedPrefixLen = 0;
+      const maxCheck = Math.min(text.length, OPEN_SUG_TAG.length - 1);
+      for (let len = maxCheck; len >= 1; len--) {
+        if (OPEN_SUG_TAG.startsWith(text.slice(-len))) {
+          matchedPrefixLen = len;
+          break;
+        }
+      }
+      if (matchedPrefixLen > 0) {
+        out += text.slice(0, text.length - matchedPrefixLen);
+        st.carry = text.slice(text.length - matchedPrefixLen);
       } else {
-        st.raw += rest.slice(0, close);
-        st.inBlock = false;
-        rest = rest.slice(close + "</suggestions>".length);
+        out += text;
       }
+      break;
+    } else {
+      const closeIdx = text.indexOf(CLOSE_SUG_TAG);
+      if (closeIdx !== -1) {
+        st.raw += text.slice(0, closeIdx);
+        st.inBlock = false;
+        text = text.slice(closeIdx + CLOSE_SUG_TAG.length);
+        continue;
+      }
+      let matchedPrefixLen = 0;
+      const maxCheck = Math.min(text.length, CLOSE_SUG_TAG.length - 1);
+      for (let len = maxCheck; len >= 1; len--) {
+        if (CLOSE_SUG_TAG.startsWith(text.slice(-len))) {
+          matchedPrefixLen = len;
+          break;
+        }
+      }
+      if (matchedPrefixLen > 0) {
+        st.raw += text.slice(0, text.length - matchedPrefixLen);
+        st.carry = text.slice(text.length - matchedPrefixLen);
+      } else {
+        st.raw += text;
+      }
+      break;
     }
   }
+
   return out;
+}
+
+function flushSuggestionsCarry(st: SuggestionStreamState): string {
+  if (!st.carry) return "";
+  const leftover = st.carry;
+  st.carry = "";
+  if (st.inBlock) {
+    st.raw += leftover;
+    return "";
+  }
+  return leftover;
 }
 
 function parseSuggestionLines(raw: string): string[] {
   return raw
     .split("\n")
-    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
-    .filter((l) => l.replace(/[[\]]/g, "").trim().length > 2)
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").replace(/^\[|\]$/g, "").trim())
+    .filter((l) => l.length > 3 && !l.startsWith("<"))
     .slice(0, 4);
 }
 
@@ -110,7 +149,7 @@ interface LikewayEngineLabel {
 }
 
 const LIKEWAY_ENGINE_LABELS: Record<string, LikewayEngineLabel> = {
-  "gpt-6-astra": { name: "Likeway Omni", intro: "Likeway's smart router automatically picks the fastest, strongest engine for each prompt" },
+  "gpt-6-astra": { name: "Likeway Omni", intro: "Likeway's smart router that automatically selects the fastest, strongest reasoning engine for each prompt" },
   "glm-5.2": { name: "Likeway Bilingual", intro: "Likeway's bilingual reasoning engine" },
   "kimi-k3": { name: "Likeway LongContext", intro: "Likeway's long-context research engine" },
   "sol": { name: "Likeway Sol", intro: "Likeway's low-latency fast engine" },
@@ -123,7 +162,6 @@ const LIKEWAY_ENGINE_LABELS: Record<string, LikewayEngineLabel> = {
   "mimo-v2.6-flash:free": { name: "Likeway Mimo", intro: "Likeway's multimodal engine" },
 };
 
-// Input validation for chat prompts
 function validatePrompt(prompt: string): { valid: boolean; error?: string } {
   if (!prompt || typeof prompt !== "string") {
     return { valid: false, error: "Prompt is required" };
@@ -131,13 +169,12 @@ function validatePrompt(prompt: string): { valid: boolean; error?: string } {
   if (prompt.trim().length === 0) {
     return { valid: false, error: "Prompt cannot be empty" };
   }
-  if (prompt.length > 10000) {
-    return { valid: false, error: "Prompt is too long (max 10,000 characters)" };
+  if (prompt.length > 15000) {
+    return { valid: false, error: "Prompt is too long (max 15,000 characters)" };
   }
   return { valid: true };
 }
 
-// Helper: extract userId from session cookie, falling back to "anonymous" for unauthenticated chat
 function getUserIdFromSession(req: NextRequest): string {
   const tokens = getTokenFromCookies(req);
   if (tokens.access) {
@@ -192,48 +229,28 @@ export async function POST(req: NextRequest) {
       startUrl = "",
     } = body;
 
-    // Get userId from server-side session, not from client
     const userId = getUserIdFromSession(req);
-
-    // Get plan from JWT token
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    let plan = normalizePlan(tokenPayload?.plan) || "Core";
-    // Admins are identified by the DB-backed `role` claim, never by a hardcoded id/email.
     const isAdmin = tokenPayload?.role === "admin";
-    if (isAdmin) {
-      plan = "Pro";
-    }
 
-    // Real-time plan sync: If token has Core, check DB to ensure paying users are never blocked
-    if (userId !== "anonymous" && plan === "Core" && !isAdmin) {
-      try {
-        const { getUserPlan } = await import("@/lib/user");
-        const userSub = await getUserPlan(userId);
-        if (userSub && userSub.status === "active" && userSub.plan !== "Core") {
-          plan = userSub.plan;
-        }
-      } catch (e) {
-        // Fallback to token plan
-      }
-    }
+    // Authoritative real-time plan resolution: checks DB if JWT says Core so paying users are never blocked
+    const plan: PlanType = await resolveEffectivePlan(userId, tokenPayload?.plan, tokenPayload?.role);
 
-    // ── Server-side model allowlist (previously enforced in the UI only) ──
+    // Server-side model allowlist check
     const modelAccess = checkModelAccess(plan, modelId, tokenPayload?.role);
     if (!modelAccess.allowed) {
       return new Response(
-        JSON.stringify({ error: modelAccess.reason, upgradeTo: modelAccess.upgradeTier }),
+        JSON.stringify({ error: modelAccess.reason, upgradeTo: modelAccess.upgradeTier, plan }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Metered features are consumed server-side for authenticated users.
     const meter = async (feature: Parameters<typeof consumeEntitlement>[2]) => {
       if (userId === "anonymous") return null;
       return consumeEntitlement(userId, plan, feature, tokenPayload?.role);
     };
 
-    // Validate prompt
     const validation = validatePrompt(prompt);
     if (!validation.valid) {
       return new Response(JSON.stringify({ error: validation.error }), {
@@ -242,7 +259,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Prompt injection defense
     const injectionCheck = detectPromptInjection(prompt);
     if (injectionCheck.detected) {
       reqLogger.warn("Potential prompt injection detected", { 
@@ -251,23 +267,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Sanitize input to prevent XSS in stored messages
     const sanitizedPrompt = sanitizeInput(prompt);
 
-    // Log request
     reqLogger.info("Chat request received", {
       userId,
+      plan,
       mode,
       modelId,
       promptLength: sanitizedPrompt.length,
       hasImages: images.length > 0,
     });
 
-    // Rate limiting - Per minute
-    const rateLimitConfig = { windowMs: 60000, maxRequests: 20 }; // 20 requests per minute
+    // Rate limiting - Per minute (higher burst allowance for paying tiers)
+    const maxPerMinute = plan === "Pro" ? 60 : plan === "Plus" ? 45 : plan === "Go" ? 30 : 20;
+    const rateLimitConfig = { windowMs: 60000, maxRequests: maxPerMinute };
     const rateLimit = checkRateLimit(userId, rateLimitConfig, isAdmin);
     if (!rateLimit.allowed) {
-      return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+      return new Response(JSON.stringify({ error: "Rate limit exceeded. Please wait a few seconds and try again." }), {
         status: 429,
         headers: {
           "Content-Type": "application/json",
@@ -278,17 +294,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Rate limiting - Daily plan limit (gpt-6-astra has free unlimited chat for 1 month)
+    // Daily plan limit (paying plans Go/Plus/Pro have 99,999/unlimited)
     const isGpt6Promo = modelId === "gpt-6-astra";
     const planConfig = PLANS[plan] || PLANS.Core;
-    const dailyLimit = checkDailyLimit(userId, planConfig.limits.messagesDay, isAdmin);
+    const dailyLimit = checkDailyLimit(userId, planConfig.limits.messagesDay, isAdmin || plan !== "Core");
     if (!dailyLimit.allowed && !isGpt6Promo) {
       return new Response(JSON.stringify({
-        error: `Daily message limit reached (${dailyLimit.limit} messages/day). Upgrade your plan for unlimited messages.`,
+        error: `Daily message limit reached (${dailyLimit.limit} messages/day on Core). Upgrade to Go, Plus, or Pro for unlimited messages.`,
         limit: dailyLimit.limit,
         used: dailyLimit.used,
         resetTime: dailyLimit.resetTime,
-        plan: plan,
+        plan,
+        upgradeTo: "Go",
       }), {
         status: 429,
         headers: {
@@ -306,8 +323,6 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Computer Control & App Launcher ──────────────────────────────
-    // If user asks to open an app (e.g. "open whatsapp", "open spotify", "launch calculator"):
-    // Automatically find it in the user's system and launch it natively or via protocol
     const computerControl = detectComputerControlIntent(sanitizedPrompt);
     if (computerControl.isComputerControl && computerControl.targetApp) {
       const cc = await meter("computer_control");
@@ -317,14 +332,12 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      // OS-level launching must NEVER run inside a hosted server process.
-      // Only the user's own machine (with the Likeway Companion) may do this.
       if (!isLocalExecutionHost()) {
         const guidance =
           "### 🖥️ Computer Control — Desktop Launch Required\n\n" +
           `I can see you want to open **${computerControl.targetApp}**, but this app is running on a cloud server, ` +
-          "so it cannot launch programs on your computer.\n\n" +
-          "Start the **Likeway Companion** on your own machine (`npm run companion`), then ask me again.";
+          "so it cannot launch programs directly on your machine.\n\n" +
+          "Start the **Likeway Companion** on your computer (`npm run companion`), then ask me again.";
         const encoder = new TextEncoder();
         const guideStream = new ReadableStream({
           start(controller) {
@@ -379,8 +392,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Autonomous Software Development & Game Engine ───────────────
-    // When user requests "Build me a 3D racing game", "build game and run it", etc.:
-    // Automatically plans, generates code, serves on localhost, launches on desktop, and verifies.
     const autoDev = isAutonomousDevIntent(sanitizedPrompt);
     const wantsBuild = autoDev.isDev || isBuildIntent(sanitizedPrompt);
     if (wantsBuild) {
@@ -392,8 +403,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Plan the project spec with the model first; fall back to the built-in
-      // 3D racing template only when the request is clearly that game.
       let spec = await generateProjectSpec(sanitizedPrompt);
       if (!spec && autoDev.isDev && autoDev.projectType === "3d_racing_game") {
         spec = generate3DRacingGameSpec();
@@ -447,8 +456,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Orchestrator: understand the task BEFORE routing ──────────────
-    // Every request gets a structured plan (type, complexity, steps, tools,
-    // model recommendation). Routing decisions below are driven by the plan.
     const taskPlan = analyzeIntent(sanitizedPrompt, mode);
     reqLogger.info("Task plan created", {
       userId,
@@ -458,7 +465,6 @@ export async function POST(req: NextRequest) {
       requiredTools: taskPlan.requiredTools,
     });
 
-    // Determine if this is a deep research request
     const isDeepResearch = mode === "Researcher" || mode === "deep-research";
     if (isDeepResearch) {
       const dr = await meter("deep_research");
@@ -478,8 +484,6 @@ export async function POST(req: NextRequest) {
       return deepRes;
     }
 
-    // ── Detect Vercel vs local/Render ────────────────────────────────
-    // VERCEL_ENV is "production" or "preview" only on real Vercel (not in local dev)
     const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
 
     // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
@@ -492,14 +496,8 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
       if (isOnVercel) {
-        // Use RENDER_API_URL env var for the Render backend URL.
-        // Falls back to NEXT_PUBLIC_API_URL, then hardcoded default.
         const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
-
-        // Prevent proxy loop: if renderUrl points back to this Vercel domain,
-        // the /api/browser-agent route will fail (Playwright not available on Vercel).
         const selfUrl = req.nextUrl.origin;
         if (renderUrl === selfUrl || renderUrl.startsWith(selfUrl + "/")) {
           return NextResponse.json(
@@ -514,18 +512,18 @@ export async function POST(req: NextRequest) {
             const send = (text: string) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
             };
-            send(`> **LikeWay Browser v6** — Forwarding to \`${renderUrl}\`...\n\n`);              send(`> Task: ${sanitizedPrompt}\n\n`);
-              try {
-                const res = await fetch(`${renderUrl}/api/browser-agent`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(process.env.INTERNAL_API_SECRET
-                      ? { "x-likeway-internal": process.env.INTERNAL_API_SECRET }
-                      : {}),
-                  },
-                  body: JSON.stringify({ task: sanitizedPrompt, startUrl, headless: true }),
-                // Timeout matches the Vercel serverless maxDuration (120s)
+            send(`> **LikeWay Browser v6** — Forwarding to \`${renderUrl}\`...\n\n`);
+            send(`> Task: ${sanitizedPrompt}\n\n`);
+            try {
+              const res = await fetch(`${renderUrl}/api/browser-agent`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(process.env.INTERNAL_API_SECRET
+                    ? { "x-likeway-internal": process.env.INTERNAL_API_SECRET }
+                    : {}),
+                },
+                body: JSON.stringify({ task: sanitizedPrompt, startUrl, headless: true }),
                 signal: AbortSignal.timeout(115000),
               });
               
@@ -535,12 +533,9 @@ export async function POST(req: NextRequest) {
               }
               
               const data = await res.json();
-
-              // Render /api/browser-agent returns lastScreenshot, not per-step screenshots
               if (data.lastScreenshot) {
                 send(`\n![Browser Screenshot](${data.lastScreenshot})\n\n`);
               }
-
               if (data.success && data.answer) {
                 send(`\n**Result:** ${data.answer}\n\n`);
               } else if (data.error) {
@@ -552,6 +547,7 @@ export async function POST(req: NextRequest) {
             } catch (err: any) {
               send(`\n> **Error:** ${err.message}\n`);
             }
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           },
         });
@@ -577,8 +573,6 @@ export async function POST(req: NextRequest) {
 
           try {
             let lastSubGoal = "";
-            // Use headless=false locally so user can see the browser
-            // Use headless=true on Vercel/Render (no display)
             const isProduction = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" || !!process.env.RENDER;
             const browserSessionId = crypto.randomUUID();
             const result = await runBrowserEngine(sanitizedPrompt, {
@@ -589,7 +583,6 @@ export async function POST(req: NextRequest) {
               maxIterations: 25,
               sessionId: browserSessionId,
               onStep: (step: any) => {
-                // Show sub-goal changes
                 if (step.subGoal && step.subGoal !== lastSubGoal) {
                   lastSubGoal = step.subGoal;
                   send(`\n> **Sub-goal:** ${step.subGoal}\n\n`);
@@ -644,7 +637,6 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
       if (isOnVercel) {
         const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
         const selfUrl = req.nextUrl.origin;
@@ -676,7 +668,6 @@ export async function POST(req: NextRequest) {
               });
               const data = await res.json();
 
-              // Stream screenshots from each step
               if (data.steps && Array.isArray(data.steps)) {
                 for (const step of data.steps) {
                   if (step.screenshot) {
@@ -698,6 +689,7 @@ export async function POST(req: NextRequest) {
             } catch (err: any) {
               send(`\n> **Error:** ${err.message}\n`);
             }
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           },
         });
@@ -768,11 +760,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Orchestrated Execution (search / multi-step tasks) ─────────────
-    // Tasks that need tools or multiple coordinated steps run through the
-    // AIOrchestrator instead of a single-shot LLM call. Explicit modes
-    // (Browser, Automation, Researcher) were already handled above.
-    // Spreadsheet-shaped data-analysis requests get the full pipeline
-    // (broad "analyze" phrasing alone stays on the fast chat path)
     const SPREADSHEET_HINT = /\b(excel|xlsx|csv|spreadsheet|dataset)\b/i;
     const shouldOrchestrate =
       taskPlan.type === "multi-step" ||
@@ -816,7 +803,6 @@ export async function POST(req: NextRequest) {
 
             send("\n---\n\n");
 
-            // Stream the compiled output progressively for smooth UX
             const CHUNK = 220;
             for (let i = 0; i < result.finalOutput.length; i += CHUNK) {
               send(result.finalOutput.slice(i, i + CHUNK));
@@ -846,22 +832,17 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Multimodal Intent Detection ──────────────────────────────────────
-    // Routes: Text → LLM | Image Understanding → Vision Model | Image Editing → editImage | Image Gen → generateImage
-
     const hasImages = images && images.length > 0;
 
-    // Intent: Image Understanding (user uploaded image(s) and asks about them)
     const isImageUnderstanding = hasImages && (
       /\b(what|what's|what is|explain|describe|tell|read|analyze|look|see|identify|recognize|detect|find|show|understand)\b/i.test(sanitizedPrompt) ||
       /\b(in this image|in the picture|in this photo|this screenshot|this diagram|this image|this picture)\b/i.test(sanitizedPrompt)
     );
 
-    // Intent: Image Editing (user wants to modify uploaded image)
     const isImageEditing = hasImages && (
       /\b(edit|modify|change|transform|convert|turn|make|remove|add|replace|background|anime|realistic|cartoon|sketch|enhance|improve|colorize|restore|upscale|blur|sharpen)\b/i.test(sanitizedPrompt)
     );
 
-    // Intent: Image Generation (text-to-image, no images attached)
     const isImageGenRequest = !hasImages && (
       /\b(generate|create|make|draw|design|paint|render|produce)\s+(an?\s+)?(image|picture|photo|photograph|illustration|artwork|art|portrait|wallpaper|logo|banner|sketch|graphic)\b/i.test(sanitizedPrompt) ||
       /\b(image|picture|photo|portrait|wallpaper)\s+of\b/i.test(sanitizedPrompt) ||
@@ -922,7 +903,6 @@ export async function POST(req: NextRequest) {
         });
       } catch (e: any) {
         console.warn("[Chat API] Image editing failed:", e);
-        // Surface the failure honestly instead of silently producing text.
         const encoder = new TextEncoder();
         const msg =
           `⚠️ **Image editing failed.** ${e?.message || "Please try again."}\n\n` +
@@ -944,14 +924,12 @@ export async function POST(req: NextRequest) {
 
     // ── Image Understanding Route (Vision Model) ─────────────────────────
     if (isImageUnderstanding) {
-      // Force vision-capable model for image understanding
       const visionModel = modelId && MODELS.find(m => m.id === modelId && (m.vision || m.video || m.audio))
         ? modelId
         : "mimo-v2.6-flash:free";
 
       const visionUrl = "https://openrouter.ai/api/v1/chat/completions";
 
-      // Build multimodal content array
       const multimodalContent: any[] = [{ type: "text", text: sanitizedPrompt }];
       for (const img of images) {
         multimodalContent.push({
@@ -961,7 +939,7 @@ export async function POST(req: NextRequest) {
       }
 
       const visionMessages = [
-        { role: "system", content: "You are an AI vision assistant. Analyze the provided image(s) and respond to the user's query. Be detailed and precise." },
+        { role: "system", content: "You are LikeWay Vision, an advanced AI visual analyst. Analyze the provided image(s) thoroughly and respond with clear headings, structured observations, and actionable insights." },
         { role: "user", content: multimodalContent },
       ];
 
@@ -1033,15 +1011,12 @@ export async function POST(req: NextRequest) {
             response = null;
           }
         } else if (visionProvider === "freemodels") {
-          // If user chose gpt-6-astra or other freemodel for image analysis:
-          // Try freemodels proxy first; if it fails or returns error, silently use TokenHarbor Mimo!
           try {
             response = await tryFreeModelsVision(visionModel);
           } catch {
             response = null;
           }
           if (!response || !response.ok) {
-            console.warn(`[Chat API] Freemodels vision failed for ${visionModel}. Silently routing to TokenHarbor Mimo...`);
             try {
               response = await tryTokenHarborVision("mimo-v2.6-flash:free");
             } catch {
@@ -1063,7 +1038,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Safety fallback: OpenRouter Gemini
         if (!response || !response.ok) {
           try {
             response = await tryOpenRouterVision("google/gemini-2.5-flash");
@@ -1091,8 +1065,7 @@ export async function POST(req: NextRequest) {
                   const delta = parsed.choices?.[0]?.delta?.content || "";
                   if (delta) {
                     fullContent += delta;
-                    const cleaned = cleanFormatting(delta);
-                    cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`);
+                    cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`);
                   }
                 } catch {
                   cleanChunks.push(line + "\n");
@@ -1122,7 +1095,6 @@ export async function POST(req: NextRequest) {
 
     // ── Determine if the query needs web search ─────────────────────────
     const isCodingQ = CODING_KEYWORDS_PATTERN.test(sanitizedPrompt) && CODING_ACTION_PATTERN.test(sanitizedPrompt);
-
     const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(sanitizedPrompt);
 
     const needsSearch =
@@ -1131,7 +1103,6 @@ export async function POST(req: NextRequest) {
       SEARCH_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) ||
       (TIME_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) && !isCodingQ);
 
-    // Build search context if needed
     let searchContext = "";
     if (needsSearch) {
       try {
@@ -1147,14 +1118,10 @@ export async function POST(req: NextRequest) {
     // ── Standard Text Conversation ───────────────────────────────────────
     const selectedModel = MODELS.find((m) => m.id === modelId) || MODELS[0];
     const routedModelId = modelId || selectedModel.id;
-
     const provider = getProviderForModel(routedModelId);
 
-    // ── Free proxy model ID mapping ──────────────────────────────────────
-    // All 9 proxy models use their actual IDs — the proxy recognizes them natively.
-    // This map exists for future remapping; currently all IDs pass through as-is.
     const FREE_MODEL_ID_MAP: Record<string, string> = {
-      "gpt-6-astra":    "gpt-6-astra",
+      "gpt-6-astra":     "gpt-6-astra",
       "claude-opus-5.5": "claude-opus-5.5",
       "claude-sonnet-5": "claude-sonnet-5",
       "claude-fable-5":  "claude-fable-5",
@@ -1163,7 +1130,6 @@ export async function POST(req: NextRequest) {
       "kimi-k3":         "kimi-k3",
       "sol":             "sol",
       "terra":           "terra",
-      // Legacy free model IDs (kept for backwards compat)
       "free-llama3-70b": "gpt-6-astra",
       "free-mistral-7b": "sol",
     };
@@ -1183,7 +1149,6 @@ export async function POST(req: NextRequest) {
     const agentMode = (mode as AgentMode) in SYSTEM_PROMPTS ? (mode as AgentMode) : "General";
     let systemPrompt = SYSTEM_PROMPTS[agentMode];
 
-    // Get user preferences for personalization
     const userPrefs = await getUserPreferences(userId);
     if (userPrefs.tone) {
       systemPrompt += `\n\n## USER PREFERENCE\nRespond in a ${userPrefs.tone} tone.`;
@@ -1192,7 +1157,6 @@ export async function POST(req: NextRequest) {
       systemPrompt += `\nUser prefers responses in ${userPrefs.language}.`;
     }
 
-    // Get conversation context for continuity
     if (userId !== "anonymous") {
       const conversationContext = await getConversationContext(userId, projectId);
       if (conversationContext) {
@@ -1204,91 +1168,29 @@ export async function POST(req: NextRequest) {
       systemPrompt += `\n\n## USER CUSTOM INSTRUCTIONS\n${customInstructions}`;
     }
     if (searchContext) {
-      systemPrompt += `\n\n## LIVE WEB DATA\nUse the following verified web data to answer. PRIORITIZE this data over your training knowledge:\n${searchContext}`;
+      systemPrompt += `\n\n## LIVE WEB DATA\nUse the following verified web data to answer accurately. Cite sources using [source:Name](url) when available:\n${searchContext}`;
     }
 
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     systemPrompt += `\n\nCurrent date: ${dateStr}`;
 
-    // CRITICAL: Force clean formatting — prepend formatting override
-    const FORMATTING_OVERRIDE = `
-## FORMATTING RULES — ADAPTIVE, DETAILED, GPT-STYLE
+    let maxTokens = 4096;
+    if (extendedThinking) {
+      maxTokens = 8192;
+      const thinkingInstruction = `\n\n## DEEP THINKING & REASONING MODE ACTIVATED
+You MUST conduct a rigorous, step-by-step reasoning breakdown before presenting your final answer.
+Start your response with an internal reasoning section enclosed in <thought> ... </thought> tags.
+In your <thought> block, detail:
+1. Core objectives & problem decomposition
+2. Constraints, assumptions & edge cases
+3. Step-by-step logical derivation or architecture verification
+After the closing </thought> tag, present your structured, user-friendly final answer.`;
+      systemPrompt += thinkingInstruction;
+    }
 
-### RESPONSE LENGTH — MATCH THE QUESTION:
-- **Simple/factual questions** ("what is X", "who is Y", "when did Z"): 150-300 words. Give a clear definition, key facts, and a short summary.
-- **Explanatory/educational questions** ("explain X", "how does X work", "tell me about X"): 500-1500 words. Be THOROUGH — cover definition, history, how it works, key features, use cases, pros/cons, examples. Think like a teacher.
-- **How-to/tutorial questions** ("how to do X", "steps to learn Y"): 400-800 words. Numbered steps with explanations for each.
-- **Comparison questions** ("X vs Y", "which is better"): 400-800 words. Table + detailed analysis of each option.
-- **Opinion/advice questions**: 300-600 words. Structured with reasoning.
-
-### STRUCTURE:
-1. Start with a direct answer or summary
-2. Use ## for major sections
-3. Use ### for subsections within detailed answers
-4. Use **bold** for key terms (first mention)
-5. Use tables for comparisons and rankings (clean pipes)
-6. Use bullet points for feature lists (no artificial cap — list what matters)
-7. Use numbered steps for processes and roadmaps
-8. End with Key Takeaways ONLY for detailed answers (3-5 bullets)
-
-### DETAILED ANSWER EXAMPLE (for "What is Java"):
-**What is Java?**
-
-Java is a high-level, object-oriented programming language developed by Sun Microsystems (now Oracle) in 1995. It was designed to be platform-independent — the idea being "write once, run anywhere" (WORA). Java code compiles to bytecode that runs on the Java Virtual Machine (JVM), which exists for Windows, Mac, Linux, and more.
-
-## History
-- **1995** — James Gosling and team at Sun Microsystems create Java
-- **2000** — Java 2 (J2SE) with major library updates
-- **2004** — Java 5 adds generics, annotations, enhanced for loop
-- **2011** — Oracle acquires Sun, takes over Java
-- **2014** — Java 8 adds lambda expressions, Stream API (huge milestone)
-- **2021+** — Modern Java (17, 21) adds records, sealed classes, pattern matching
-
-## Key Features
-- **Platform Independent** — JVM lets Java run on any OS without recompilation
-- **Object-Oriented** — Everything is organized into classes and objects. Supports inheritance, polymorphism, encapsulation, abstraction
-- **Robust & Secure** — Strong type checking, exception handling, built-in security manager, automatic garbage collection
-- **Multithreaded** — Built-in support for running multiple threads simultaneously
-- **Rich Standard Library** — Collections, I/O, networking, concurrency, XML processing, database connectivity (JDBC)
-- **Memory Management** — Automatic garbage collection frees developers from manual memory allocation
-- **Backward Compatibility** — Old Java code still runs on new JVMs (rare in programming)
-
-## How Java Works
-1. You write .java source files
-2. The **javac** compiler converts them to .class bytecode files
-3. The **JVM** interprets or JIT-compiles bytecode to native machine code at runtime
-4. This two-step process is what makes Java platform-independent
-
-## Where Java is Used
-- **Enterprise Applications** — Banking systems, insurance platforms, e-commerce backends (Spring, Jakarta EE)
-- **Android Development** — Android apps are primarily written in Java (though Kotlin is now preferred)
-- **Big Data** — Hadoop, Spark, Kafka are all written in Java
-- **Web Applications** — Backend services with Spring Boot, Tomcat, JBoss
-- **Financial Services** — Trading systems, risk management platforms
-- **Scientific Computing** — MATLAB uses Java, NASA uses Java for systems
-
-## Java vs Other Languages
-| Feature | Java | Python | JavaScript | C++ |
-|---------|------|--------|------------|-----|
-| Typing | Static | Dynamic | Dynamic | Static |
-| Speed | Fast | Slow | Medium | Very Fast |
-| Learning Curve | Medium | Easy | Easy | Hard |
-| Memory Mgmt | Auto (GC) | Auto (GC) | Auto (GC) | Manual |
-| Use Case | Enterprise | Data Science | Web | Systems |
-
-## Key Takeaways
-- Java is the backbone of enterprise software — banks, hospitals, governments run on Java
-- The JVM ecosystem is massive — you write once, deploy anywhere
-- Java evolves steadily — modern Java (17+) is much cleaner than old Java
-- Great for: large teams, long-lived projects, Android, backend systems
-- Not ideal for: quick scripts, frontend, mobile (iOS)
-
-### QUICK ANSWER EXAMPLE (for "What is the capital of France?"):
-The capital of France is **Paris**. It is the largest city in France, located in the north-central part of the country along the Seine River. Paris is known for the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral. It has been France's capital since the 10th century.`;
-    // The response architecture is appended LAST so it is the most specific,
-    // highest-recency instruction, overriding older formatting guidance.
-    systemPrompt = FORMATTING_OVERRIDE + "\n\n" + systemPrompt + "\n\n" + LIKEWAY_RESPONSE_ARCHITECTURE;
+    // Append response architecture LAST so it has highest recency priority
+    systemPrompt = systemPrompt + "\n\n" + LIKEWAY_RESPONSE_ARCHITECTURE;
 
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -1302,7 +1204,6 @@ The capital of France is **Paris**. It is the largest city in France, located in
       }
     }
 
-    // Add user content (with file context if files provided)
     let userContent = sanitizedPrompt;
     if (files && files.length > 0) {
       const fileContext = files
@@ -1312,27 +1213,9 @@ The capital of France is **Paris**. It is the largest city in France, located in
     }
     messages.push({ role: "user", content: userContent });
 
-    let maxTokens = 4096;
-    if (extendedThinking) {
-      maxTokens = 8192;
-      const thinkingInstruction = `\n\n## DEEP THINKING & REASONING MODE ACTIVATED
-You MUST conduct a rigorous, comprehensive step-by-step reasoning breakdown before presenting your final answer.
-Start your response with an internal reasoning section enclosed in <thought> ... </thought> tags.
-In your <thought> block, detail:
-1. Core objectives & problem decomposition
-2. Constraints, assumptions & potential edge cases
-3. Step-by-step logical derivation or analysis
-4. Solution verification
-After the </thought> tag, present your final structured, authoritative answer.`;
-      systemPrompt += thinkingInstruction;
-    }
-
     if (provider === "groq") maxTokens = Math.min(maxTokens, 4096);
 
-    // ── Provider fallback ──────────────────────────────────────────────────────
-    // Priority chain: requested model → alternate engine → key-pool fallback.
-    // We do not fabricate which upstream model answered; Likeway presents the
-    // engine name the user selected, and the provider is chosen at runtime.
+    // ── Provider dispatch & fallback ─────────────────────────────────────────
     let response: Response | null = null;
     if (provider === "freemodels" || provider === "tokenharbor") {
       const meta = LIKEWAY_ENGINE_LABELS[resolvedModelId] || {
@@ -1340,16 +1223,29 @@ After the </thought> tag, present your final structured, authoritative answer.`;
         intro: "a Likeway AI engine",
       };
 
-      // Construct messages for freemodels:
-      // The worker strips system messages, so we prepend the persona instruction.
+      // CRITICAL FIX: Previously, `if (msg.role === "system") continue;` discarded
+      // the entire `systemPrompt` (including live web search data, response architecture,
+      // custom instructions, and <suggestions> instructions) for all default models!
+      // We now embed the full system instructions + web context into the directive block.
       const freeMessages: { role: string; content: string }[] = [];
       const thinkingDirective = extendedThinking
-        ? " [Deep Thinking Mode: Enclose your detailed step-by-step reasoning inside a <thought> ... </thought> block first, then present your final answer.]"
+        ? "\n- Enclose your step-by-step reasoning inside `<thought>...</thought>` tags first, then provide the final answer outside."
         : "";
+      const webContextBlock = searchContext
+        ? `\n\n[LIVE VERIFIED WEB CONTEXT — PRIORITIZE THIS DATA]:\n${searchContext}\n`
+        : "";
+      const customBlock = customInstructions
+        ? `\n- User Custom Instructions: ${customInstructions}`
+        : "";
+
       const personaPrefix =
-        `[Directive: You are ${meta.name}, ${meta.intro}. ` +
-        `Identify only as ${meta.name}, a Likeway AI engine created by Aixphonic — ` +
-        `never claim to be, or to be made by, another company's model or product.${thinkingDirective}]\n\n`;
+        `[SYSTEM DIRECTIVE — FOLLOW STRICTLY:\n` +
+        `- Identity: You are ${meta.name} (${meta.intro}), created by Srikanth M, founder of Aixphonic (Tamil Nadu, India). Never claim to be made by OpenAI, Anthropic, Google, or Meta.\n` +
+        `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
+        `- Formatting (ChatGPT/Claude/Gemini-Grade UX): Lead immediately with a clear, direct opening answer (zero throat-clearing like "Certainly!" or "Sure!"). Use \`##\` and \`###\` headings for multi-part answers, **bold** key terms, clean Markdown pipe tables (\`| Col | Col |\`) for comparisons, \`> 💡 **Key Takeaway:**\` callout blockquotes, and fenced \`\`\`language code blocks with exact indentation.\n` +
+        `- Follow-Up Chips: End every substantive response with a \`<suggestions>\` block containing 3 specific follow-up prompts:\n` +
+        `<suggestions>\n- First specific follow-up\n- Second specific follow-up\n- Third specific follow-up\n</suggestions>\n` +
+        `Do not output any text after \`</suggestions>\`.]${webContextBlock}\n\n`;
 
       for (const msg of messages) {
         if (msg.role === "system") continue;
@@ -1360,12 +1256,12 @@ After the </thought> tag, present your final structured, authoritative answer.`;
         const lastIdx = freeMessages.length - 1;
         freeMessages[lastIdx] = {
           ...freeMessages[lastIdx],
-          content: `${personaPrefix}${freeMessages[lastIdx].content}`,
+          content: `${personaPrefix}User Request:\n${freeMessages[lastIdx].content}`,
         };
       } else {
         freeMessages.push({
           role: "user",
-          content: `${personaPrefix}${userContent}`,
+          content: `${personaPrefix}User Request:\n${userContent}`,
         });
       }
 
@@ -1405,29 +1301,22 @@ After the </thought> tag, present your final structured, authoritative answer.`;
       };
 
       try {
-        // Primary: try the tokenharbor models first if that's the provider
         if (provider === "tokenharbor") {
           try {
             response = await makeTokenHarborRequest(resolvedModelId);
             if (!response || !response.ok) {
-              console.warn(`[Chat API] TokenHarbor ${resolvedModelId} returned ${response?.status}. Trying mimo fallback...`);
               const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
               response = await makeTokenHarborRequest(altModel);
               if (!response || !response.ok) {
-                console.warn(`[Chat API] TokenHarbor fallback failed. Switching to freemodels...`);
                 response = await makeFreeRequest("gpt-6-astra");
               }
             }
-          } catch (thErr: any) {
-            console.warn(`[Chat API] TokenHarbor request error:`, thErr?.message);
+          } catch {
             response = await makeFreeRequest("gpt-6-astra").catch(() => null);
           }
         } else {
-          // Primary: freemodels proxy
           response = await makeFreeRequest(resolvedModelId);
           if (!response || !response.ok) {
-            console.warn(`[Chat API] Free model ${resolvedModelId} returned ${response?.status}. Trying TokenHarbor mimo...`);
-            // Silently try TokenHarbor mimo before gpt-6-astra
             try {
               const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
               if (mimoRes && mimoRes.ok) {
@@ -1442,8 +1331,7 @@ After the </thought> tag, present your final structured, authoritative answer.`;
             }
           }
         }
-      } catch (err: any) {
-        console.warn(`[Chat API] Primary request error for ${resolvedModelId}:`, err?.message || err);
+      } catch {
         try {
           const mimoFallback = await makeTokenHarborRequest("mimo-v2.6-flash:free");
           if (mimoFallback && mimoFallback.ok) {
@@ -1456,9 +1344,7 @@ After the </thought> tag, present your final structured, authoritative answer.`;
         }
       }
 
-      // If freemodels proxy completely failed, seamlessly fallback to key-pool openrouter / groq
       if (!response || !response.ok) {
-        console.warn(`[Chat API] Freemodels proxy unavailable. Activating key-pool fallback...`);
         try {
           response = await fetchAI(
             "openrouter",
@@ -1480,7 +1366,6 @@ After the </thought> tag, present your final structured, authoritative answer.`;
         }
       }
     } else {
-      // Key-pool providers (OpenRouter, Groq, Mistral)
       try {
         response = await fetchAI(
           provider,
@@ -1501,9 +1386,7 @@ After the </thought> tag, present your final structured, authoritative answer.`;
         console.warn(`[Chat API] Provider ${provider} error:`, err);
       }
 
-      // If key-pool failed or rate limited, seamlessly fallback to TokenHarbor or Freemodels!
       if (!response || !response.ok) {
-        console.warn(`[Chat API] Provider ${provider} failed (${response?.status}). Silently routing to TokenHarbor Mimo...`);
         try {
           if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
           response = await fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
@@ -1533,7 +1416,7 @@ After the </thought> tag, present your final structured, authoritative answer.`;
               },
               body: JSON.stringify({
                 model: "gpt-6-astra",
-                messages,
+                messages: messages.filter((m) => m.role !== "system"),
                 stream: true,
                 max_tokens: maxTokens,
                 temperature: 0.7,
@@ -1557,52 +1440,37 @@ After the </thought> tag, present your final structured, authoritative answer.`;
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let fullContent = "";
-    let introBuffer = "";
-    let introEmitted = false;
     let sseLineBuffer = "";
-    const sugState: SuggestionStreamState = { inBlock: false, raw: "" };
+    const sugState: SuggestionStreamState = { inBlock: false, carry: "", raw: "" };
 
+    // CRITICAL FIX:
+    // 1. Do NOT run line-stripping cleanFormatting() on individual token deltas (preserves code indentation!).
+    // 2. Intercept `<suggestions>` across chunk boundaries via `stripSuggestions()`.
+    // 3. Defer `data: [DONE]` until `flush()` AFTER emitting `event: suggestions` so the
+    //    client stream reader (`useSSEChatStream.ts`) receives the suggestion chips before closing!
     const transformStream = new TransformStream({
       transform(chunk, controller) {
         const text = sseLineBuffer + decoder.decode(chunk, { stream: true });
         const lines = text.split("\n");
-        // Keep any trailing incomplete line in buffer
         sseLineBuffer = lines.pop() || "";
-        const cleanChunks: string[] = [];
+        const outChunks: string[] = [];
 
         for (const line of lines) {
           const trimmed = line.trim();
           if (trimmed.startsWith("data: ")) {
             const data = trimmed.slice(6).trim();
             if (data === "[DONE]") {
-              if (!introEmitted && introBuffer) {
-                const cleaned = cleanFormatting(introBuffer);
-                cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`);
-                introEmitted = true;
-                introBuffer = "";
-              }
-              cleanChunks.push(`data: [DONE]\n\n`);
+              // Defer [DONE] to flush() so we can emit `event: suggestions` BEFORE `[DONE]`
               continue;
             }
             try {
               const parsed = JSON.parse(data);
               const rawDelta = parsed.choices?.[0]?.delta?.content || "";
-              const delta = stripSuggestions(rawDelta, sugState);
-              if (delta) {
-                fullContent += delta;
-
-                if (!introEmitted) {
-                  introBuffer += delta;
-                  // If buffer reached sentence break or sufficient length, flush it cleanly
-                  if (introBuffer.includes("\n") || introBuffer.length >= 80) {
-                    const cleaned = cleanFormatting(introBuffer);
-                    cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`);
-                    introEmitted = true;
-                    introBuffer = "";
-                  }
-                } else {
-                  const cleanDelta = cleanFormatting(delta);
-                  cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleanDelta } }] })}\n\n`);
+              if (rawDelta) {
+                const visibleDelta = stripSuggestions(rawDelta, sugState);
+                if (visibleDelta) {
+                  fullContent += visibleDelta;
+                  outChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: visibleDelta } }] })}\n\n`);
                 }
               }
             } catch {
@@ -1611,17 +1479,20 @@ After the </thought> tag, present your final structured, authoritative answer.`;
           }
         }
 
-        if (cleanChunks.length > 0) {
-          controller.enqueue(encoder.encode(cleanChunks.join("")));
+        if (outChunks.length > 0) {
+          controller.enqueue(encoder.encode(outChunks.join("")));
         }
       },
       flush(controller) {
-        if (!introEmitted && introBuffer) {
-          const cleaned = cleanFormatting(introBuffer);
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`));
-          introEmitted = true;
-          introBuffer = "";
+        // Flush any remaining buffered characters from the tag detector
+        const leftover = flushSuggestionsCarry(sugState);
+        if (leftover) {
+          fullContent += leftover;
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: leftover } }] })}\n\n`)
+          );
         }
+
         if (fullContent.trim()) {
           const finalCleaned = cleanFormatting(fullContent);
           saveMessage(userId, { role: "assistant", content: finalCleaned }, projectId, conversationId).catch((error) => {
@@ -1629,13 +1500,15 @@ After the </thought> tag, present your final structured, authoritative answer.`;
           });
         }
 
-        // Emit follow-up suggestion chips as their own SSE event.
+        // Emit follow-up suggestion chips BEFORE `data: [DONE]` so `consumeChatStream` reads them!
         const suggestions = parseSuggestionLines(sugState.raw);
         if (suggestions.length > 0) {
           controller.enqueue(
             encoder.encode(`event: suggestions\ndata: ${JSON.stringify({ suggestions })}\n\n`)
           );
         }
+
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       },
     });
 
@@ -1646,6 +1519,7 @@ After the </thought> tag, present your final structured, authoritative answer.`;
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "X-User-Plan": plan,
         "X-DailyLimit-Limit": dailyLimit.limit.toString(),
         "X-DailyLimit-Remaining": dailyLimit.remaining.toString(),
         "X-DailyLimit-Used": dailyLimit.used.toString(),

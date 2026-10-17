@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
-import { X, Copy, Check, Download, FileText, Code, Eye } from "lucide-react";
+import React, { useState, useCallback, useEffect } from "react";
+import { X, Copy, Check, Download, FileText, Code, Eye, Play, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CodeBlock from "@/components/CodeBlock";
 import { cn } from "@/lib/utils";
 
-export type ArtifactType = "code" | "markdown" | "html" | "mermaid" | "doc";
+export type ArtifactType = "code" | "markdown" | "html" | "mermaid" | "doc" | "react";
 
 export default function ArtifactPanel({
   isOpen,
@@ -27,9 +27,23 @@ export default function ArtifactPanel({
   theme: "dark" | "light";
 }) {
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<"rendered" | "raw">(
-    type === "code" ? "raw" : "rendered"
+  const isHtmlPreviewable =
+    type === "html" ||
+    /<!doctype html>|<html[\s>]|<body[\s>]|<div[\s>]/i.test(content);
+
+  const [viewMode, setViewMode] = useState<"preview" | "rendered" | "raw">(
+    isHtmlPreviewable ? "preview" : type === "code" ? "raw" : "rendered"
   );
+
+  useEffect(() => {
+    if (isHtmlPreviewable) {
+      setViewMode("preview");
+    } else if (type === "code" || type === "react") {
+      setViewMode("raw");
+    } else {
+      setViewMode("rendered");
+    }
+  }, [type, title, isHtmlPreviewable]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(content).then(() => {
@@ -51,7 +65,9 @@ export default function ArtifactPanel({
   }, [content, title]);
 
   const handleExportHTML = useCallback(() => {
-    const htmlContent = `<!DOCTYPE html>
+    const htmlContent = isHtmlPreviewable
+      ? content
+      : `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -86,17 +102,16 @@ export default function ArtifactPanel({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [content, title]);
+  }, [content, title, isHtmlPreviewable]);
 
   if (!isOpen) return null;
 
   const displayType = type === "doc" ? "markdown" : type;
-  const isCode = displayType === "code";
 
   return (
     <div
       className={cn(
-        "fixed inset-y-0 right-0 z-[100] w-full sm:max-w-lg border-l shadow-2xl flex flex-col",
+        "fixed inset-y-0 right-0 z-[100] w-full sm:max-w-xl border-l shadow-2xl flex flex-col",
         theme === "dark"
           ? "bg-[#0f0f0f] border-white/10 text-white"
           : "bg-white border-black/10 text-gray-900"
@@ -105,54 +120,69 @@ export default function ArtifactPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-inherit safe-area-top">
         <div className="min-w-0 flex-1">
-          <p className="text-xs opacity-60 uppercase tracking-wide">{displayType}</p>
-          <h2 className="font-semibold truncate">{title || "Artifact"}</h2>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-500">
+            <Sparkles size={11} />
+            <span>LikeWay Canvas · {displayType}</span>
+          </div>
+          <h2 className="font-bold truncate text-sm mt-0.5">{title || "Interactive Artifact"}</h2>
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
-          {/* View mode toggle (for non-code types) */}
-          {!isCode && (
-            <div className="flex items-center bg-black/10 dark:bg-white/5 rounded-lg p-0.5 mr-1">
+          <div className="flex items-center bg-black/10 dark:bg-white/5 rounded-lg p-0.5 mr-1">
+            {isHtmlPreviewable && (
               <button
-                onClick={() => setViewMode("rendered")}
+                onClick={() => setViewMode("preview")}
                 className={cn(
-                  "px-2 py-1 rounded-md text-[10px] font-semibold transition-all",
-                  viewMode === "rendered"
+                  "px-2 py-1 rounded-md text-[10px] font-semibold transition-all flex items-center gap-1",
+                  viewMode === "preview"
                     ? "bg-cyan-500/20 text-cyan-400"
                     : "text-gray-500 hover:text-gray-300"
                 )}
-                title="Rendered view"
+                title="Interactive Live Preview"
               >
-                <Eye size={12} />
+                <Play size={11} />
+                <span>Preview</span>
               </button>
-              <button
-                onClick={() => setViewMode("raw")}
-                className={cn(
-                  "px-2 py-1 rounded-md text-[10px] font-semibold transition-all",
-                  viewMode === "raw"
-                    ? "bg-cyan-500/20 text-cyan-400"
-                    : "text-gray-500 hover:text-gray-300"
-                )}
-                title="Raw view"
-              >
-                <Code size={12} />
-              </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={() => setViewMode("rendered")}
+              className={cn(
+                "px-2 py-1 rounded-md text-[10px] font-semibold transition-all flex items-center gap-1",
+                viewMode === "rendered"
+                  ? "bg-cyan-500/20 text-cyan-400"
+                  : "text-gray-500 hover:text-gray-300"
+              )}
+              title="Rendered view"
+            >
+              <Eye size={11} />
+              <span>Reader</span>
+            </button>
+            <button
+              onClick={() => setViewMode("raw")}
+              className={cn(
+                "px-2 py-1 rounded-md text-[10px] font-semibold transition-all flex items-center gap-1",
+                viewMode === "raw"
+                  ? "bg-cyan-500/20 text-cyan-400"
+                  : "text-gray-500 hover:text-gray-300"
+              )}
+              title="Source Code"
+            >
+              <Code size={11} />
+              <span>Code</span>
+            </button>
+          </div>
 
-          {/* Copy */}
           <button
             onClick={handleCopy}
-            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all"
+            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:text-white transition-all"
             title="Copy to clipboard"
           >
             {copied ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
           </button>
 
-          {/* Export dropdown */}
           <div className="relative group/export">
             <button
-              className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all"
-              title="Export document"
+              className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:text-white transition-all"
+              title="Export artifact"
             >
               <Download size={16} />
             </button>
@@ -162,14 +192,14 @@ export default function ArtifactPanel({
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 text-gray-300 hover:text-white text-xs font-medium transition-all"
               >
                 <FileText size={14} className="text-blue-400" />
-                Export as Markdown
+                Export as Markdown (.md)
               </button>
               <button
                 onClick={handleExportHTML}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 text-gray-300 hover:text-white text-xs font-medium transition-all"
               >
                 <FileText size={14} className="text-orange-400" />
-                Export as HTML
+                Export as HTML (.html)
               </button>
               <button
                 onClick={handleCopy}
@@ -184,7 +214,7 @@ export default function ArtifactPanel({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/10 shrink-0"
+            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0"
             aria-label="Close"
           >
             <X size={18} />
@@ -194,10 +224,17 @@ export default function ArtifactPanel({
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-3 sm:p-4">
-        {isCode || viewMode === "raw" ? (
-          <pre className="text-xs sm:text-sm whitespace-pre-wrap font-mono leading-relaxed">
-            {content}
-          </pre>
+        {viewMode === "preview" && isHtmlPreviewable ? (
+          <div className="w-full h-full min-h-[420px] rounded-xl overflow-hidden border border-black/10 dark:border-white/10 bg-white">
+            <iframe
+              title={title || "Artifact Preview"}
+              srcDoc={content}
+              sandbox="allow-scripts"
+              className="w-full h-full min-h-[420px] border-0"
+            />
+          </div>
+        ) : viewMode === "raw" ? (
+          <CodeBlock language={type === "code" ? "typescript" : type} value={content} isGenerating={false} />
         ) : (
           <div
             className={cn(
@@ -210,11 +247,13 @@ export default function ArtifactPanel({
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code: ({ node, inline, className, children, ...props }: any) => {
-                  const match = /language-(\w+)/.exec(className || "");
-                  return !inline && match ? (
+                pre: ({ children }: any) => <>{children}</>,
+                code: ({ className, children, ...props }: any) => {
+                  const match = /language-([\w+#.-]+)/.exec(className || "");
+                  const isBlock = Boolean(match) || String(children).includes("\n");
+                  return isBlock ? (
                     <CodeBlock
-                      language={match[1]}
+                      language={match?.[1] || "text"}
                       value={String(children).replace(/\n$/, "")}
                       isGenerating={false}
                     />
@@ -263,12 +302,12 @@ export default function ArtifactPanel({
       <div className="p-3 sm:p-4 border-t border-inherit flex gap-2 safe-area-bottom">
         <input
           type="text"
-          placeholder="Refine this artifact..."
+          placeholder="Ask LikeWay to refine or add features to this artifact…"
           className={cn(
-            "flex-1 rounded-lg px-3 py-2.5 text-sm border",
+            "flex-1 rounded-xl px-3.5 py-2.5 text-sm border focus:outline-none focus:border-cyan-500/50",
             theme === "dark"
-              ? "bg-black/40 border-white/10 placeholder-gray-600"
-              : "bg-gray-50 border-black/10 placeholder-gray-400"
+              ? "bg-black/40 border-white/10 placeholder-gray-500 text-white"
+              : "bg-gray-50 border-black/10 placeholder-gray-400 text-gray-900"
           )}
           onKeyDown={(e) => {
             if (e.key === "Enter" && e.currentTarget.value.trim()) {
@@ -282,42 +321,25 @@ export default function ArtifactPanel({
   );
 }
 
-// Simple markdown to HTML converter for export
 function renderMarkdownToHTML(md: string): string {
   let html = md
-    // Headers
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    // Bold and italic
     .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // Inline code
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    // Links
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-    // Images
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />')
-    // Horizontal rules
     .replace(/^---$/gm, "<hr />")
-    // Blockquotes
     .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
-    // Unordered lists
     .replace(/^- (.+)$/gm, "<li>$1</li>")
-    // Line breaks → paragraphs
     .replace(/\n\n/g, "</p><p>")
     .replace(/\n/g, "<br/>");
 
-  // Wrap in paragraphs
   html = "<p>" + html + "</p>";
-
-  // Clean up list items into proper lists
-  html = html.replace(/(<li>.*<\/li>)/gs, (match) => {
-    return "<ul>" + match + "</ul>";
-  });
-
-  // Clean up empty paragraphs
+  html = html.replace(/(<li>.*<\/li>)/gs, (match) => "<ul>" + match + "</ul>");
   html = html.replace(/<p><\/p>/g, "");
   html = html.replace(/<p>(<h[1-6]>)/g, "$1");
   html = html.replace(/(<\/h[1-6]>)<\/p>/g, "$1");

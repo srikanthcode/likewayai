@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  createOrUpdateSession,
+  getSession,
+  stopSession,
+  addSessionLog,
+} from "@/lib/preview/preview-manager";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { sessionId, projectId, title, content, code, language, files } = body;
+    const resolvedContent = content || code || "";
+
+    if (!resolvedContent && (!files || Object.keys(files).length === 0)) {
+      return NextResponse.json(
+        { error: "Content or files are required to start preview" },
+        { status: 400 }
+      );
+    }
+
+    const session = await createOrUpdateSession({
+      sessionId,
+      projectId,
+      title,
+      content: resolvedContent,
+      language,
+      files,
+    });
+
+    return NextResponse.json({
+      success: true,
+      session,
+      previewUrl: session.previewUrl,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to create preview session" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get("sessionId");
+
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+  }
+
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    success: true,
+    session,
+  });
+}
+
+export async function DELETE(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get("sessionId");
+
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+  }
+
+  const stopped = stopSession(sessionId);
+  return NextResponse.json({
+    success: stopped,
+    message: stopped ? "Preview stopped" : "Session not found",
+  });
+}

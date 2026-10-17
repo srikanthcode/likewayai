@@ -43,7 +43,8 @@ import {
   Lock,
   FileText,
   Download,
-  Video
+  Video,
+  Play
 } from "lucide-react";
 
 
@@ -68,6 +69,9 @@ import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
 import AccountMenu from "@/components/AccountMenu";
 import SlashCommandMenu from "@/components/SlashCommandMenu";
 import SupportModal from "@/components/SupportModal";
+import LivePreviewWorkspace from "@/components/LivePreviewWorkspace";
+import VisibleBrowserWorkspace from "@/components/VisibleBrowserWorkspace";
+import ConnectedAppsModal from "@/components/ConnectedAppsModal";
 import SuggestionChips from "@/components/chat/SuggestionChips";
 import EmptyStateChips from "@/components/chat/EmptyStateChips";
 import ModePills from "@/components/chat/ModePills";
@@ -86,32 +90,55 @@ import {
 
 function formatAIResponse(content: string) {
   if (!content) return "";
-  
+
   let formatted = content;
 
+  // Strip trailing <suggestions>...</suggestions> (or partial <suggestions> during streaming)
+  formatted = formatted.replace(/<suggestions>[\s\S]*?(?:<\/suggestions>|$)/gi, "");
+
   // Self-close unclosed tags dynamically during progressive streaming
-  if (formatted.includes("<thought>") && !formatted.includes("</thought>")) {
+  const isThoughtOpen = formatted.includes("<thought>") && !formatted.includes("</thought>");
+  if (isThoughtOpen) {
     formatted += "</thought>";
   }
   if (formatted.includes("<artifact") && !formatted.includes("</artifact>")) {
     formatted += "</artifact>";
   }
-  
-  // Format <thought> blocks into clean blockquotes
-  formatted = formatted.replace(/<thought>([\s\S]*?)<\/thought>/gi, (match, thought) => {
-    return `\n> **🤔 Thought Process:**\n> \n> *${thought.trim().split('\n').join('\n> ')}*\n\n`;
+
+  // Format <thought> blocks into a clean ChatGPT/Claude-style collapsible reasoning section
+  formatted = formatted.replace(/<thought>([\s\S]*?)<\/thought>/gi, (_match, thought) => {
+    const cleanThought = thought
+      .trim()
+      .split("\n")
+      .map((line: string) => `> ${line}`)
+      .join("\n");
+    const header = isThoughtOpen
+      ? "> 🧠 **Thinking step-by-step…**"
+      : "> 🧠 **Thought Process** *(Verified Reasoning)*";
+    return `\n${header}\n>\n${cleanThought}\n\n`;
   });
 
-  // Extract artifact content to avoid breaking the markdown renderer with nested code blocks
-  formatted = formatted.replace(/<artifact(?:[^>]*)>([\s\S]*?)<\/artifact>/gi, (match, artifactContent) => {
-    return `\n\n---\n\n${artifactContent.trim()}\n\n`;
+  // Format <artifact ...> blocks with attributes in ANY order (id, type, language, title)
+  formatted = formatted.replace(/<artifact([^>]*)>([\s\S]*?)<\/artifact>/gi, (_match, attrs, artifactContent) => {
+    const typeMatch = /type="([^"]+)"/i.exec(attrs || "");
+    const langMatch = /language="([^"]+)"/i.exec(attrs || "");
+    const titleMatch = /title="([^"]+)"/i.exec(attrs || "");
+    const aType = (typeMatch?.[1] || "code").toLowerCase();
+    const aLang = langMatch?.[1] || (aType === "react" ? "tsx" : aType === "html" ? "html" : aType === "mermaid" ? "mermaid" : "");
+    const aTitle = titleMatch?.[1] || "Interactive Artifact";
+    const body = artifactContent.trim();
+
+    if ((aType === "code" || aType === "react" || aType === "html" || aType === "mermaid") && !body.startsWith("```")) {
+      return `\n\n> ✨ **Artifact Ready:** **${aTitle}** *(Opened in LikeWay Canvas)*\n\n\`\`\`${aLang || "tsx"}\n${body}\n\`\`\`\n\n`;
+    }
+    return `\n\n> ✨ **Document Artifact:** **${aTitle}**\n\n${body}\n\n`;
   });
 
   // Convert [source:Name] or [source:Name](url) into special links for SourceBadge rendering
-  formatted = formatted.replace(/\[source:([^\]]+)\]\(([^)]+)\)/gi, (match, name, url) => {
+  formatted = formatted.replace(/\[source:([^\]]+)\]\(([^)]+)\)/gi, (_match, name, url) => {
     return `[${name.trim()}](source://${encodeURIComponent(name.trim())}?url=${encodeURIComponent(url)})`;
   });
-  formatted = formatted.replace(/\[source:([^\]]+)\]/gi, (match, name) => {
+  formatted = formatted.replace(/\[source:([^\]]+)\]/gi, (_match, name) => {
     return `[${name.trim()}](source://${encodeURIComponent(name.trim())})`;
   });
 
@@ -416,10 +443,12 @@ function buildMarkdownComponents() {
       <li className="text-[15px] leading-relaxed" {...props}>{children}</li>
     ),
     pre: ({ children }: any) => <>{children}</>,
-    code: ({ node, inline, className, children, ...props }: any) => {
-      const match = /language-(\w+)/.exec(className || '');
-      return !inline && match ? (
-        <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} isGenerating={_isGeneratingRef.current} />
+    code: ({ className, children, ...props }: any) => {
+      const match = /language-([\w+#.-]+)/.exec(className || '');
+      const valueStr = String(children).replace(/\n$/, '');
+      const isBlock = Boolean(match) || valueStr.includes('\n');
+      return isBlock ? (
+        <CodeBlock language={match?.[1] || 'text'} value={valueStr} isGenerating={_isGeneratingRef.current} />
       ) : (
         <code className={cn(className, "bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono")} {...props}>
           {children}
@@ -537,6 +566,11 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string; type: ArtifactType } | null>(null);
+  const [showLivePreview, setShowLivePreview] = useState(false);
+  const [showBrowserWorkspace, setShowBrowserWorkspace] = useState(false);
+  const [showConnectedApps, setShowConnectedApps] = useState(false);
+  const [previewCustomCode, setPreviewCustomCode] = useState("");
+  const [previewCustomTitle, setPreviewCustomTitle] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -637,20 +671,29 @@ export default function ChatPage() {
     setUserId(id);
   }, [user]);
 
+  const [copiedMsgIndex, setCopiedMsgIndex] = useState<number | null>(null);
+  const [sharedMsgIndex, setSharedMsgIndex] = useState<number | null>(null);
+  const [speakingMsgIndex, setSpeakingMsgIndex] = useState<number | null>(null);
+  const [msgFeedback, setMsgFeedback] = useState<Record<number, "up" | "down">>({});
+
   // Listen to new assistant messages and auto-open generated artifacts in side panel
   useEffect(() => {
     if (messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === "assistant" && lastMsg.status === "done") {
-      const match = lastMsg.content.match(/<artifact\s+type="([^"]+)"\s+title="([^"]+)"[^>]*>([\s\S]*?)<\/artifact>/i);
+      const match = lastMsg.content.match(/<artifact([^>]*)>([\s\S]*?)<\/artifact>/i);
       if (match) {
-        const [_, type, title, content] = match;
-        const rawType = type.trim().toLowerCase();
-        const mappedType: ArtifactType = rawType === "doc" ? "markdown" : (rawType as any);
+        const [, attrs, content] = match;
+        const typeMatch = /type="([^"]+)"/i.exec(attrs || "");
+        const titleMatch = /title="([^"]+)"/i.exec(attrs || "");
+        const rawType = (typeMatch?.[1] || "code").trim().toLowerCase();
+        const title = (titleMatch?.[1] || "Generated Artifact").trim();
+        const mappedType: ArtifactType =
+          rawType === "doc" ? "markdown" : rawType === "react" ? "code" : (rawType as ArtifactType);
         setActiveArtifact({
-          title: title.trim(),
+          title,
           content: content.trim(),
-          type: mappedType
+          type: mappedType,
         });
         setIsArtifactOpen(true);
       }
@@ -1528,6 +1571,13 @@ export default function ChatPage() {
     return () => window.removeEventListener("plan_updated", handlePlanUpdate);
   }, []);
 
+  useEffect(() => {
+    if (user?.plan) {
+      const norm = getCurrentPlan();
+      setCurrentPlanState(norm);
+    }
+  }, [user?.plan]);
+
   // Check browser automation trial status
   useEffect(() => {
     const plan = getCurrentPlan();
@@ -1802,6 +1852,7 @@ export default function ChatPage() {
       const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
       let res: Response | null = null;
+      let statusErrorMsg: string | null = null;
 
       for (const attempt of FALLBACK_MODELS) {
         if (abortController.signal.aborted) break;
@@ -1809,6 +1860,15 @@ export default function ChatPage() {
           const r = await attemptChat(attempt.id, attempt.trim, abortController.signal);
           if (r.ok && r.body) {
             res = r;
+            break;
+          }
+          // Do not blindly retry on 400/402/403/429 (plan entitlement, model lock, or rate limit)
+          if (r.status === 400 || r.status === 402 || r.status === 403 || r.status === 429) {
+            const errJson = await r.json().catch(() => ({}));
+            statusErrorMsg = errJson.error || `Request denied (${r.status}).`;
+            if (errJson.upgradeTo) {
+              statusErrorMsg += `\n\n👉 **[Upgrade to ${errJson.upgradeTo}](/pricing?plan=${errJson.upgradeTo})** to unlock this feature immediately.`;
+            }
             break;
           }
           console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
@@ -1825,7 +1885,7 @@ export default function ChatPage() {
           copy[copy.length - 1] = {
             ...copy[copy.length - 1],
             role: "assistant",
-            content: "All models are currently unavailable. Try again in a moment.",
+            content: statusErrorMsg || "All models are currently unavailable. Try again in a moment.",
             status: 'done',
             animationPlayed: true
           };
@@ -2018,12 +2078,21 @@ export default function ChatPage() {
       const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
       let res: Response | null = null;
+      let statusErrorMsg: string | null = null;
       for (const attempt of FALLBACK_MODELS) {
         if (abortController.signal.aborted) break;
         try {
           const r = await attemptChat(attempt.id, attempt.trim, abortController.signal);
           if (r.ok && r.body) {
             res = r;
+            break;
+          }
+          if (r.status === 400 || r.status === 402 || r.status === 403 || r.status === 429) {
+            const errJson = await r.json().catch(() => ({}));
+            statusErrorMsg = errJson.error || `Request denied (${r.status}).`;
+            if (errJson.upgradeTo) {
+              statusErrorMsg += `\n\n👉 **[Upgrade to ${errJson.upgradeTo}](/pricing?plan=${errJson.upgradeTo})** to unlock this feature immediately.`;
+            }
             break;
           }
           console.warn(`[Client Failover] Model ${attempt.id} failed (${r.status}). Trying next...`);
@@ -2040,7 +2109,7 @@ export default function ChatPage() {
           copy[copy.length - 1] = {
             ...copy[copy.length - 1],
             role: "assistant",
-            content: "All models are currently unavailable. Try again in a moment.",
+            content: statusErrorMsg || "All models are currently unavailable. Try again in a moment.",
             status: 'done',
             animationPlayed: true
           };
@@ -2075,6 +2144,7 @@ export default function ChatPage() {
             return copy;
           });
         },
+        onSuggestions: (items) => setSuggestions(items),
         onReadError: (readErr: any) => {
           if (readErr?.name === "AbortError" || readErr?.message?.includes("aborted") || readErr?.message?.includes("BodyStreamBuffer")) {
             console.log("Edit request aborted");
@@ -2422,7 +2492,64 @@ export default function ChatPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Live Preview Studio Button */}
+            <button
+              onClick={() => {
+                if (!previewCustomCode && !activeArtifact) {
+                  for (let i = messages.length - 1; i >= 0; i--) {
+                    const match = messages[i]?.content?.match(/```(?:tsx|jsx|html|javascript|typescript|react)?\n([\s\S]*?)```/);
+                    if (match) {
+                      setPreviewCustomCode(match[1]);
+                      setPreviewCustomTitle("Generated Application");
+                      break;
+                    }
+                  }
+                }
+                setShowLivePreview(true);
+              }}
+              className={cn(
+                "h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
+                showLivePreview
+                  ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300 shadow-sm shadow-cyan-500/20"
+                  : (theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10" : "bg-black/5 border-black/10 text-gray-700 hover:text-black hover:bg-black/8")
+              )}
+              title="Launch Interactive Live Preview Studio"
+            >
+              <Play size={10} fill="currentColor" className="text-cyan-400" />
+              <span className="hidden sm:inline">Live Preview</span>
+            </button>
+
+            {/* Visible Browser Agent Button */}
+            <button
+              onClick={() => setShowBrowserWorkspace(true)}
+              className={cn(
+                "h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
+                showBrowserWorkspace
+                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-500/20"
+                  : (theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10" : "bg-black/5 border-black/10 text-gray-700 hover:text-black hover:bg-black/8")
+              )}
+              title="Visible Browser Automation Workspace"
+            >
+              <Globe size={11} className="text-emerald-400" />
+              <span className="hidden sm:inline">Browser</span>
+            </button>
+
+            {/* Connected Apps & Plugins Hub */}
+            <button
+              onClick={() => setShowConnectedApps(true)}
+              className={cn(
+                "h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
+                showConnectedApps
+                  ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300 shadow-sm shadow-indigo-500/20"
+                  : (theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10" : "bg-black/5 border-black/10 text-gray-700 hover:text-black hover:bg-black/8")
+              )}
+              title="Connected Apps & Tool Ecosystem"
+            >
+              <Zap size={11} className="text-indigo-400" />
+              <span className="hidden md:inline">Apps & Tools</span>
+            </button>
+
             {/* Computer Control Agent Status Button */}
             <button
               onClick={() => setShowCompanionModal(true)}
@@ -3067,55 +3194,138 @@ export default function ChatPage() {
                       {/* Message Actions (Copy/Edit) */}
                       {(!m.status || (m.status !== 'thinking' && m.status !== 'typing')) && m.role === "assistant" && (
                         <div className="flex items-center gap-1 transition-opacity opacity-0 group-hover/message:opacity-100 mt-1.5 self-start">
-                          <div className="flex items-center gap-0.5">
+                          <div className="flex items-center gap-0.5 flex-wrap">
                               <button 
                                 onClick={() => {
                                   navigator.clipboard.writeText(m.content);
+                                  setCopiedMsgIndex(i);
+                                  setTimeout(() => setCopiedMsgIndex(null), 2000);
                                 }}
                                 className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
-                                title="Copy"
+                                title="Copy response"
                               >
-                                <Copy size={14} />
+                                {copiedMsgIndex === i ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                               </button>
-                              <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all" title="Good response">
+                              <button
+                                onClick={() => {
+                                  if (speakingMsgIndex === i) {
+                                    speechTokenRef.current++;
+                                    window.speechSynthesis.cancel();
+                                    try { activeAudioSrcRef.current?.stop(); } catch {}
+                                    isSpeakingRef.current = false;
+                                    setSpeakingMsgIndex(null);
+                                  } else {
+                                    setSpeakingMsgIndex(i);
+                                    speakText(m.content, () => setSpeakingMsgIndex(null));
+                                  }
+                                }}
+                                className={cn(
+                                  "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all",
+                                  speakingMsgIndex === i ? "text-cyan-400 bg-cyan-500/10" : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                                )}
+                                title={speakingMsgIndex === i ? "Stop reading aloud" : "Read response aloud"}
+                              >
+                                <AudioLines size={14} />
+                              </button>
+                              <button
+                                onClick={() => setMsgFeedback(prev => ({ ...prev, [i]: prev[i] === "up" ? undefined as any : "up" }))}
+                                className={cn(
+                                  "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all",
+                                  msgFeedback[i] === "up" ? "text-emerald-500 bg-emerald-500/10" : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                                )}
+                                title="Helpful response"
+                              >
                                 <ThumbsUp size={14} />
                               </button>
-                              <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all" title="Bad response">
+                              <button
+                                onClick={() => setMsgFeedback(prev => ({ ...prev, [i]: prev[i] === "down" ? undefined as any : "down" }))}
+                                className={cn(
+                                  "p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all",
+                                  msgFeedback[i] === "down" ? "text-rose-500 bg-rose-500/10" : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                                )}
+                                title="Needs improvement"
+                              >
                                 <ThumbsDown size={14} />
                               </button>
                               <button 
                                 onClick={() => {
-                                  // Copy as clean markdown (strip status indicators)
-                                  const cleanContent = m.content
-                                    .replace(/\n> \*\*🔄 Generating\.\.\.\*\*/g, '')
-                                    .replace(/\n> \*\*🔍 Searching\.\.\.\*\*/g, '')
-                                    .trim();
-                                  navigator.clipboard.writeText(cleanContent);
+                                  setActiveArtifact({
+                                    title: "Response Canvas View",
+                                    content: m.content,
+                                    type: "markdown",
+                                  });
+                                  setIsArtifactOpen(true);
                                 }}
                                 className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
-                                title="Copy as Markdown"
+                                title="Open in LikeWay Canvas"
                               >
                                 <FileText size={14} />
                               </button>
-                              <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all" title="Share">
-                                <Share2 size={14} />
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if (navigator.share) {
+                                      await navigator.share({ title: "LikeWay AI Response", text: m.content });
+                                    } else {
+                                      await navigator.clipboard.writeText(m.content);
+                                      setSharedMsgIndex(i);
+                                      setTimeout(() => setSharedMsgIndex(null), 2000);
+                                    }
+                                  } catch {}
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
+                                title="Share response"
+                              >
+                                {sharedMsgIndex === i ? <Check size={14} className="text-cyan-400" /> : <Share2 size={14} />}
                               </button>
                               <button 
                                 onClick={() => {
+                                  let userIdx = -1;
                                   let lastUserMsg = "";
-                                  for(let j = i-1; j >= 0; j--) {
-                                      if(messages[j]?.role === 'user') {
-                                          lastUserMsg = messages[j].content;
-                                          break;
-                                      }
+                                  for (let j = i - 1; j >= 0; j--) {
+                                    if (messages[j]?.role === 'user') {
+                                      userIdx = j;
+                                      lastUserMsg = messages[j].content;
+                                      break;
+                                    }
                                   }
-                                  if (lastUserMsg) handleSend(undefined, lastUserMsg);
+                                  if (userIdx >= 0 && lastUserMsg) {
+                                    handleEditSubmit(userIdx, lastUserMsg);
+                                  }
                                 }}
                                 className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
-                                title="Regenerate"
+                                title="Regenerate in-place"
                               >
                                 <RefreshCw size={14} />
                               </button>
+                              {/* ChatGPT-style quick response replay modifiers */}
+                              {[
+                                { label: "Shorter", suffix: "\n\n[Rewrite concisely in 3-5 key bullet points.]" },
+                                { label: "Deeper", suffix: "\n\n[Provide a deeper technical breakdown with examples and edge cases.]" },
+                                { label: "Simpler", suffix: "\n\n[Explain simply step-by-step with an everyday analogy.]" },
+                              ].map((mod) => (
+                                <button
+                                  key={mod.label}
+                                  onClick={() => {
+                                    let userIdx = -1;
+                                    let lastUserMsg = "";
+                                    for (let j = i - 1; j >= 0; j--) {
+                                      if (messages[j]?.role === 'user') {
+                                        userIdx = j;
+                                        lastUserMsg = messages[j].content.replace(/\n\n\[.*\]$/, "");
+                                        break;
+                                      }
+                                    }
+                                    if (userIdx >= 0 && lastUserMsg) {
+                                      handleEditSubmit(userIdx, lastUserMsg + mod.suffix);
+                                    }
+                                  }}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold border border-black/10 dark:border-white/10 text-gray-500 hover:text-cyan-500 hover:border-cyan-500/40 transition-all ml-0.5"
+                                  title={`Replay as ${mod.label}`}
+                                >
+                                  {mod.label}
+                                </button>
+                              ))}
                               <button 
                                 onClick={() => {
                                   // Export full conversation as markdown
@@ -4234,7 +4444,10 @@ export default function ChatPage() {
                       </div>
                       <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />
                     </button>
-                    <button className="w-full flex items-center justify-between px-4 py-3 text-left">
+                    <button
+                      onClick={() => { setIsSettingsOpen(false); window.location.href = "/account/sessions"; }}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left"
+                    >
                       <div className="flex items-center gap-3">
                         <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-blue-500/10" : "bg-blue-50")}>
                           <Monitor size={14} className="text-blue-400" />
@@ -4243,7 +4456,10 @@ export default function ChatPage() {
                       </div>
                       <ChevronDown size={14} className={cn("rotate-[-90deg]", theme === 'dark' ? "text-gray-600" : "text-gray-400")} />
                     </button>
-                    <button className="w-full flex items-center justify-between px-4 py-3 text-left">
+                    <button
+                      onClick={() => { setIsSettingsOpen(false); setShowSupportModal(true); }}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left"
+                    >
                       <div className="flex items-center gap-3">
                         <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", theme === 'dark' ? "bg-green-500/10" : "bg-green-50")}>
                           <MessageSquare size={14} className="text-green-400" />
@@ -4337,6 +4553,76 @@ export default function ChatPage() {
         onClose={() => setShowSupportModal(false)}
         theme={theme}
         userId={userId}
+      />
+
+      {/* Live Preview Workspace */}
+      <LivePreviewWorkspace
+        isOpen={showLivePreview || isArtifactOpen}
+        onClose={() => {
+          setShowLivePreview(false);
+          setIsArtifactOpen(false);
+          setPreviewCustomCode("");
+          setPreviewCustomTitle("");
+        }}
+        title={previewCustomTitle || activeArtifact?.title || "Live Web Application"}
+        initialCode={previewCustomCode || activeArtifact?.content || `// Welcome to Live Preview Studio
+// Ask the AI to build any React, Next.js, or HTML/Tailwind app, or paste code below!
+
+import React, { useState } from 'react';
+
+export default function App() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 text-white flex flex-col items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 shadow-2xl text-center space-y-6">
+        <div className="inline-flex p-3 rounded-2xl bg-cyan-500/20 text-cyan-400 mb-2">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+          Likeway Live Studio
+        </h1>
+        <p className="text-sm text-gray-300">
+          Real-time interactive preview engine with React 19, Tailwind CSS, multi-device viewports, and AI error diagnosis.
+        </p>
+        <div className="flex items-center justify-center gap-4 pt-2">
+          <button
+            onClick={() => setCount(c => c + 1)}
+            className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold shadow-lg shadow-cyan-500/25 transition-all transform active:scale-95"
+          >
+            Count: {count}
+          </button>
+          <button
+            onClick={() => setCount(0)}
+            className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium transition-all"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`}
+        language="react"
+        theme={theme}
+      />
+
+      {/* Visible Browser Automation Workspace */}
+      <VisibleBrowserWorkspace
+        isOpen={showBrowserWorkspace}
+        onClose={() => setShowBrowserWorkspace(false)}
+        initialUrl="https://duckduckgo.com"
+        theme={theme}
+      />
+
+      {/* Connected Apps & Plugins Hub */}
+      <ConnectedAppsModal
+        isOpen={showConnectedApps}
+        onClose={() => setShowConnectedApps(false)}
+        theme={theme}
       />
     </div>
   );

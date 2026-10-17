@@ -68,5 +68,6 @@ h origin HEAD
 .claude/
 .mimocode/
 .kilo/
-*.log
 *.zip
+likewayai-production-fixed/
+.previews/

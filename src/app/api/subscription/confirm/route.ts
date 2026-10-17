@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { updateUserSubscription } from "@/lib/user";
-import { findUserById } from "@/lib/auth-models";
+import { findUserById, rotateSessionRefreshToken } from "@/lib/auth-models";
 import { PLANS, PlanType, normalizePlan } from "@/lib/plans";
 import {
   getTokenFromCookies,
@@ -10,11 +10,13 @@ import {
   createRefreshToken,
   setAuthCookies,
   generateSessionId,
+  fingerprint,
 } from "@/lib/auth";
 import { getPaymentRef, markPaymentRefStatus } from "@/lib/payments-store";
+import { getStripe } from "@/lib/stripe";
 
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+  if (!a || !b || a.length !== b.length) return false;
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
@@ -30,47 +32,99 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = payload.sub;
-
-    // ── CRITICAL: Reuse the existing session ID so the DB session stays
-    // valid after payment. Generating a new UUID here would create a token
-    // that has no matching session in the DB, causing the next /api/auth/me
-    // call to fail and silently log the user out. ──────────────────────────
     const existingSessionId = payload.sessionId || generateSessionId();
 
+    const body = await req.json();
     const {
-      planId,
+      planId: rawPlanId,
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_order_id,
       razorpay_signature,
-    } = await req.json();
-
-    // Accept either razorpay_order_id (standard checkout) or razorpay_subscription_id (subscription checkout)
-    const orderId = razorpay_order_id || razorpay_subscription_id;
-
-    if (!planId || !orderId) {
-      return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
-    }
+      stripe_session_id,
+    } = body;
 
     const validPlanIds: PlanType[] = ["Go", "Plus", "Pro"];
-    if (!validPlanIds.includes(planId as PlanType)) {
+
+    // ── Branch 1: Stripe Checkout Session Verification ───────────────────
+    if (stripe_session_id) {
+      const stripe = getStripe();
+      if (!stripe) {
+        return NextResponse.json({ error: "Stripe is not configured" }, { status: 503 });
+      }
+      const session = await stripe.checkout.sessions.retrieve(stripe_session_id);
+      if (!session || (session.payment_status !== "paid" && session.status !== "complete")) {
+        return NextResponse.json({ error: "Stripe payment not completed yet" }, { status: 400 });
+      }
+      const sessionUserId = session.metadata?.userId;
+      const sessionPlanId = normalizePlan(session.metadata?.planId || rawPlanId);
+      if (sessionUserId && sessionUserId !== userId) {
+        return NextResponse.json({ error: "Stripe session does not match this account" }, { status: 403 });
+      }
+      if (!validPlanIds.includes(sessionPlanId)) {
+        return NextResponse.json({ error: "Invalid plan on Stripe session" }, { status: 400 });
+      }
+
+      const subId = typeof session.subscription === "string" ? session.subscription : session.id;
+      await updateUserSubscription(userId, sessionPlanId, "active", subId);
+
+      const updatedUser = await findUserById(userId);
+      const fp = fingerprint(req);
+      const newAccessToken = createAccessToken(
+        {
+          id: userId,
+          email: updatedUser?.email || payload.email,
+          role: updatedUser?.role || payload.role,
+          plan: sessionPlanId,
+        },
+        existingSessionId
+      );
+      const newRefreshToken = createRefreshToken(
+        userId,
+        existingSessionId,
+        updatedUser?.role || payload.role,
+        sessionPlanId
+      );
+      await rotateSessionRefreshToken(userId, tokens.refresh, newRefreshToken, {
+        userAgent: fp.userAgent,
+        ip: fp.ip,
+      });
+
+      const response = NextResponse.json({
+        status: "success",
+        message: "Stripe subscription confirmed",
+        plan: sessionPlanId,
+      });
+      for (const c of setAuthCookies(newAccessToken, newRefreshToken)) {
+        response.cookies.set(c.name, c.value, c.options as any);
+      }
+      return response;
+    }
+
+    // ── Branch 2: Razorpay Order / Subscription Confirmation ─────────────
+    const planId = normalizePlan(rawPlanId);
+    const orderId = razorpay_order_id || razorpay_subscription_id;
+
+    if (!rawPlanId || !orderId || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json({ error: "Missing required payment parameters" }, { status: 400 });
+    }
+
+    if (!validPlanIds.includes(planId)) {
       return NextResponse.json({ error: "Invalid plan ID" }, { status: 400 });
     }
 
-    const plan = PLANS[planId as PlanType];
+    const plan = PLANS[planId];
     if (!plan) {
       return NextResponse.json({ error: "Invalid plan ID" }, { status: 400 });
     }
 
     const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
-
     if (!razorpayKeySecret) {
       console.error("[Subscription Confirm] RAZORPAY_KEY_SECRET is not set");
       return NextResponse.json({ error: "Payment gateway not configured" }, { status: 500 });
     }
 
-    // Standard checkout signature: HMAC-SHA256(order_id + "|" + payment_id, KEY_SECRET)
-    // Subscription checkout signature: HMAC-SHA256(payment_id + "|" + subscription_id, KEY_SECRET)
+    // Verify both order_id|payment_id and payment_id|subscription_id HMAC signatures
     const orderSig = crypto
       .createHmac("sha256", razorpayKeySecret)
       .update(`${orderId}|${razorpay_payment_id}`)
@@ -90,66 +144,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid signature verification" }, { status: 400 });
     }
 
-    // ── Defense in depth: the paid order must belong to THIS user and must have
-    // been created for THIS plan. This prevents paying for a cheap plan and
-    // confirming an expensive one.
+    // Verify payment reference ownership if recorded in DB
     const ref = await getPaymentRef(orderId);
-    if (!ref) {
-      console.error(`[Subscription Confirm] No payment reference for ${orderId}`);
-      return NextResponse.json(
-        { error: "Unknown order. Please start checkout again from the pricing page." },
-        { status: 400 }
-      );
-    }
-    if (ref.userId !== userId || ref.planId !== planId) {
-      console.error("[Subscription Confirm] Order/plan mismatch", {
-        refUserId: ref.userId,
-        userId,
-        refPlan: ref.planId,
-        planId,
-      });
-      return NextResponse.json({ error: "Order does not match this account or plan." }, { status: 403 });
+    if (ref) {
+      if (ref.userId !== userId || normalizePlan(ref.planId) !== planId) {
+        console.error("[Subscription Confirm] Order/plan mismatch", {
+          refUserId: ref.userId,
+          userId,
+          refPlan: ref.planId,
+          planId,
+        });
+        return NextResponse.json({ error: "Order does not match this account or plan." }, { status: 403 });
+      }
     }
 
     // Persist the plan upgrade to the DB
-    await updateUserSubscription(userId, planId as PlanType, "active", orderId);
+    await updateUserSubscription(userId, planId, "active", orderId);
     await markPaymentRefStatus(orderId, "paid");
 
-    // Re-fetch user to get the freshest DB state
+    // Re-fetch user and issue upgraded JWT cookies AND rotate session refreshToken in DB
     const updatedUser = await findUserById(userId);
-    if (updatedUser) {
-      const effectivePlan = planId;
+    const effectivePlan = planId;
+    const fp = fingerprint(req);
 
-      // Issue new tokens with the upgraded plan — reusing existing sessionId
-      const newAccessToken = createAccessToken(
-        {
-          id: userId,
-          email: updatedUser.email,
-          role: updatedUser.role,
-          plan: effectivePlan,
-        },
-        existingSessionId
-      );
-      const newRefreshToken = createRefreshToken(userId, existingSessionId, updatedUser.role, effectivePlan);
+    const newAccessToken = createAccessToken(
+      {
+        id: userId,
+        email: updatedUser?.email || payload.email,
+        role: updatedUser?.role || payload.role,
+        plan: effectivePlan,
+      },
+      existingSessionId
+    );
+    const newRefreshToken = createRefreshToken(
+      userId,
+      existingSessionId,
+      updatedUser?.role || payload.role,
+      effectivePlan
+    );
 
-      const response = NextResponse.json({
-        status: "success",
-        message: "Subscription confirmed successfully",
-        plan: normalizePlan(effectivePlan),
-      });
+    // CRITICAL FIX: Persist the new refresh token in the `sessions` collection
+    // so `/api/auth/refresh` never revokes the paying user's session!
+    await rotateSessionRefreshToken(userId, tokens.refresh, newRefreshToken, {
+      userAgent: fp.userAgent,
+      ip: fp.ip,
+    });
 
-      const cookies = setAuthCookies(newAccessToken, newRefreshToken);
-      for (const c of cookies) {
-        response.cookies.set(c.name, c.value, c.options as any);
-      }
+    const response = NextResponse.json({
+      status: "success",
+      message: "Subscription confirmed successfully",
+      plan: effectivePlan,
+    });
 
-      console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${effectivePlan}`);
-      return response;
+    const cookies = setAuthCookies(newAccessToken, newRefreshToken);
+    for (const c of cookies) {
+      response.cookies.set(c.name, c.value, c.options as any);
     }
 
-    // Fallback: DB fetch failed — still return success (plan was saved above)
-    console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${planId}`);
-    return NextResponse.json({ status: "success", message: "Subscription confirmed successfully" });
+    console.log(`[Subscription Confirm] Successfully upgraded user ${userId} to plan ${effectivePlan}`);
+    return response;
   } catch (error: any) {
     console.error("Subscription Confirmation Error:", error);
     return NextResponse.json({ error: error.message || "Failed to confirm subscription" }, { status: 500 });

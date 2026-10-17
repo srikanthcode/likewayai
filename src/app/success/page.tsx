@@ -14,12 +14,41 @@ export default function SuccessPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // ── Never trust ?planId= from the URL. The server is the source of truth:
-    // we read the authenticated user's REAL plan from /api/auth/me, which reads
-    // the verified `users.plan` value written by the payment confirmation.
     const verifyAgainstServer = async () => {
+      // 1. If redirected from Stripe Checkout with ?session_id=..., confirm server-side immediately
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const stripeSessionId = params.get("session_id");
+        const urlPlanId = params.get("planId");
+        if (stripeSessionId) {
+          const confirmRes = await fetch("/api/subscription/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              stripe_session_id: stripeSessionId,
+              planId: urlPlanId || undefined,
+            }),
+          });
+          if (confirmRes.ok) {
+            const confirmData = await confirmRes.json();
+            if (confirmData?.plan) {
+              const norm = normalizePlan(confirmData.plan);
+              setUpgradedPlan(norm);
+              setCurrentPlan(norm);
+              await refreshUser();
+              setIsRefreshing(false);
+              return;
+            }
+          }
+        }
+      } catch {
+        // Fall through to /api/auth/me polling
+      }
+
+      // 2. Poll /api/auth/me to verify DB-backed subscription status
       let attempts = 0;
-      const maxAttempts = 4;
+      const maxAttempts = 5;
 
       while (attempts < maxAttempts) {
         attempts++;
@@ -40,7 +69,6 @@ export default function SuccessPage() {
             return;
           }
 
-          // If still Core and attempts remain, wait 1.5s for webhook/DB processing
           if (attempts < maxAttempts) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
           }
@@ -59,14 +87,13 @@ export default function SuccessPage() {
 
     verifyAgainstServer();
 
-    const timer = setTimeout(() => router.push("/"), 5000);
+    const timer = setTimeout(() => router.push("/"), 5500);
     return () => clearTimeout(timer);
   }, [router, refreshUser]);
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-white">
       <div className="text-center space-y-6 px-6">
-        {/* Animated checkmark / warning */}
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}

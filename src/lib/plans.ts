@@ -53,8 +53,8 @@ export const PLANS: Record<PlanType, Plan> = {
       "Multimodal vision, video & audio support",
       "Smart conversation assistant",
       "Web search capabilities",
-      "Voice input support",
-      "Code snippet formatting",
+      "Voice input & Read Aloud replay",
+      "Code snippet formatting & live HTML preview",
       "2-day free browser automation trial",
       "Autonomous Computer Control preview (3 actions)",
     ],
@@ -106,7 +106,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "50 browser automation requests/day",
       "25 Computer Control & Desktop actions/day",
     ],
-    modelCount: 16,
+    modelCount: 18,
   },
   Plus: {
     id: "Plus",
@@ -151,17 +151,17 @@ export const PLANS: Record<PlanType, Plan> = {
     },
     features: [
       "Unlimited messages",
-      "10 elite Likeway models unlocked",
+      "23 elite frontier AI models unlocked",
       "Architect Coding Agent for 50+ languages",
       "Deep Research with autonomous web analysis",
       "Advanced vision — analyze screenshots & diagrams",
-      "AI-powered image generation",
+      "AI-powered image generation & editing",
       "Custom instructions & persistent memory",
-      "Priority response queue",
+      "Priority response queue & Interactive Canvas",
       "Unlimited browser automation",
       "Unlimited Autonomous Computer Control & Local Agent",
     ],
-    modelCount: 10,
+    modelCount: 23,
   },
   Pro: {
     id: "Pro",
@@ -181,27 +181,41 @@ export const PLANS: Record<PlanType, Plan> = {
       computerControl: -1,
     },
     features: [
-      "Unlimited messages",
-      "All models unlocked — ultimate power",
-      "Early access to cutting-edge models",
-      "Unlimited image generation",
+      "Unlimited messages & zero daily caps",
+      "All models unlocked — ultimate frontier power",
+      "Early access to cutting-edge reasoning models",
+      "Unlimited AI image generation & editing",
       "Deep Research with extended context",
       "Architect Coding Agent — 50+ languages",
-      "Voice Assistant with natural speech",
+      "Real-time Voice Assistant with natural speech",
       "Priority support & feature requests",
       "Unlimited browser automation",
       "Unlimited Autonomous 3D Game & App Building on Desktop",
     ],
-    modelCount: 12,
+    modelCount: 23,
   },
 };
+
+// Normalize plan names between DB (lowercase) and frontend (capitalized)
+export function normalizePlan(plan: string | undefined | null): PlanType {
+  if (!plan) return "Core";
+  const lower = String(plan).trim().toLowerCase();
+  if (lower === "go") return "Go";
+  if (lower === "plus") return "Plus";
+  if (lower === "pro") return "Pro";
+  return "Core";
+}
 
 export function getCurrentPlan(): PlanType {
   if (typeof window !== "undefined") {
     try {
       const direct = localStorage.getItem("likeway_plan");
-      if (direct && ["Core", "Go", "Plus", "Pro"].includes(direct)) {
-        return direct as PlanType;
+      if (direct) {
+        const normDirect = normalizePlan(direct);
+        if (direct !== normDirect) {
+          localStorage.setItem("likeway_plan", normDirect);
+        }
+        if (normDirect !== "Core") return normDirect;
       }
       const cached = localStorage.getItem("lw_user_cache");
       if (cached) {
@@ -218,16 +232,27 @@ export function getCurrentPlan(): PlanType {
   return "Core";
 }
 
-// ── Shared plan presentation data ─────────────────────────────────────
-// Used by the landing page, pricing modal and pricing page so every
-// surface stays visually consistent.
+export function setCurrentPlan(plan: PlanType | string): void {
+  if (typeof window !== "undefined") {
+    const norm = normalizePlan(plan);
+    localStorage.setItem("likeway_plan", norm);
+    try {
+      const cached = localStorage.getItem("lw_user_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === "object") {
+          parsed.plan = norm;
+          localStorage.setItem("lw_user_cache", JSON.stringify(parsed));
+        }
+      }
+    } catch {}
+    window.dispatchEvent(new Event("plan_updated"));
+  }
+}
 
 export interface PlanTheme {
-  /** Primary accent color (hex) */
   color: string;
-  /** Gradient endpoints for CTAs, badges and highlights */
   gradient: [string, string];
-  /** Translucent tint used for icon chips and check bullets */
   soft: string;
 }
 
@@ -268,7 +293,6 @@ export const PLAN_TAGLINES: Record<PlanType, string> = {
   Pro: "Maximum power, no limits",
 };
 
-/** Number of models a plan can access (Pro/`"*"` = every registered model). */
 export function getPlanModels(planId: PlanType): number {
   const plan = PLANS[planId];
   if (!plan) return 0;
@@ -276,25 +300,8 @@ export function getPlanModels(planId: PlanType): number {
   return plan.limits.modelsAllowed.length;
 }
 
-/** True when the plan unlocks every registered model. */
 export function isAllModelsPlan(planId: PlanType): boolean {
   return PLANS[planId]?.limits.modelsAllowed[0] === "*";
-}
-
-// Normalize plan names between DB (lowercase) and frontend (capitalized)
-export function normalizePlan(plan: string | undefined | null): PlanType {
-  if (!plan) return "Core";
-  const lower = plan.toLowerCase();
-  if (lower === "go") return "Go";
-  if (lower === "plus") return "Plus";
-  if (lower === "pro") return "Pro";
-  return "Core";
-}
-
-export function setCurrentPlan(plan: PlanType): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("likeway_plan", plan);
-  }
 }
 
 export function isFeatureUnlocked(plan: PlanType, feature: keyof Plan["limits"]): boolean {
@@ -357,7 +364,6 @@ export function getBrowserAutomationRemaining(): { allowed: boolean; remaining: 
   const today = new Date().toDateString();
   const todayCount = usage.date === today ? usage.count : 0;
 
-  // Check trial first (Core plan only)
   if (planConfig.limits.browserAutomationDays > 0) {
     if (isBrowserTrialActive()) {
       const trialStart = new Date(usage.trialStart!);
@@ -365,21 +371,17 @@ export function getBrowserAutomationRemaining(): { allowed: boolean; remaining: 
       const trialDaysLeft = Math.ceil(2 - (now.getTime() - trialStart.getTime()) / (1000 * 60 * 60 * 24));
       return { allowed: true, remaining: 999, reason: "trial", trialDaysLeft };
     }
-    // Trial expired — no browser automation on Core
     return { allowed: false, remaining: 0, reason: "trial_expired" };
   }
 
-  // Unlimited (Plus, Pro)
   if (planConfig.limits.browserAutomation === -1) {
     return { allowed: true, remaining: 999, reason: "unlimited" };
   }
 
-  // Limited (Go — 50/day)
   if (planConfig.limits.browserAutomation > 0) {
     const remaining = planConfig.limits.browserAutomation - todayCount;
     return { allowed: remaining > 0, remaining, reason: remaining > 0 ? "quota" : "quota_exceeded" };
   }
 
-  // No access (Core after trial)
   return { allowed: false, remaining: 0, reason: "no_access" };
 }

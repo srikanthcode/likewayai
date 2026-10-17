@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import {
   Check,
   Copy,
@@ -8,12 +8,12 @@ import {
   Maximize2,
   Minimize2,
   Code,
-  ChevronRight,
-  Zap,
   Sparkles,
-  Brain,
-  Cpu,
+  Eye,
+  WrapText,
+  Play,
 } from "lucide-react";
+import LivePreviewWorkspace from "./LivePreviewWorkspace";
 
 interface CodeBlockProps {
   language: string;
@@ -22,19 +22,43 @@ interface CodeBlockProps {
   animationId?: string;
 }
 
-// ── AI Generation Phases ──────────────────────────────────────────────
-const GENERATION_PHASES = [
-  { icon: Zap, label: "AI Engine Initializing", color: "#3B82F6" },
-  { icon: Brain, label: "Analyzing Request", color: "#8B5CF6" },
-  { icon: Sparkles, label: "Generating Solution", color: "#06B6D4" },
-  { icon: Cpu, label: "Optimizing Code", color: "#10B981" },
-];
+const EXT_MAP: Record<string, string> = {
+  javascript: "js",
+  js: "js",
+  typescript: "ts",
+  ts: "ts",
+  tsx: "tsx",
+  jsx: "jsx",
+  python: "py",
+  py: "py",
+  html: "html",
+  css: "css",
+  json: "json",
+  sql: "sql",
+  bash: "sh",
+  sh: "sh",
+  shell: "sh",
+  markdown: "md",
+  md: "md",
+  yaml: "yml",
+  yml: "yml",
+  java: "java",
+  cpp: "cpp",
+  "c++": "cpp",
+  c: "c",
+  csharp: "cs",
+  "c#": "cs",
+  go: "go",
+  rust: "rs",
+  php: "php",
+  ruby: "rb",
+  swift: "swift",
+  kotlin: "kt",
+};
 
-// ── Simple syntax highlighter ─────────────────────────────────────────
 function highlightSyntax(line: string, language: string): React.ReactNode {
   if (!line.trim()) return <span>&nbsp;</span>;
 
-  // Language-specific patterns
   const keywords: Record<string, RegExp> = {
     javascript: /\b(const|let|var|function|return|if|else|for|while|class|import|export|from|default|async|await|try|catch|throw|new|this|typeof|instanceof|switch|case|break|continue|do|in|of|yield|null|undefined|true|false)\b/g,
     typescript: /\b(const|let|var|function|return|if|else|for|while|class|import|export|from|default|async|await|try|catch|throw|new|this|typeof|instanceof|switch|case|break|continue|do|in|of|yield|null|undefined|true|false|interface|type|enum|implements|extends|abstract|private|protected|public|readonly|static|override)\b/g,
@@ -52,15 +76,13 @@ function highlightSyntax(line: string, language: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
 
-  // Combined pattern for strings, comments, numbers, keywords
   const combined = new RegExp(
-    `(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/|"(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\`(?:[^\`\\\\]|\\\\.)*\`|\\b\\d+\\.?\\d*\\b|${kwPattern.source})`,
+    `(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/|#[^\\n]*|"(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\`(?:[^\`\\\\]|\\\\.)*\`|\\b\\d+\\.?\\d*\\b|${kwPattern.source})`,
     "g"
   );
 
   let match;
   while ((match = combined.exec(line)) !== null) {
-    // Text before match
     if (match.index > lastIndex) {
       parts.push(
         <span key={`t${lastIndex}`} className="code-text-default">
@@ -71,7 +93,7 @@ function highlightSyntax(line: string, language: string): React.ReactNode {
 
     const token = match[0];
 
-    if (token.startsWith("//") || token.startsWith("/*")) {
+    if (token.startsWith("//") || token.startsWith("/*") || (token.startsWith("#") && (lang === "python" || lang === "py" || lang === "bash" || lang === "sh" || lang === "yaml"))) {
       parts.push(
         <span key={`c${match.index}`} className="code-comment">
           {token}
@@ -90,7 +112,6 @@ function highlightSyntax(line: string, language: string): React.ReactNode {
         </span>
       );
     } else if (kwPattern.test(token)) {
-      // Reset lastIndex after test
       kwPattern.lastIndex = 0;
       parts.push(
         <span key={`k${match.index}`} className="code-keyword">
@@ -108,7 +129,6 @@ function highlightSyntax(line: string, language: string): React.ReactNode {
     lastIndex = match.index + token.length;
   }
 
-  // Remaining text
   if (lastIndex < line.length) {
     parts.push(
       <span key={`e${lastIndex}`} className="code-text-default">
@@ -124,173 +144,127 @@ export default function CodeBlock({
   language,
   value,
   isGenerating = false,
-  animationId,
 }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  const [visibleLines, setVisibleLines] = useState(0);
-  const [typingDone, setTypingDone] = useState(false);
-  const [phase, setPhase] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const [newLineHighlight, setNewLineHighlight] = useState<number | null>(null);
-  const hasAnimatedRef = useRef(false);
-  const codeRef = useRef<HTMLDivElement>(null);
-  const prevVisibleRef = useRef(0);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showStudio, setShowStudio] = useState(false);
 
-  const lines = value.split("\n");
-  const isSingleLine = lines.length <= 1;
-
-  // ── Mark as animated when generation completes ──────────────────────
-  useEffect(() => {
-    if (!isGenerating && visibleLines > 0 && !typingDone) {
-      hasAnimatedRef.current = true;
-    }
-  }, [isGenerating, visibleLines, typingDone]);
-
-  // ── AI Generation Phase Animation (only if not already animated) ───
-  useEffect(() => {
-    if (!isGenerating || hasAnimatedRef.current) {
-      setPhase(0);
-      return;
-    }
-    let currentPhase = 0;
-    const interval = setInterval(() => {
-      currentPhase = (currentPhase + 1) % GENERATION_PHASES.length;
-      setPhase(currentPhase);
-    }, 1800);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Line-by-line typing animation (only if not already animated) ───
-  useEffect(() => {
-    if (isSingleLine) {
-      setVisibleLines(lines.length);
-      setTypingDone(true);
-      hasAnimatedRef.current = true;
-      return;
-    }
-
-    // If already animated OR not generating, show all lines immediately
-    if (hasAnimatedRef.current || !isGenerating) {
-      setVisibleLines(lines.length);
-      setTypingDone(true);
-      hasAnimatedRef.current = true;
-      return;
-    }
-
-    if (isGenerating && visibleLines === 0) {
-      setVisibleLines(0);
-      setTypingDone(false);
-    }
-
-    const interval = setInterval(() => {
-      setVisibleLines((prev) => {
-        if (prev >= lines.length) {
-          clearInterval(interval);
-          setTypingDone(true);
-          hasAnimatedRef.current = true;
-          return prev;
-        }
-        const next = prev + 1;
-        setNewLineHighlight(next - 1);
-        setTimeout(() => setNewLineHighlight(null), 200);
-        return next;
-      });
-    }, Math.max(25, Math.min(60, 300 / lines.length)));
-
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Auto-scroll during generation ─────────────────────────────────
-  useEffect(() => {
-    if (codeRef.current && visibleLines > prevVisibleRef.current) {
-      const el = codeRef.current;
-      const lastLine = el.querySelector(`[data-line="${visibleLines - 1}"]`);
-      if (lastLine) {
-        lastLine.scrollIntoView({ behavior: "smooth", block: "end" });
-      }
-    }
-    prevVisibleRef.current = visibleLines;
-  }, [visibleLines]);
+  const lines = (value || "").split("\n");
+  const langLower = (language || "text").toLowerCase();
+  const isPreviewable =
+    (langLower === "html" ||
+      langLower === "svg" ||
+      langLower === "react" ||
+      langLower === "tsx" ||
+      langLower === "jsx" ||
+      langLower === "javascript" ||
+      langLower === "typescript" ||
+      langLower === "js" ||
+      langLower === "ts") &&
+    value.trim().length > 20 &&
+    !isGenerating;
 
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2200);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   }, [value]);
 
   const handleDownload = useCallback(() => {
-    const blob = new Blob([value], { type: "text/plain" });
+    const ext = EXT_MAP[langLower] || langLower || "txt";
+    const blob = new Blob([value], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `code.${language || "txt"}`;
+    a.download = `snippet.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [value, language]);
-
-  const displayedLines = typingDone || isSingleLine ? lines : lines.slice(0, visibleLines);
-  const progress = isSingleLine ? 100 : Math.min(100, (visibleLines / lines.length) * 100);
-  const langLower = (language || "").toLowerCase();
+  }, [value, langLower]);
 
   return (
-    <div
-      className={`neon-code-container ${expanded ? "neon-code-expanded" : ""}`}
-    >
-      {/* ── Ambient Glow ────────────────────────────────────────────── */}
+    <div className={`neon-code-container ${expanded ? "neon-code-expanded" : ""}`}>
       <div className="neon-ambient-glow" />
-
-      {/* ── Scanning Line ───────────────────────────────────────────── */}
       <div className="neon-scan-line" />
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="neon-header">
         <div className="neon-header-left">
-          {/* Traffic lights */}
           <div className="neon-dots">
             <span className="neon-dot neon-dot-red" />
             <span className="neon-dot neon-dot-yellow" />
             <span className="neon-dot neon-dot-green" />
           </div>
 
-          {/* Language badge */}
           <div className="neon-lang-badge">
             <Code size={11} />
-            <span>{language || "code"}</span>
+            <span>{language || "text"}</span>
+            <span className="opacity-50 ml-1 text-[10px]">({lines.length} {lines.length === 1 ? "line" : "lines"})</span>
           </div>
 
-          {/* Generation phases */}
-          {isGenerating && !typingDone && (
-            <div className="neon-phase" style={{ "--phase-color": GENERATION_PHASES[phase].color } as React.CSSProperties}>
-              {React.createElement(GENERATION_PHASES[phase].icon, { size: 12 })}
-              <span>{GENERATION_PHASES[phase].label}</span>
+          {isGenerating ? (
+            <div className="neon-phase" style={{ "--phase-color": "#06B6D4" } as React.CSSProperties}>
+              <Sparkles size={12} />
+              <span>Streaming code…</span>
               <span className="neon-phase-dot" />
             </div>
-          )}
-
-          {/* Completion badge */}
-          {!isGenerating && typingDone && (
+          ) : (
             <div className="neon-complete-badge">
               <Check size={11} />
-              <span>Code Ready</span>
+              <span>Ready</span>
             </div>
           )}
         </div>
 
         <div className="neon-header-right">
-          {/* Copy */}
+          {isPreviewable && (
+            <>
+              <button
+                onClick={() => setShowStudio(true)}
+                className="neon-action-btn font-semibold text-cyan-400 hover:text-cyan-300"
+                title="Launch Live Preview Studio with Multi-Device Viewports"
+              >
+                <Play size={12} fill="currentColor" />
+                <span>Live Studio</span>
+              </button>
+              <button
+                onClick={() => setShowPreview((p) => !p)}
+                className="neon-action-btn"
+                title={showPreview ? "Show code" : "Quick preview"}
+              >
+                <Eye size={13} />
+                <span>{showPreview ? "Code" : "Quick View"}</span>
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={() => setWordWrap((w) => !w)}
+            className="neon-action-btn"
+            title={wordWrap ? "Disable word wrap" : "Enable word wrap"}
+          >
+            <WrapText size={13} />
+          </button>
+
           <button onClick={handleCopy} className="neon-action-btn" title="Copy code">
             {copied ? (
               <>
                 <Check size={13} className="text-emerald-400" />
-                <span className="text-emerald-400">Copied</span>
+                <span className="text-emerald-400">Copied!</span>
               </>
             ) : (
               <>
@@ -300,12 +274,10 @@ export default function CodeBlock({
             )}
           </button>
 
-          {/* Download */}
-          <button onClick={handleDownload} className="neon-action-btn" title="Download file">
+          <button onClick={handleDownload} className="neon-action-btn" title="Download code file">
             <Download size={13} />
           </button>
 
-          {/* Expand */}
           <button
             onClick={() => setExpanded(!expanded)}
             className="neon-action-btn"
@@ -316,59 +288,49 @@ export default function CodeBlock({
         </div>
       </div>
 
-      {/* ── Progress Bar ────────────────────────────────────────────── */}
-      {isGenerating && !typingDone && (
-        <div className="neon-progress-track">
-          <div
-            className="neon-progress-fill"
-            style={{ width: `${progress}%` }}
+      {/* Live Preview or Code Content */}
+      {showPreview && isPreviewable ? (
+        <div className="w-full bg-white rounded-b-xl overflow-hidden border-t border-white/10">
+          <iframe
+            title="Live HTML Preview"
+            srcDoc={value}
+            sandbox="allow-scripts"
+            className="w-full h-80 border-0"
           />
+        </div>
+      ) : (
+        <div className="neon-code-content">
+          <div className="neon-code-lines">
+            {lines.map((line, i) => (
+              <div
+                key={i}
+                data-line={i}
+                className="neon-code-line"
+                style={wordWrap ? { whiteSpace: "pre-wrap", wordBreak: "break-word" } : undefined}
+              >
+                <span className="neon-line-number">
+                  {String(i + 1).padStart(String(lines.length).length, " ")}
+                </span>
+                <span className="neon-line-code">
+                  {highlightSyntax(line, langLower)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ── Code Content ────────────────────────────────────────────── */}
-      <div ref={codeRef} className="neon-code-content">
-        <div className="neon-code-lines">
-          {displayedLines.map((line, i) => (
-            <div
-              key={i}
-              data-line={i}
-              className={`neon-code-line ${
-                newLineHighlight === i ? "neon-line-highlight" : ""
-              }`}
-              style={{
-                animationDelay: `${i * 30}ms`,
-              }}
-            >
-              <span className="neon-line-number">
-                {String(i + 1).padStart(String(lines.length).length, "0")}
-              </span>
-              <span className="neon-line-code">
-                {highlightSyntax(line, langLower)}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Blinking cursor */}
-        {!typingDone && visibleLines > 0 && (
-          <div className="neon-cursor-row">
-            <span className="neon-line-number">&nbsp;</span>
-            <span className="neon-cursor" />
-          </div>
-        )}
-
-        {/* Typing indicator */}
-        {!typingDone && (
-          <div className="neon-typing-indicator">
-            <ChevronRight size={10} className="animate-pulse" />
-            <span>generating...</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Bottom Glow Line ────────────────────────────────────────── */}
       <div className="neon-bottom-glow" />
+
+      {showStudio && (
+        <LivePreviewWorkspace
+          isOpen={showStudio}
+          onClose={() => setShowStudio(false)}
+          title={`${language || "Code"} App Preview`}
+          initialCode={value}
+          language={language}
+        />
+      )}
     </div>
   );
 }

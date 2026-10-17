@@ -23,7 +23,7 @@ export default function robots(): MetadataRoute.Robots {
       },
       {
         userAgent: "Google-Extended",
-        allow: "/landing",
+        allow: "/",
         disallow: ["/api/", "/account/", "/onboarding/"],
       },
       {

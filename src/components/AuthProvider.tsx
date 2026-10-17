@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from "react";
 import { useRouter } from "next/navigation";
+import { normalizePlan } from "@/lib/plans";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export type UserInfo = {
@@ -71,22 +72,23 @@ const AuthContext = createContext<AuthContextType>({
 
 // ── Provider ───────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Initialise from cache immediately to avoid flash-of-unauthenticated state
   const [user, setUser] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Internal: set user + update cache ───────────────────────────────────
+  // ── Internal: set user + update cache + notify plan listeners ───────────
   const persistUser = useCallback((u: UserInfo | null) => {
-    setUser(u);
-    writeCache(u);
+    const normalizedUser = u ? { ...u, plan: normalizePlan(u.plan) } : null;
+    setUser(normalizedUser);
+    writeCache(normalizedUser);
     if (typeof window !== "undefined") {
-      if (u?.plan) {
-        localStorage.setItem("likeway_plan", u.plan);
-      } else if (!u) {
+      if (normalizedUser?.plan) {
+        localStorage.setItem("likeway_plan", normalizedUser.plan);
+      } else if (!normalizedUser) {
         localStorage.removeItem("likeway_plan");
       }
+      window.dispatchEvent(new Event("plan_updated"));
     }
   }, []);
 
@@ -114,51 +116,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (res.status === 401) {
-        // Access token expired — try to refresh silently
         const refreshed = await silentRefresh();
         if (refreshed) {
           persistUser(refreshed);
           return;
         }
-        // Both tokens invalid — user must log in again
         persistUser(null);
         return;
       }
-
-      // Network error or server error — keep existing cache, don't log out
-      // (don't touch user state to avoid false logouts on slow networks)
     } catch {
-      // Network error — keep cached user, don't kick them out
+      // Network error — keep cached user
     } finally {
       setIsLoading(false);
     }
   }, [persistUser, silentRefresh]);
 
-  // ── Schedule background refresh before access token expires ──────────────
-  // Access token is 7 days; we refresh at 6.5 days to stay ahead
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    // 6.5 days in ms
     const SIX_POINT_FIVE_DAYS = 6.5 * 24 * 60 * 60 * 1000;
     refreshTimerRef.current = setTimeout(async () => {
       const refreshed = await silentRefresh();
       if (refreshed) {
         persistUser(refreshed);
-        scheduleRefresh(); // re-schedule for next cycle
+        scheduleRefresh();
       }
     }, SIX_POINT_FIVE_DAYS);
   }, [silentRefresh, persistUser]);
 
-  // ── On mount: load from cache instantly, then verify with server ─────────
   useEffect(() => {
-    // Instant UI — show cached user immediately (no loading flash)
     const cached = readCache();
     if (cached) {
-      setUser(cached);
+      setUser({ ...cached, plan: normalizePlan(cached.plan) });
       setIsLoading(false);
     }
 
-    // Then verify & refresh in background (doesn't block UI)
     refreshUser().then(() => {
       scheduleRefresh();
     });
@@ -169,7 +160,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Email / password login ────────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string) => {
     try {
       const res = await fetch("/api/auth/login", {
@@ -189,7 +179,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [persistUser, scheduleRefresh, router]);
 
-  // ── Email registration ────────────────────────────────────────────────────
   const register = useCallback(async (name: string, email: string, password: string) => {
     try {
       const res = await fetch("/api/auth/register", {
@@ -209,22 +198,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [persistUser, scheduleRefresh, router]);
 
-  // ── Google login ──────────────────────────────────────────────────────────
-  // Credentials are never trusted from the browser. We hand off to the
-  // server-side OAuth code exchange, which is the only way to prove identity.
   const googleLogin = useCallback(async () => {
     window.location.href = "/api/auth/google/redirect";
     return {};
   }, []);
 
-  // ── Guest login ────────────────────────────────────────────────────────────
-  // Anonymous sessions are intentionally not supported (no /api/auth/guest
-  // route exists). Sign-in requires a verified email or Google account.
   const guestLogin = useCallback(async () => {
     return { error: "Guest access is not available. Please sign in with email or Google." };
   }, []);
 
-  // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(async (all = false) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     try {
@@ -239,7 +221,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }, [persistUser, router]);
 
-  // ── Update profile ─────────────────────────────────────────────────────────
   const updateProfile = useCallback(async (data: Partial<Pick<UserInfo, "name" | "avatar">>) => {
     try {
       const res = await fetch("/api/auth/me", {

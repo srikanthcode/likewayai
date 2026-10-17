@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // ── Route groups ───────────────────────────────────────────────────────────
-const PUBLIC = ["/landing", "/pricing", "/learn", "/legal", "/login", "/signup", "/success"];
+const PUBLIC = ["/pricing", "/learn", "/legal", "/login", "/signup", "/success"];
 const AUTH_ONLY = ["/login", "/signup"];
 const PROTECTED = ["/account", "/settings", "/onboarding"];
 // "/" (root) is handled separately — it's the chat/main screen
@@ -10,6 +10,11 @@ const PROTECTED = ["/account", "/settings", "/onboarding"];
 // ── Proxy (formerly middleware) ────────────────────────────────────────────
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // ── Redirect removed /landing to root ────────────────────────────────────
+  if (pathname === "/landing" || pathname.startsWith("/landing/")) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
 
   // Read both new and legacy cookie names
   const accessToken =

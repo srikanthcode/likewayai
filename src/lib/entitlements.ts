@@ -59,15 +59,15 @@ export const PLAN_LIMITS: Record<PlanType, Record<MeteredFeature, number>> = {
     autonomous_app_builder: 50,
   },
   Pro: {
-    chat_messages: 100000,
-    frontier_models: 5000,
-    image_generation: 1000,
-    image_editing: 500,
-    deep_research: 500,
-    browser_automation: 2000,
-    computer_control: 5000,
-    realtime_voice: 600,
-    autonomous_app_builder: 500,
+    chat_messages: -1,
+    frontier_models: -1,
+    image_generation: -1,
+    image_editing: -1,
+    deep_research: -1,
+    browser_automation: -1,
+    computer_control: -1,
+    realtime_voice: -1,
+    autonomous_app_builder: -1,
   },
 };
 
@@ -76,6 +76,7 @@ export interface EntitlementResult {
   remaining: number;
   limit: number;
   used: number;
+  plan?: PlanType;
   reason?: string;
   upgradeTier?: PlanType;
 }
@@ -127,14 +128,38 @@ export function checkModelAccess(
 
   return {
     allowed: false,
-    reason: `Model "${modelId}" is not included in the ${plan} plan.`,
+    reason: `Model "${modelId}" requires the ${upgradeFrom(plan)} plan or higher. Upgrade your plan to unlock all frontier AI models.`,
     upgradeTier: upgradeFrom(plan),
   };
 }
 
 /**
+ * Resolve the user's authoritative active plan from DB if JWT is stale.
+ */
+export async function resolveEffectivePlan(
+  userId: string,
+  planInput: string | PlanType | undefined,
+  role?: string
+): Promise<PlanType> {
+  if (isAdminUser({ role })) return "Pro";
+  let plan = normalizePlan(planInput);
+  if (userId && userId !== "anonymous") {
+    try {
+      const { getUserPlan } = await import("./user");
+      const userSub = await getUserPlan(userId);
+      if (userSub && (userSub.status === "active" || userSub.status === "authenticated") && userSub.plan !== "Core") {
+        plan = userSub.plan;
+      }
+    } catch {
+      // Fallback to token plan on transient DB error
+    }
+  }
+  return plan;
+}
+
+/**
  * Atomically consume one unit of a metered feature for today.
- * Admins are unlimited and never counted.
+ * Admins and unlimited (-1) plans are never blocked.
  */
 export async function consumeEntitlement(
   userId: string,
@@ -142,24 +167,16 @@ export async function consumeEntitlement(
   feature: MeteredFeature,
   role?: string
 ): Promise<EntitlementResult> {
-  let plan = normalizePlan(planInput);
-
   if (isAdminUser({ role })) {
-    return { allowed: true, remaining: 999999, limit: 999999, used: 0 };
+    return { allowed: true, remaining: 999999, limit: -1, used: 0, plan: "Pro" };
   }
 
-  // Real-time plan sync: If token has Core, verify with DB to honor active payer status
-  if (userId && userId !== "anonymous" && plan === "Core") {
-    try {
-      const { getUserPlan } = await import("./user");
-      const userSub = await getUserPlan(userId);
-      if (userSub && userSub.status === "active" && userSub.plan !== "Core") {
-        plan = userSub.plan;
-      }
-    } catch {}
-  }
-
+  const plan = await resolveEffectivePlan(userId, planInput, role);
   const limit = PLAN_LIMITS[plan]?.[feature] ?? 0;
+
+  if (limit === -1) {
+    return { allowed: true, remaining: 999999, limit: -1, used: 0, plan };
+  }
 
   if (limit <= 0) {
     return {
@@ -167,16 +184,14 @@ export async function consumeEntitlement(
       remaining: 0,
       limit: 0,
       used: 0,
-      reason: `This feature is not included in the ${plan} plan.`,
+      plan,
+      reason: `This feature is not included in the ${plan} plan. Upgrade to ${upgradeFrom(plan)} to unlock it.`,
       upgradeTier: upgradeFrom(plan),
     };
   }
 
-  if (limit === -1) {
-    return { allowed: true, remaining: 999999, limit: -1, used: 0 };
-  }
-
   const date = todayKey();
+  const fieldPath = `counts.${feature}`;
 
   try {
     const collection = await getUsageCollection();
@@ -188,33 +203,69 @@ export async function consumeEntitlement(
       { upsert: true }
     );
 
-    // Atomic conditional increment.
-    const updated = await collection.findOneAndUpdate(
-      { userId, date, [`counts.${feature}`]: { $lt: limit } },
-      { $inc: { [`counts.${feature}`]: 1 } },
+    // CRITICAL FIX: In MongoDB, `{ "counts.feature": { $lt: limit } }` does NOT match
+    // when `counts.feature` is undefined (first use of the day)! We must match either
+    // `$exists: false` OR `$lt: limit`.
+    const updatedRaw: any = await collection.findOneAndUpdate(
+      {
+        userId,
+        date,
+        $or: [
+          { [fieldPath]: { $exists: false } },
+          { [fieldPath]: { $lt: limit } },
+        ],
+      },
+      {
+        $inc: { [fieldPath]: 1 },
+        $set: { updatedAt: new Date() },
+      },
       { returnDocument: "after" }
     );
 
-    if (!updated) {
+    const updatedDoc = updatedRaw && typeof updatedRaw === "object" && "value" in updatedRaw
+      ? updatedRaw.value
+      : updatedRaw;
+
+    if (!updatedDoc) {
       const current = await collection.findOne({ userId, date });
-      const used = (current as any)?.counts?.[feature] ?? limit;
+      const used = (current as any)?.counts?.[feature] ?? 0;
+      if (used < limit) {
+        // Fallback increment if driver didn't return updated doc
+        await collection.updateOne(
+          { userId, date },
+          { $inc: { [fieldPath]: 1 }, $set: { updatedAt: new Date() } }
+        );
+        return {
+          allowed: true,
+          remaining: Math.max(0, limit - (used + 1)),
+          limit,
+          used: used + 1,
+          plan,
+        };
+      }
       return {
         allowed: false,
         remaining: 0,
         limit,
         used,
+        plan,
         reason: `Daily limit of ${limit} ${feature.replace(/_/g, " ")} reached on the ${plan} plan.`,
         upgradeTier: upgradeFrom(plan),
       };
     }
 
-    const used = (updated as any)?.counts?.[feature] ?? 1;
-    return { allowed: true, remaining: Math.max(0, limit - used), limit, used };
+    const used = updatedDoc?.counts?.[feature] ?? 1;
+    return {
+      allowed: true,
+      remaining: Math.max(0, limit - used),
+      limit,
+      used,
+      plan,
+    };
   } catch (err) {
     console.error("[Entitlements] Metering failed:", err);
-    // Fail closed for zero-cost-to-us features? No — fail open only for
-    // infrastructure errors to avoid blocking paying users.
-    return { allowed: true, remaining: 1, limit: 1, used: 0 };
+    // Fail open for infrastructure errors to avoid blocking paying users
+    return { allowed: true, remaining: 1, limit: 1, used: 0, plan };
   }
 }
 
@@ -222,20 +273,21 @@ export async function consumeEntitlement(
 export async function getEntitlementUsage(
   userId: string,
   planInput: string | PlanType | undefined,
-  feature: MeteredFeature
+  feature: MeteredFeature,
+  role?: string
 ): Promise<EntitlementResult> {
-  const plan = normalizePlan(planInput);
+  const plan = await resolveEffectivePlan(userId, planInput, role);
   const limit = PLAN_LIMITS[plan]?.[feature] ?? 0;
-  if (limit === -1) return { allowed: true, remaining: 999999, limit: -1, used: 0 };
-  if (limit <= 0) return { allowed: false, remaining: 0, limit: 0, used: 0 };
+  if (limit === -1) return { allowed: true, remaining: 999999, limit: -1, used: 0, plan };
+  if (limit <= 0) return { allowed: false, remaining: 0, limit: 0, used: 0, plan };
 
   try {
     const collection = await getUsageCollection();
     const doc = await collection.findOne({ userId, date: todayKey() });
     const used = (doc as any)?.counts?.[feature] ?? 0;
-    return { allowed: used < limit, remaining: Math.max(0, limit - used), limit, used };
+    return { allowed: used < limit, remaining: Math.max(0, limit - used), limit, used, plan };
   } catch {
-    return { allowed: true, remaining: limit, limit, used: 0 };
+    return { allowed: true, remaining: limit, limit, used: 0, plan };
   }
 }
 
@@ -243,6 +295,11 @@ export async function getEntitlementUsage(
 export function entitlementDenied(result: EntitlementResult): {
   error: string;
   upgradeTo?: PlanType;
+  plan?: PlanType;
 } {
-  return { error: result.reason || "Upgrade required", upgradeTo: result.upgradeTier };
+  return {
+    error: result.reason || "Upgrade required",
+    upgradeTo: result.upgradeTier,
+    plan: result.plan,
+  };
 }
