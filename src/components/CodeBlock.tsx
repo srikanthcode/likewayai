@@ -12,14 +12,19 @@ import {
   Eye,
   WrapText,
   Play,
+  FileCode,
 } from "lucide-react";
 import LivePreviewWorkspace from "./LivePreviewWorkspace";
+import DiagramBlock from "./response/DiagramBlock";
+import PromptBlock from "./response/PromptBlock";
+import PlanBlock from "./response/PlanBlock";
 
 interface CodeBlockProps {
   language: string;
   value: string;
   isGenerating?: boolean;
   animationId?: string;
+  filename?: string;
 }
 
 const EXT_MAP: Record<string, string> = {
@@ -144,7 +149,45 @@ export default function CodeBlock({
   language,
   value,
   isGenerating = false,
+  filename: propFilename,
 }: CodeBlockProps) {
+  const langLower = (language || "text").toLowerCase().trim();
+
+  // 1. Direct Artifact Delegation
+  if (langLower === "mermaid") {
+    return <DiagramBlock code={value} />;
+  }
+  if (langLower === "prompt") {
+    return <PromptBlock content={value} title={propFilename || "AI Prompt"} />;
+  }
+  if (langLower === "plan") {
+    return <PlanBlock content={value} title={propFilename || "Execution Plan"} />;
+  }
+
+  // 2. Parse Filename from language string or first line comment
+  let resolvedFilename = propFilename || "";
+  let resolvedLang = langLower;
+
+  // Check language string for e.g. "tsx filename=App.tsx" or "typescript:src/app.ts"
+  const fnMatchInLang = /filename=["']?([^"'\s]+)["']?/i.exec(language || "");
+  if (fnMatchInLang) {
+    resolvedFilename = fnMatchInLang[1];
+    resolvedLang = language.replace(/filename=["']?[^"'\s]+["']?/i, "").trim().toLowerCase();
+  } else if (language && language.includes(":")) {
+    const parts = language.split(":");
+    resolvedLang = parts[0].trim().toLowerCase();
+    resolvedFilename = parts[1].trim();
+  }
+
+  // Check first line comment e.g. "// App.tsx" or "// filename: App.tsx" or "# main.py"
+  if (!resolvedFilename && value) {
+    const firstLine = value.split("\n")[0].trim();
+    const commentFnMatch = /^(?:\/\/|#|\/\*)\s*(?:filename:\s*|file:\s*)?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)\b/i.exec(firstLine);
+    if (commentFnMatch && !firstLine.includes("import ") && !firstLine.includes("export ")) {
+      resolvedFilename = commentFnMatch[1];
+    }
+  }
+
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
@@ -152,17 +195,16 @@ export default function CodeBlock({
   const [showStudio, setShowStudio] = useState(false);
 
   const lines = (value || "").split("\n");
-  const langLower = (language || "text").toLowerCase();
   const isPreviewable =
-    (langLower === "html" ||
-      langLower === "svg" ||
-      langLower === "react" ||
-      langLower === "tsx" ||
-      langLower === "jsx" ||
-      langLower === "javascript" ||
-      langLower === "typescript" ||
-      langLower === "js" ||
-      langLower === "ts") &&
+    (resolvedLang === "html" ||
+      resolvedLang === "svg" ||
+      resolvedLang === "react" ||
+      resolvedLang === "tsx" ||
+      resolvedLang === "jsx" ||
+      resolvedLang === "javascript" ||
+      resolvedLang === "typescript" ||
+      resolvedLang === "js" ||
+      resolvedLang === "ts") &&
     value.trim().length > 20 &&
     !isGenerating;
 
@@ -184,17 +226,18 @@ export default function CodeBlock({
   }, [value]);
 
   const handleDownload = useCallback(() => {
-    const ext = EXT_MAP[langLower] || langLower || "txt";
+    const ext = EXT_MAP[resolvedLang] || resolvedLang || "txt";
+    const downloadName = resolvedFilename || `code.${ext}`;
     const blob = new Blob([value], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `snippet.${ext}`;
+    a.download = downloadName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [value, langLower]);
+  }, [value, resolvedLang, resolvedFilename]);
 
   return (
     <div className={`neon-code-container ${expanded ? "neon-code-expanded" : ""}`}>
@@ -210,11 +253,20 @@ export default function CodeBlock({
             <span className="neon-dot neon-dot-green" />
           </div>
 
-          <div className="neon-lang-badge">
-            <Code size={11} />
-            <span>{language || "text"}</span>
-            <span className="opacity-50 ml-1 text-[10px]">({lines.length} {lines.length === 1 ? "line" : "lines"})</span>
-          </div>
+          {/* Prominent File Tab / Language Badge */}
+          {resolvedFilename ? (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/10 text-cyan-300 font-mono text-xs font-semibold border border-cyan-500/30">
+              <FileCode size={12} className="text-cyan-400" />
+              <span>{resolvedFilename}</span>
+              <span className="opacity-50 text-[10px] font-normal uppercase">({resolvedLang || "code"})</span>
+            </div>
+          ) : (
+            <div className="neon-lang-badge">
+              <Code size={11} />
+              <span>{resolvedLang || "text"}</span>
+              <span className="opacity-50 ml-1 text-[10px]">({lines.length} {lines.length === 1 ? "line" : "lines"})</span>
+            </div>
+          )}
 
           {isGenerating ? (
             <div className="neon-phase" style={{ "--phase-color": "#06B6D4" } as React.CSSProperties}>
@@ -312,7 +364,7 @@ export default function CodeBlock({
                   {String(i + 1).padStart(String(lines.length).length, " ")}
                 </span>
                 <span className="neon-line-code">
-                  {highlightSyntax(line, langLower)}
+                  {highlightSyntax(line, resolvedLang)}
                 </span>
               </div>
             ))}

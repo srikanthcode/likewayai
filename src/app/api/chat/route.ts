@@ -25,6 +25,10 @@ import type { OrchestratorContext } from "@/lib/orchestrator";
 import { detectComputerControlIntent, launchSystemApp, formatComputerControlCard, isLocalExecutionHost } from "@/lib/system/computer-control";
 import { isAutonomousDevIntent, generate3DRacingGameSpec, executeAutonomousProject, isBuildIntent, generateProjectSpec } from "@/lib/autonomous/engine";
 import crypto from "crypto";
+import { getModelProfile, recordModelTelemetry } from "@/lib/intelligence/model-registry";
+import { classifyTask } from "@/lib/intelligence/task-classifier";
+import { synthesizeAdaptivePrompt } from "@/lib/intelligence/prompt-adapter";
+import { evaluateResponseQuality } from "@/lib/intelligence/quality-evaluator";
 
 // ── Free proxy URL — SERVER-SIDE ONLY. Never imported by client bundle.
 const FREE_MODELS_PROXY = "https://freemodels-chat.freemodels.workers.dev";
@@ -1205,8 +1209,25 @@ After the closing </thought> tag, present your structured, user-friendly final a
       systemPrompt += thinkingInstruction;
     }
 
-    // Append response architecture LAST so it has highest recency priority
-    systemPrompt = systemPrompt + "\n\n" + LIKEWAY_RESPONSE_ARCHITECTURE;
+    // ── Universal Response Intelligence Layer: Task Classification & Adaptive Prompt ──
+    const modelProfile = getModelProfile(resolvedModelId);
+    const taskClassification = classifyTask(sanitizedPrompt, {
+      userPreference: userPrefs.tone as any,
+      modelTier: modelProfile.tier,
+      hasFileAttachment: files && files.length > 0,
+    });
+    const adaptivePrompt = synthesizeAdaptivePrompt({
+      modelProfile,
+      taskClassification,
+      userPrompt: sanitizedPrompt,
+      userPreferences: {
+        responseStyle: userPrefs.tone as any,
+      },
+      hasThinkingEnabled: extendedThinking,
+    });
+
+    // Append model-adaptive response intelligence architecture
+    systemPrompt = systemPrompt + "\n\n" + adaptivePrompt + "\n\n" + LIKEWAY_RESPONSE_ARCHITECTURE;
 
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -1262,7 +1283,8 @@ After the closing </thought> tag, present your structured, user-friendly final a
         `- NEVER claim to be Claude, Anthropic, Sonnet, ChatGPT, or any other model/company.\n` +
         `- When stating policy, compliance, restrictions, or capabilities, ALWAYS speak on behalf of ${meta.name} by ${meta.creator || "AI"}.\n` +
         `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
-        `- Formatting (ChatGPT/Claude/Gemini-Grade UX): Lead immediately with a clear, direct opening answer (zero throat-clearing like "Certainly!" or "Sure!"). Use \`##\` and \`###\` headings for multi-part answers, **bold** key terms, clean Markdown pipe tables (\`| Col | Col |\`) for comparisons, \`> 💡 **Key Takeaway:**\` callout blockquotes, and fenced \`\`\`language code blocks with exact indentation.\n` +
+        `- [ADAPTIVE STRATEGY — Tier: ${modelProfile.tier}, Depth: Level ${taskClassification.desiredDepth}, Output: ${taskClassification.expectedOutputFormat}]:\n` +
+        `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.\n` +
         `- Follow-Up Chips: End every substantive response with a \`<suggestions>\` block containing 3 specific follow-up prompts:\n` +
         `<suggestions>\n- First specific follow-up\n- Second specific follow-up\n- Third specific follow-up\n</suggestions>\n` +
         `Do not output any text after \`</suggestions>\`.]${webContextBlock}\n\n`;
@@ -1493,6 +1515,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
     // 3. Guarantee that model self-identity strictly matches the selected model (prevents proxy leaks).
     // 4. Defer `data: [DONE]` until `flush()` AFTER emitting `event: suggestions` so the
     //    client stream reader (`useSSEChatStream.ts`) receives the suggestion chips before closing!
+    const streamStartTime = Date.now();
     const transformStream = new TransformStream({
       transform(chunk, controller) {
         const text = sseLineBuffer + decoder.decode(chunk, { stream: true });
@@ -1562,6 +1585,22 @@ After the closing </thought> tag, present your structured, user-friendly final a
           saveMessage(userId, { role: "assistant", content: finalCleaned }, projectId, conversationId).catch((error) => {
             console.error("[Chat API] Failed to save assistant message:", error);
           });
+
+          // Telemetry and response quality evaluation
+          const totalDuration = Date.now() - streamStartTime;
+          recordModelTelemetry(resolvedModelId, {
+            totalLatencyMs: totalDuration,
+            outputTokens: Math.round(fullContent.length / 4),
+          });
+
+          const quality = evaluateResponseQuality(sanitizedPrompt, fullContent, taskClassification, modelProfile);
+          if (!quality.isSufficient) {
+            reqLogger.info("Quality check flagged insufficient coverage", {
+              score: quality.score,
+              missing: quality.missingDimensions,
+              reason: quality.reason,
+            });
+          }
         }
 
         // Emit follow-up suggestion chips BEFORE `data: [DONE]` so `consumeChatStream` reads them!

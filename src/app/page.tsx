@@ -85,8 +85,7 @@ import {
   CODING_KEYWORDS_PATTERN,
   CODING_ACTION_PATTERN,
   REAL_TIME_TERM_PATTERN
-} from "@/lib/constants";
-
+} from "@/lib/constants";import TableBlock from "@/components/response/TableBlock";
 
 function formatAIResponse(content: string) {
   if (!content) return "";
@@ -104,6 +103,12 @@ function formatAIResponse(content: string) {
   if (formatted.includes("<artifact") && !formatted.includes("</artifact>")) {
     formatted += "</artifact>";
   }
+  if (formatted.includes("<prompt") && !formatted.includes("</prompt>")) {
+    formatted += "</prompt>";
+  }
+  if (formatted.includes("<plan") && !formatted.includes("</plan>")) {
+    formatted += "</plan>";
+  }
 
   // Format <thought> blocks into a clean ChatGPT/Claude-style collapsible reasoning section
   formatted = formatted.replace(/<thought>([\s\S]*?)<\/thought>/gi, (_match, thought) => {
@@ -118,6 +123,18 @@ function formatAIResponse(content: string) {
     return `\n${header}\n>\n${cleanThought}\n\n`;
   });
 
+  // Format <prompt ...> blocks into ```prompt:Title
+  formatted = formatted.replace(/<prompt(?:\s+title="([^"]*)")?>([\s\S]*?)<\/prompt>/gi, (_match, title, promptBody) => {
+    const cleanTitle = (title || "AI Prompt").trim();
+    return `\n\n\`\`\`prompt:${cleanTitle}\n${promptBody.trim()}\n\`\`\`\n\n`;
+  });
+
+  // Format <plan ...> blocks into ```plan:Title
+  formatted = formatted.replace(/<plan(?:\s+title="([^"]*)")?>([\s\S]*?)<\/plan>/gi, (_match, title, planBody) => {
+    const cleanTitle = (title || "Execution Plan").trim();
+    return `\n\n\`\`\`plan:${cleanTitle}\n${planBody.trim()}\n\`\`\`\n\n`;
+  });
+
   // Format <artifact ...> blocks with attributes in ANY order (id, type, language, title)
   formatted = formatted.replace(/<artifact([^>]*)>([\s\S]*?)<\/artifact>/gi, (_match, attrs, artifactContent) => {
     const typeMatch = /type="([^"]+)"/i.exec(attrs || "");
@@ -129,10 +146,16 @@ function formatAIResponse(content: string) {
     const body = artifactContent.trim();
 
     if ((aType === "code" || aType === "react" || aType === "html" || aType === "mermaid") && !body.startsWith("```")) {
-      return `\n\n> ✨ **Artifact Ready:** **${aTitle}** *(Opened in LikeWay Canvas)*\n\n\`\`\`${aLang || "tsx"}\n${body}\n\`\`\`\n\n`;
+      return `\n\n> ✨ **Artifact Ready:** **${aTitle}** *(Opened in LikeWay Canvas)*\n\n\`\`\`${aLang || "tsx"} filename="${aTitle}"\n${body}\n\`\`\`\n\n`;
     }
     return `\n\n> ✨ **Document Artifact:** **${aTitle}**\n\n${body}\n\n`;
   });
+
+  // Dynamic fence safety: self-close unclosed markdown code fences if odd count during streaming
+  const fenceMatches = formatted.match(/```/g);
+  if (fenceMatches && fenceMatches.length % 2 !== 0) {
+    formatted += "\n```";
+  }
 
   // Convert [source:Name] or [source:Name](url) into special links for SourceBadge rendering
   formatted = formatted.replace(/\[source:([^\]]+)\]\(([^)]+)\)/gi, (_match, name, url) => {
@@ -499,11 +522,11 @@ function buildMarkdownComponents() {
     },
     img: (props: any) => <MarkdownImage {...props} />,
     table: ({ children, ...props }: any) => (
-      <div className="w-full my-4 overflow-x-auto rounded-xl border border-black/10 dark:border-white/10 shadow-sm bg-black/[0.02] dark:bg-white/[0.02]">
+      <TableBlock>
         <table className="w-full min-w-full text-left text-sm border-collapse" {...props}>
           {children}
         </table>
-      </div>
+      </TableBlock>
     ),
     thead: ({ children, ...props }: any) => (
       <thead className="bg-black/5 dark:bg-white/5 border-b border-black/10 dark:border-white/10 text-xs uppercase tracking-wider font-semibold text-gray-700 dark:text-gray-200" {...props}>
