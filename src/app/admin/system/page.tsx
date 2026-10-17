@@ -131,7 +131,7 @@ export default function SystemHealthControlCenter() {
 
             <div className="flex flex-col gap-2.5 text-xs">
               <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5">
-                <span className="font-medium text-gray-200">Playwright Chromium</span>
+                <span className="font-medium text-gray-200">Headless Browser Engine</span>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
                   <span className="text-[10px] text-emerald-400 uppercase font-bold">READY</span>

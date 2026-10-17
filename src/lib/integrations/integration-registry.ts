@@ -218,7 +218,7 @@ export const INTEGRATIONS_CATALOG: IntegrationManifest[] = [
   },
   {
     id: "browser_automation",
-    name: "Autonomous Browser (Playwright)",
+    name: "Autonomous Browser",
     description: "Live headless Chromium agent capable of navigating web apps, extracting DOM tables, and filling forms.",
     category: "browser",
     iconName: "Globe",

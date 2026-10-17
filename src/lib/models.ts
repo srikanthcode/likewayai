@@ -91,21 +91,6 @@ export const MODELS: Model[] = [
   //  GPT (OpenAI)
   // ══════════════════════════════════════════════════════════════
   {
-    id: "gpt-6-astra",
-    name: "GPT 6 Astra",
-    company: "OpenAI",
-    avatarLetter: "O",
-    category: "GPT",
-    provider: "freemodels",
-    contextWindow: 1000000,
-    vision: true,
-    plan: "Core",
-    description: "Next-generation reasoning engine with image understanding.",
-    featured: true,
-    promoLabel: "Free for 1 month",
-    reasoning: true,
-  },
-  {
     id: "sol",
     name: "GPT 5.6 Sol",
     company: "OpenAI",
@@ -130,6 +115,21 @@ export const MODELS: Model[] = [
     vision: true,
     plan: "Go",
     description: "Grounded, factual analysis with strong factual accuracy.",
+    reasoning: true,
+  },
+  {
+    id: "gpt-6-astra",
+    name: "GPT 6 Astra",
+    company: "OpenAI",
+    avatarLetter: "O",
+    category: "GPT",
+    provider: "freemodels",
+    contextWindow: 1000000,
+    vision: true,
+    plan: "Core",
+    description: "Next-generation reasoning engine with image understanding.",
+    featured: true,
+    promoLabel: "Free for 1 month",
     reasoning: true,
   },
   {

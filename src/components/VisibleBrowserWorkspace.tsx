@@ -54,7 +54,7 @@ export default function VisibleBrowserWorkspace({
     {
       id: "step_1",
       timestamp: "00:01",
-      action: "Spawned sandboxed Chromium engine (Playwright v1.61)",
+      action: "Spawned isolated browser runtime",
       status: "completed",
     },
     {
@@ -142,7 +142,7 @@ export default function VisibleBrowserWorkspace({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-bold text-sm">Visible Browser Agent (Playwright)</h2>
+                <h2 className="font-bold text-sm">Autonomous Browser Agent</h2>
                 <span className="rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-0.5 font-semibold">
                   Live Viewport Active
                 </span>

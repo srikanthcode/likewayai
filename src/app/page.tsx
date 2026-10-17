@@ -4021,8 +4021,8 @@ export default function ChatPage() {
               </div>
             </form>
           </div>
-          <p className={cn("text-center text-[10px] mt-3 pb-1", theme === 'dark' ? "text-gray-700" : "text-gray-400")}>
-            AI can make mistakes. Always verify important info.
+          <p className={cn("text-center text-[10px] mt-3 pb-1", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>
+            {selectedModel?.name || "GPT 6 Astra"} (third-party model) can make mistakes. Free to use, subject to availability.
           </p>
 
           {/* Browser Automation Trial Banner */}

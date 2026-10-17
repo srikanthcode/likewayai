@@ -143,23 +143,26 @@ function parseSuggestionLines(raw: string): string[] {
     .slice(0, 4);
 }
 
-interface LikewayEngineLabel {
+interface ModelEngineLabel {
   name: string;
+  creator: string;
   intro: string;
 }
 
-const LIKEWAY_ENGINE_LABELS: Record<string, LikewayEngineLabel> = {
-  "gpt-6-astra": { name: "Likeway Omni", intro: "Likeway's smart router that automatically selects the fastest, strongest reasoning engine for each prompt" },
-  "glm-5.2": { name: "Likeway Bilingual", intro: "Likeway's bilingual reasoning engine" },
-  "kimi-k3": { name: "Likeway LongContext", intro: "Likeway's long-context research engine" },
-  "sol": { name: "Likeway Sol", intro: "Likeway's low-latency fast engine" },
-  "terra": { name: "Likeway Terra", intro: "Likeway's analytical and scientific engine" },
-  "claude-opus-5.5": { name: "Likeway Opus", intro: "Likeway's deep-reasoning engine" },
-  "claude-sonnet-5": { name: "Likeway Sonnet", intro: "Likeway's balanced fast-reasoning engine" },
-  "claude-fable-5": { name: "Likeway Fable", intro: "Likeway's creative writing engine" },
-  "claude-fable-5.1": { name: "Likeway Fable Pro", intro: "Likeway's creative and visual reasoning engine" },
-  "deepseek-v4.1-flash:free": { name: "Likeway Flash", intro: "Likeway's ultra-fast reasoning engine" },
-  "mimo-v2.6-flash:free": { name: "Likeway Mimo", intro: "Likeway's multimodal engine" },
+const LIKEWAY_ENGINE_LABELS: Record<string, ModelEngineLabel> = {
+  "claude-opus-5.5": { name: "Claude Opus 5.5", creator: "Anthropic", intro: "Anthropic's frontier deep reasoning model" },
+  "claude-sonnet-5": { name: "Claude Sonnet 5.5", creator: "Anthropic", intro: "Anthropic's high-speed balanced reasoning model" },
+  "claude-fable-5": { name: "Claude Fable 5", creator: "Anthropic", intro: "Anthropic's creative writing and long-form composition model" },
+  "claude-fable-5.1": { name: "Claude Fable 5.1", creator: "Anthropic", intro: "Anthropic's advanced creative and visual reasoning model" },
+  "gpt-6-astra": { name: "GPT 6 Astra", creator: "OpenAI", intro: "OpenAI's advanced multimodal reasoning model" },
+  "sol": { name: "GPT 5.6 Sol", creator: "OpenAI", intro: "OpenAI's ultra-low-latency fast reasoning model" },
+  "terra": { name: "GPT 5.6 Terra", creator: "OpenAI", intro: "OpenAI's grounded factual analysis model" },
+  "openai/gpt-4o": { name: "GPT-4o", creator: "OpenAI", intro: "OpenAI's flagship multimodal model" },
+  "openai/o3": { name: "o3", creator: "OpenAI", intro: "OpenAI's frontier reasoning model" },
+  "glm-5.2": { name: "GLM 5.2", creator: "Z.AI", intro: "Z.AI's high-accuracy multilingual reasoning model" },
+  "kimi-k3": { name: "Kimi K3", creator: "Moonshot AI", intro: "Moonshot AI's deep research and long-context model" },
+  "deepseek-v4.1-flash:free": { name: "DeepSeek V4.1 Flash", creator: "DeepSeek", intro: "DeepSeek's ultra-fast reasoning model" },
+  "mimo-v2.6-flash:free": { name: "Mimo V2.6 Flash", creator: "Xiaomi", intro: "multimodal reasoning engine" },
 };
 
 function validatePrompt(prompt: string): { valid: boolean; error?: string } {
@@ -1220,7 +1223,8 @@ After the closing </thought> tag, present your structured, user-friendly final a
     if (provider === "freemodels" || provider === "tokenharbor") {
       const meta = LIKEWAY_ENGINE_LABELS[resolvedModelId] || {
         name: selectedModel.name,
-        intro: "a Likeway AI engine",
+        creator: selectedModel.company || "AI",
+        intro: `advanced reasoning model by ${selectedModel.company || "AI"}`,
       };
 
       // CRITICAL FIX: Previously, `if (msg.role === "system") continue;` discarded
@@ -1240,7 +1244,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
 
       const personaPrefix =
         `[SYSTEM DIRECTIVE — FOLLOW STRICTLY:\n` +
-        `- Identity: You are ${meta.name} (${meta.intro}), created by Srikanth M, founder of Aixphonic (Tamil Nadu, India). Never claim to be made by OpenAI, Anthropic, Google, or Meta.\n` +
+        `- Identity: You are ${meta.name} (${meta.intro}), accessed via Likeway AI. You are knowledgeable, concise, user-friendly, and provide expert reasoning and code.\n` +
         `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
         `- Formatting (ChatGPT/Claude/Gemini-Grade UX): Lead immediately with a clear, direct opening answer (zero throat-clearing like "Certainly!" or "Sure!"). Use \`##\` and \`###\` headings for multi-part answers, **bold** key terms, clean Markdown pipe tables (\`| Col | Col |\`) for comparisons, \`> 💡 **Key Takeaway:**\` callout blockquotes, and fenced \`\`\`language code blocks with exact indentation.\n` +
         `- Follow-Up Chips: End every substantive response with a \`<suggestions>\` block containing 3 specific follow-up prompts:\n` +

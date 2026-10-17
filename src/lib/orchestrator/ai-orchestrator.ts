@@ -131,7 +131,7 @@ export class AIOrchestrator {
         const targetUrlMatch = prompt.match(/https?:\/\/[^\s]+/i);
         const targetUrl = targetUrlMatch ? targetUrlMatch[0] : undefined;
 
-        addStep("browser_exec", "Dispatching task to Playwright engine", "running");
+        addStep("browser_exec", "Dispatching task to autonomous browser engine", "running");
         const toolRes = await this.toolRegistry.executeTool("browser.navigate", { url: targetUrl || "https://www.google.com", goal: prompt }, { traceId });
         timeline[1].status = "completed";
         timeline[2].status = "completed";
