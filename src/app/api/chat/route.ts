@@ -150,19 +150,32 @@ interface ModelEngineLabel {
 }
 
 const LIKEWAY_ENGINE_LABELS: Record<string, ModelEngineLabel> = {
+  // Claude (Anthropic)
   "claude-opus-5.5": { name: "Claude Opus 5.5", creator: "Anthropic", intro: "Anthropic's frontier deep reasoning model" },
   "claude-sonnet-5": { name: "Claude Sonnet 5.5", creator: "Anthropic", intro: "Anthropic's high-speed balanced reasoning model" },
   "claude-fable-5": { name: "Claude Fable 5", creator: "Anthropic", intro: "Anthropic's creative writing and long-form composition model" },
   "claude-fable-5.1": { name: "Claude Fable 5.1", creator: "Anthropic", intro: "Anthropic's advanced creative and visual reasoning model" },
+  // GPT (OpenAI)
   "gpt-6-astra": { name: "GPT 6 Astra", creator: "OpenAI", intro: "OpenAI's advanced multimodal reasoning model" },
   "sol": { name: "GPT 5.6 Sol", creator: "OpenAI", intro: "OpenAI's ultra-low-latency fast reasoning model" },
   "terra": { name: "GPT 5.6 Terra", creator: "OpenAI", intro: "OpenAI's grounded factual analysis model" },
   "openai/gpt-4o": { name: "GPT-4o", creator: "OpenAI", intro: "OpenAI's flagship multimodal model" },
   "openai/o3": { name: "o3", creator: "OpenAI", intro: "OpenAI's frontier reasoning model" },
-  "glm-5.2": { name: "GLM 5.2", creator: "Z.AI", intro: "Z.AI's high-accuracy multilingual reasoning model" },
-  "kimi-k3": { name: "Kimi K3", creator: "Moonshot AI", intro: "Moonshot AI's deep research and long-context model" },
-  "deepseek-v4.1-flash:free": { name: "DeepSeek V4.1 Flash", creator: "DeepSeek", intro: "DeepSeek's ultra-fast reasoning model" },
-  "mimo-v2.6-flash:free": { name: "Mimo V2.6 Flash", creator: "Xiaomi", intro: "multimodal reasoning engine" },
+  // Likeway Models
+  "glm-5.2": { name: "Likeway Bilingual", creator: "Likeway AI", intro: "Likeway's high-accuracy multilingual reasoning and global translation model" },
+  "kimi-k3": { name: "Likeway LongContext", creator: "Likeway AI", intro: "Likeway's deep research and long-context model" },
+  "deepseek-v4.1-flash:free": { name: "Likeway Flash", creator: "Likeway AI", intro: "Likeway's ultra-fast reasoning model" },
+  "mimo-v2.6-flash:free": { name: "Likeway Mimo", creator: "Likeway AI", intro: "Likeway's multimodal reasoning engine" },
+  "deepseek/deepseek-r1": { name: "Likeway Codex Elite", creator: "Likeway AI", intro: "Likeway's advanced coding logic and reasoning model" },
+  "deepseek/deepseek-chat": { name: "Likeway QuickThought", creator: "Likeway AI", intro: "Likeway's fast logical analysis and coding engine" },
+  "google/gemini-2.5-flash": { name: "Likeway Insight", creator: "Likeway AI", intro: "Likeway's multimodal reasoning engine" },
+  "google/gemini-2.5-pro": { name: "Likeway Velocity", creator: "Likeway AI", intro: "Likeway's high-capacity reasoning engine" },
+  "google/gemini-2.5-pro-preview": { name: "Likeway Pinnacle", creator: "Likeway AI", intro: "Likeway's frontier multimodal model" },
+  "mistral-medium-latest": { name: "Likeway CodeMaster", creator: "Likeway AI", intro: "Likeway's full-stack coding and refactoring engine" },
+  "codestral-latest": { name: "Likeway Maverick", creator: "Likeway AI", intro: "Likeway's code generation and architectural synthesis model" },
+  "mistral-small-latest": { name: "Likeway Micro", creator: "Likeway AI", intro: "Likeway's lightweight fast-response engine" },
+  "llama-3.3-70b-versatile": { name: "Likeway Scholar", creator: "Likeway AI", intro: "Likeway's knowledge retrieval and academic research model" },
+  "llama-3.1-8b-instant": { name: "Likeway Fast", creator: "Likeway AI", intro: "Likeway's lightning-fast responsive model" },
 };
 
 function validatePrompt(prompt: string): { valid: boolean; error?: string } {

@@ -691,6 +691,14 @@ export default function ChatPage() {
     setUserId(id);
   }, [user]);
 
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement;
+      root.classList.toggle('dark', theme === 'dark');
+      root.classList.toggle('light', theme === 'light');
+    }
+  }, [theme]);
+
   const [copiedMsgIndex, setCopiedMsgIndex] = useState<number | null>(null);
   const [sharedMsgIndex, setSharedMsgIndex] = useState<number | null>(null);
   const [speakingMsgIndex, setSpeakingMsgIndex] = useState<number | null>(null);
@@ -3462,6 +3470,7 @@ export default function ChatPage() {
               suggestions={suggestions}
               disabled={isStreaming}
               onSelect={(s) => handleSend(undefined, s)}
+              theme={theme}
             />
             <form
               onSubmit={handleSend}
@@ -3847,13 +3856,9 @@ export default function ChatPage() {
                                               ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
                                               : model.category === "GPT"
                                               ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                                              : model.avatarLetter === "G"
-                                              ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                                              : model.avatarLetter === "K"
-                                              ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
-                                              : model.avatarLetter === "D"
+                                              : model.avatarLetter === "L"
                                               ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
-                                              : "bg-gray-500/15 text-gray-300 border-gray-500/30";
+                                              : "bg-blue-500/15 text-blue-400 border-blue-500/30";
 
                                           return (
                                             <button
@@ -4021,7 +4026,7 @@ export default function ChatPage() {
               </div>
             </form>
           </div>
-          <p className={cn("text-center text-[10px] mt-3 pb-1", theme === 'dark' ? "text-gray-500" : "text-gray-400")}>
+          <p className={cn("text-center text-[10px] mt-3 pb-1", theme === 'dark' ? "text-gray-500" : "text-gray-600 font-medium")}>
             {selectedModel?.name || "GPT 6 Astra"} (third-party model) can make mistakes. Free to use, subject to availability.
           </p>
 
