@@ -1256,8 +1256,11 @@ After the closing </thought> tag, present your structured, user-friendly final a
         : "";
 
       const personaPrefix =
-        `[SYSTEM DIRECTIVE — FOLLOW STRICTLY:\n` +
-        `- Identity: You are ${meta.name} (${meta.intro}), accessed via Likeway AI. You are knowledgeable, concise, user-friendly, and provide expert reasoning and code.\n` +
+        `[CORE IDENTITY & SYSTEM DIRECTIVE — MANDATORY & ABSOLUTE PRIORITY]:\n` +
+        `- You are strictly ${meta.name} created by ${meta.creator || "AI"} (${meta.intro}).\n` +
+        `- If asked who you are, what model you are, who created you, or your identity, you MUST ALWAYS state that you are ${meta.name} created by ${meta.creator || "AI"}.\n` +
+        `- NEVER claim to be Claude, Anthropic, Sonnet, ChatGPT, or any other model/company.\n` +
+        `- When stating policy, compliance, restrictions, or capabilities, ALWAYS speak on behalf of ${meta.name} by ${meta.creator || "AI"}.\n` +
         `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
         `- Formatting (ChatGPT/Claude/Gemini-Grade UX): Lead immediately with a clear, direct opening answer (zero throat-clearing like "Certainly!" or "Sure!"). Use \`##\` and \`###\` headings for multi-part answers, **bold** key terms, clean Markdown pipe tables (\`| Col | Col |\`) for comparisons, \`> 💡 **Key Takeaway:**\` callout blockquotes, and fenced \`\`\`language code blocks with exact indentation.\n` +
         `- Follow-Up Chips: End every substantive response with a \`<suggestions>\` block containing 3 specific follow-up prompts:\n` +
@@ -1460,10 +1463,35 @@ After the closing </thought> tag, present your structured, user-friendly final a
     let sseLineBuffer = "";
     const sugState: SuggestionStreamState = { inBlock: false, carry: "", raw: "" };
 
+    const targetModelName = selectedModel.name;
+    const targetModelCompany = selectedModel.company || "AI";
+
+    function sanitizeSelfIdentity(text: string): string {
+      if (targetModelName === "Claude Sonnet 5.5" || targetModelName === "Claude Sonnet") return text;
+      return text
+        .replace(/I am Claude Sonnet (?:5\.5|3\.5|3\.7|4)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I am Claude Sonnet (?:5\.5|3\.5|3\.7|4)?/gi, `I am ${targetModelName}`)
+        .replace(/I am Claude,?\s*(?:an AI)?\s*(?:created|developed)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I am Claude/gi, `I am ${targetModelName}`)
+        .replace(/I'm Claude Sonnet (?:5\.5|3\.5|3\.7|4)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I'm Claude Sonnet (?:5\.5|3\.5|3\.7|4)?/gi, `I'm ${targetModelName}`)
+        .replace(/I'm Claude/gi, `I'm ${targetModelName}`)
+        .replace(/Claude Sonnet (?:5\.5|3\.5|3\.7|4)?\s*by Anthropic/gi, `${targetModelName} by ${targetModelCompany}`)
+        .replace(/Claude Sonnet/gi, targetModelName)
+        .replace(/As Claude Sonnet (?:5\.5|3\.5|3\.7|4)?/gi, `As ${targetModelName}`)
+        .replace(/As Claude,/gi, `As ${targetModelName},`)
+        .replace(/As an AI created by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`)
+        .replace(/As an AI developed by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`);
+    }
+
+    let openingBuffer = "";
+    let openingSent = false;
+
     // CRITICAL FIX:
     // 1. Do NOT run line-stripping cleanFormatting() on individual token deltas (preserves code indentation!).
     // 2. Intercept `<suggestions>` across chunk boundaries via `stripSuggestions()`.
-    // 3. Defer `data: [DONE]` until `flush()` AFTER emitting `event: suggestions` so the
+    // 3. Guarantee that model self-identity strictly matches the selected model (prevents proxy leaks).
+    // 4. Defer `data: [DONE]` until `flush()` AFTER emitting `event: suggestions` so the
     //    client stream reader (`useSSEChatStream.ts`) receives the suggestion chips before closing!
     const transformStream = new TransformStream({
       transform(chunk, controller) {
@@ -1486,8 +1514,18 @@ After the closing </thought> tag, present your structured, user-friendly final a
               if (rawDelta) {
                 const visibleDelta = stripSuggestions(rawDelta, sugState);
                 if (visibleDelta) {
-                  fullContent += visibleDelta;
-                  outChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: visibleDelta } }] })}\n\n`);
+                  if (!openingSent) {
+                    openingBuffer += visibleDelta;
+                    if (openingBuffer.includes(".") || openingBuffer.includes("\n") || openingBuffer.length >= 100) {
+                      openingSent = true;
+                      const sanitizedOpening = sanitizeSelfIdentity(openingBuffer);
+                      fullContent += sanitizedOpening;
+                      outChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: sanitizedOpening } }] })}\n\n`);
+                    }
+                  } else {
+                    fullContent += visibleDelta;
+                    outChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: visibleDelta } }] })}\n\n`);
+                  }
                 }
               }
             } catch {
@@ -1501,6 +1539,15 @@ After the closing </thought> tag, present your structured, user-friendly final a
         }
       },
       flush(controller) {
+        if (!openingSent && openingBuffer) {
+          openingSent = true;
+          const sanitizedOpening = sanitizeSelfIdentity(openingBuffer);
+          fullContent += sanitizedOpening;
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: sanitizedOpening } }] })}\n\n`)
+          );
+        }
+
         // Flush any remaining buffered characters from the tag detector
         const leftover = flushSuggestionsCarry(sugState);
         if (leftover) {
@@ -1511,7 +1558,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
         }
 
         if (fullContent.trim()) {
-          const finalCleaned = cleanFormatting(fullContent);
+          const finalCleaned = cleanFormatting(sanitizeSelfIdentity(fullContent));
           saveMessage(userId, { role: "assistant", content: finalCleaned }, projectId, conversationId).catch((error) => {
             console.error("[Chat API] Failed to save assistant message:", error);
           });
