@@ -11,17 +11,21 @@
 - [x] Build and verify compilation — No TypeScript errors (only env warning for missing NEXT_PUBLIC_API_URL in local dev)
 
 ## Phase 2 – Deployment & Infrastructure
-- [ ] render.yaml – Add RENDER_API_URL, PLAYWRIGHT_BROWSERS_PATH env vars
-- [ ] Dockerfile – Verify Playwright browsers path, add build-time verification
-- [ ] next.config.ts – Add CORS headers for Render backend
-- [ ] vercel.json – Add RENDER_API_URL env vars
-- [x] Build and verify compilation — No TypeScript errors
+- [x] render.yaml – Add RENDER_API_URL, PLAYWRIGHT_BROWSERS_PATH, RAZORPAY_*, CSRF_SECRET, INTERNAL_API_SECRET env vars
+- [x] Dockerfile – Verify Playwright browsers path, add build-time ARG and ENV variables
+- [x] next.config.ts – Fix CORS headers and resolve credentials wildcard origin conflict
+- [x] vercel.json – Headers and production configuration
+- [x] Build and verify compilation — Clean production build with all 58 routes compiled
 
-## Phase 3 – Browser Automation Stability
-- [ ] Browser lifecycle management (concurrent sessions, cleanup)
-- [ ] Session persistence and reconnection logic
-- [ ] Timeout handling and retry logic
-- [ ] Resource cleanup on shutdown
+## Phase 3 – Real-Time & Payer End-to-End Hardening
+- [x] Auto-provision Razorpay recurring subscription plans dynamically if not preset in env
+- [x] Dual HMAC signature verification (order_id|payment_id and payment_id|subscription_id) in /api/subscription/confirm and /api/verify-payment
+- [x] Real-time database plan sync in /api/chat and /api/voice-chat so paying users are never blocked as Core
+- [x] Atomic entitlement resolution with real-time DB fallback in consumeEntitlement()
+- [x] Client plan synchronization in AuthProvider.tsx and getCurrentPlan() cache resolution
+- [x] Companion daemon public health endpoint with token-protected host introspection
+- [x] Autonomous 3D app/game building companion pairing token forwarding
+- [x] Success page payment reflection retry loop with exponential polling
 
 ## Phase 4 – Production Hardening
 - [ ] Security improvements

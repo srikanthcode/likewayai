@@ -27,7 +27,10 @@ export async function POST(req: NextRequest) {
 
     const stripe = getStripe();
     if (!stripe) {
-      return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Card checkout (Stripe) is not available. Use the Razorpay upgrade flow." },
+        { status: 503 }
+      );
     }
 
     // Create a Stripe Checkout Session (Stripe hosts the entire payment page)
@@ -51,10 +54,12 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({ url: session.url });
     } catch (stripeErr: any) {
-      console.warn("Stripe creation failed, using sandbox fallback:", stripeErr);
-      return NextResponse.json({
-        url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id=mock_stripe_${Math.random().toString(36).substring(2, 11)}&planId=${planId}`
-      });
+      // No fake-success fallback: a failed checkout must fail loudly.
+      console.error("Stripe checkout session creation failed:", stripeErr);
+      return NextResponse.json(
+        { error: "Could not start card checkout. Please try again or use the Razorpay upgrade flow." },
+        { status: 502 }
+      );
     }
   } catch (error: any) {
     console.error("Stripe Checkout Error:", error);

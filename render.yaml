@@ -36,6 +36,20 @@ services:
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RAZORPAY_PLAN_GO
+        sync: false
+      - key: RAZORPAY_PLAN_PLUS
+        sync: false
+      - key: RAZORPAY_PLAN_PRO
+        sync: false
+      - key: CSRF_SECRET
+        generateValue: true
+      - key: INTERNAL_API_SECRET
+        generateValue: true
+      - key: TOKENHARBOR_API_KEY
+        sync: false
       - key: TAVILY_API_KEY
         sync: false
       - key: FIRECRAWL_API_KEY

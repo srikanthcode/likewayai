@@ -81,6 +81,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const persistUser = useCallback((u: UserInfo | null) => {
     setUser(u);
     writeCache(u);
+    if (typeof window !== "undefined") {
+      if (u?.plan) {
+        localStorage.setItem("likeway_plan", u.plan);
+      } else if (!u) {
+        localStorage.removeItem("likeway_plan");
+      }
+    }
   }, []);
 
   // ── Internal: call /api/auth/refresh and return the new user ─────────────
@@ -202,42 +209,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [persistUser, scheduleRefresh, router]);
 
-  // ── Google login (POST-based, legacy) ─────────────────────────────────────
-  const googleLogin = useCallback(async (name: string, email: string, avatar: string) => {
-    try {
-      const res = await fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, avatar }),
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) return { error: data.error || "Google login failed" };
-      persistUser(data.user);
-      scheduleRefresh();
-      router.push(data.redirect || "/");
-      return {};
-    } catch {
-      return { error: "Connection failed. Please try again." };
-    }
-  }, [persistUser, scheduleRefresh, router]);
+  // ── Google login ──────────────────────────────────────────────────────────
+  // Credentials are never trusted from the browser. We hand off to the
+  // server-side OAuth code exchange, which is the only way to prove identity.
+  const googleLogin = useCallback(async () => {
+    window.location.href = "/api/auth/google/redirect";
+    return {};
+  }, []);
 
   // ── Guest login ────────────────────────────────────────────────────────────
+  // Anonymous sessions are intentionally not supported (no /api/auth/guest
+  // route exists). Sign-in requires a verified email or Google account.
   const guestLogin = useCallback(async () => {
-    try {
-      const res = await fetch("/api/auth/guest", {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) return { error: data.error || "Guest login failed" };
-      persistUser(data.user);
-      router.push("/");
-      return {};
-    } catch {
-      return { error: "Connection failed. Please try again." };
-    }
-  }, [persistUser, router]);
+    return { error: "Guest access is not available. Please sign in with email or Google." };
+  }, []);
 
   // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(async (all = false) => {

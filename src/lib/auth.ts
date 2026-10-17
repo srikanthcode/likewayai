@@ -1,19 +1,15 @@
 import crypto from "crypto";
 
-// ── VIP / Owner identity ────────────────────────────────────────────────────
-// Match by EITHER the MongoDB _id OR the owner email so the VIP unlock works
-// regardless of which ID MongoDB actually assigned to this account.
-export const VIP_USER_IDS   = new Set(["6a688f911df47db6d9291c32"]);
-export const VIP_USER_EMAILS = new Set(["srikanthz1011@gmail.com"]);
+// ── Admin identity ──────────────────────────────────────────────────────────
+// Privileges are NEVER derived from a hardcoded id/email list. They come from
+// the `role: "admin"` field persisted in the MongoDB `users` collection.
+export function isAdminUser(user?: { role?: string | null } | null): boolean {
+  return !!user && user.role === "admin";
+}
 
-/**
- * Returns true if the given id or email belongs to a VIP / owner account.
- * Pass as many identifiers as you have available — any match is enough.
- */
-export function isVipUser(id?: string | null, email?: string | null): boolean {
-  if (id    && VIP_USER_IDS.has(id.trim()))                    return true;
-  if (email && VIP_USER_EMAILS.has(email.trim().toLowerCase())) return true;
-  return false;
+/** Role carried on a verified JWT. */
+export function isAdminPayload(payload?: { role?: string | null } | null): boolean {
+  return !!payload && payload.role === "admin";
 }
 
 
@@ -128,14 +124,13 @@ export function createAccessToken(
   user: { id: string; email?: string; role: string; plan: string },
   sessionId: string
 ): string {
-  // Check BOTH id AND email — email catches cases where the DB _id differs
-  const vip = isVipUser(user.id, user.email);
+  // Role and plan come from the DB user record — no hardcoded overrides.
   const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: user.id,
     email: user.email,
-    role: vip ? "admin" : user.role,
-    plan: vip ? "Pro" : user.plan,
+    role: user.role,
+    plan: user.plan,
     type: "access",
     sessionId,
     exp: now + JWT_ACCESS_EXPIRY,
@@ -144,13 +139,17 @@ export function createAccessToken(
   return sign(payload as any, getJwtSecret());
 }
 
-export function createRefreshToken(userId: string, sessionId: string): string {
-  const vip = isVipUser(userId);
+export function createRefreshToken(
+  userId: string,
+  sessionId: string,
+  role: string = "user",
+  plan: string = "free"
+): string {
   const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: userId,
-    role: vip ? "admin" : "user",
-    plan: vip ? "Pro" : "free",
+    role,
+    plan,
     type: "refresh",
     sessionId,
     exp: now + JWT_REFRESH_EXPIRY,
@@ -160,13 +159,7 @@ export function createRefreshToken(userId: string, sessionId: string): string {
 }
 
 export function verifyAccessToken(token: string): TokenPayload | null {
-  const payload = verify(token, getJwtSecret()) as TokenPayload | null;
-  // Re-apply VIP override on every verify — catches ID or email match
-  if (payload && isVipUser(payload.sub, payload.email as string | undefined)) {
-    payload.plan = "Pro";
-    payload.role = "admin";
-  }
-  return payload;
+  return verify(token, getJwtSecret()) as TokenPayload | null;
 }
 
 export function verifyRefreshToken(token: string): TokenPayload | null {
@@ -215,7 +208,7 @@ export function rotateTokensIfNeeded(
   
   return {
     accessToken: createAccessToken(user, sessionId),
-    refreshToken: createRefreshToken(user.id, sessionId),
+    refreshToken: createRefreshToken(user.id, sessionId, user.role, user.plan),
   };
 }
 

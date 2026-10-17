@@ -8,7 +8,6 @@ import {
   getTokenFromCookies,
   generateSessionId,
   fingerprint,
-  isVipUser,
 } from "@/lib/auth";
 import {
   findUserById,
@@ -60,7 +59,7 @@ export async function POST(req: NextRequest) {
       { id: user._id.toString(), email: user.email, role: user.role, plan: user.plan },
       newSessionId
     );
-    const refreshToken = createRefreshToken(user._id.toString(), newSessionId);
+    const refreshToken = createRefreshToken(user._id.toString(), newSessionId, user.role, user.plan);
 
     await createSession({
       userId: user._id.toString(),
@@ -76,11 +75,9 @@ export async function POST(req: NextRequest) {
     // Update last login time
     await updateUser(user._id.toString(), { lastLoginAt: new Date() });
 
-    const vip = isVipUser(user._id.toString(), user.email);
-
     // Normalize the plan from DB to client-facing capitalized form
     const { normalizePlan } = await import("@/lib/plans");
-    const normalizedPlan = vip ? "Pro" : normalizePlan(user.plan);
+    const normalizedPlan = normalizePlan(user.plan);
 
     const cookies = setAuthCookies(accessToken, refreshToken);
     const response = NextResponse.json({
@@ -89,8 +86,7 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        // VIP override: always admin + Pro (must match token claims)
-        role: vip ? "admin" : user.role,
+        role: user.role,
         plan: normalizedPlan,
         onboardingCompleted: user.onboardingCompleted,
         emailVerified: user.emailVerified,

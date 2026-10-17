@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAccessToken, getTokenFromCookies, isVipUser } from "@/lib/auth";
+import { verifyAccessToken, getTokenFromCookies } from "@/lib/auth";
 import { findUserById, updateUser } from "@/lib/auth-models";
 import { normalizePlan } from "@/lib/plans";
 
@@ -21,17 +21,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // VIP check: match by token sub OR by the DB user's email
-    const vip = isVipUser(payload.sub, user.email);
-
     return NextResponse.json({
       user: {
         id: user._id.toString(),
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        role: vip ? "admin" : user.role,
-        plan: vip ? "Pro" : normalizePlan(user.plan),
+        role: user.role,
+        plan: normalizePlan(user.plan),
         provider: user.provider,
         emailVerified: user.emailVerified,
         onboardingCompleted: user.onboardingCompleted,

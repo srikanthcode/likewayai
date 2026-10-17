@@ -1,8 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Check, Sparkles, Zap, Crown, Star } from "lucide-react";
-import { PLANS, PlanType } from "@/lib/plans";
+import { X, Check, Sparkles, Zap, Crown, Star, Lock, ShieldCheck } from "lucide-react";
+import {
+  PLANS,
+  PlanType,
+  PLAN_THEME,
+  PLAN_BADGES,
+  PLAN_TAGLINES,
+  getPlanModels,
+  isAllModelsPlan,
+} from "@/lib/plans";
 
 interface PricingModalProps {
   open: boolean;
@@ -18,136 +27,239 @@ const PLAN_ICONS: Record<PlanType, typeof Check> = {
   Pro: Crown,
 };
 
-const PLAN_COLORS: Record<PlanType, string> = {
-  Core: "#6B7280",
-  Go: "#3B82F6",
-  Plus: "#6366F1",
-  Pro: "#F59E0B",
-};
-
-const PLAN_BADGES: Record<PlanType, string | null> = {
-  Core: null,
-  Go: "LIMITED OFFER",
-  Plus: "MOST POPULAR",
-  Pro: "BEST VALUE",
-};
-
 export default function PricingModal({ open, onClose, onSelectPlan, currentPlan }: PricingModalProps) {
   const plans = Object.values(PLANS);
+
+  // Lock body scroll + close on Escape while the modal is open
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4 lg:p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
           {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/75 backdrop-blur-md"
             onClick={onClose}
           />
 
           {/* Modal */}
           <motion.div
-            className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-[#1a1d27] border border-white/10 rounded-3xl shadow-2xl"
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose your plan"
+            className="relative flex w-full max-w-[1200px] max-h-[94dvh] sm:max-h-[90vh] flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px] border border-white/10 bg-[#0c101b] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)]"
+            initial={{ opacity: 0, scale: 0.97, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            exit={{ opacity: 0, scale: 0.97, y: 24 }}
+            transition={{ type: "spring", stiffness: 340, damping: 32 }}
           >
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-colors z-10"
-            >
-              <X size={20} />
-            </button>
+            {/* Ambient glow + top accent */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+            <div
+              className="pointer-events-none absolute -top-48 left-1/2 h-72 w-[680px] -translate-x-1/2"
+              style={{
+                background:
+                  "radial-gradient(closest-side, rgba(139,92,246,0.16), rgba(139,92,246,0.04) 60%, transparent)",
+              }}
+            />
 
-            {/* Header */}
-            <div className="text-center pt-8 pb-6 px-6">
-              <h2 className="text-2xl font-bold text-white mb-2">Choose Your Plan</h2>
-              <p className="text-gray-400 text-sm">Unlock the full power of LikeWay AI</p>
+            {/* ── Header (always visible) ── */}
+            <div className="relative shrink-0 border-b border-white/[0.06] px-6 pb-5 pt-7 text-center sm:px-10 sm:pb-6 sm:pt-8">
+              <button
+                onClick={onClose}
+                aria-label="Close pricing"
+                className="absolute right-4 top-4 rounded-xl p-2 text-gray-400 transition-colors hover:bg-white/10 hover:text-white sm:right-6 sm:top-6"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="mx-auto mb-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">
+                <Sparkles size={11} />
+                Likeway Plans
+              </div>
+
+              <h2 className="text-2xl font-black tracking-tight text-white sm:text-[28px]">
+                Choose Your Plan
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-gray-400">
+                Unlock the full power of Likeway AI. Upgrade, switch or cancel anytime — no hidden charges.
+              </p>
             </div>
 
-            {/* Plans Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 px-6 pb-8">
-              {plans.map((plan) => {
-                const Icon = PLAN_ICONS[plan.id];
-                const color = PLAN_COLORS[plan.id];
-                const badge = PLAN_BADGES[plan.id];
-                const isCurrent = currentPlan === plan.id;
-                const isFree = plan.id === "Core";
-                const isPlus = plan.id === "Plus";
+            {/* ── Scrollable body ── */}
+            <div className="pricing-modal-scroll relative flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-10 sm:py-8">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-5">
+                {plans.map((plan) => {
+                  const Icon = PLAN_ICONS[plan.id];
+                  const theme = PLAN_THEME[plan.id];
+                  const badge = PLAN_BADGES[plan.id];
+                  const tagline = PLAN_TAGLINES[plan.id];
+                  const isCurrent = currentPlan === plan.id;
+                  const isFree = plan.id === "Core";
+                  const isHighlighted = plan.id === "Plus";
+                  const gradient = `linear-gradient(135deg, ${theme.gradient[0]}, ${theme.gradient[1]})`;
+                  const modelCount = getPlanModels(plan.id);
+                  const modelLabel = isAllModelsPlan(plan.id)
+                    ? `All ${modelCount} models`
+                    : `${modelCount} models`;
 
-                return (
-                  <div
-                    key={plan.id}
-                    className={`relative flex flex-col p-5 rounded-2xl border transition-all ${
-                      isCurrent
-                        ? "border-cyan-500/50 bg-cyan-500/5"
-                        : isPlus
-                        ? "border-indigo-500/50 bg-indigo-500/5 ring-1 ring-indigo-500/20"
-                        : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
-                    }`}
-                  >
-                    {/* Badge */}
-                    {badge && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[9px] font-bold text-white whitespace-nowrap" style={{ backgroundColor: color }}>
-                        {badge}
-                      </div>
-                    )}
-
-                    {/* Icon + Name */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
-                        <Icon size={16} style={{ color }} />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-bold text-white">{plan.name}</h3>
-                        {isFree && <span className="text-[10px] text-gray-500">Free</span>}
-                      </div>
-                    </div>
-
-                    {/* Price */}
-                    <div className="mb-4">
-                      <span className="text-2xl font-black text-white">{plan.price}</span>
-                      {!isFree && <span className="text-xs text-gray-500 ml-1">INR / month</span>}
-                      {!isFree && <div className="text-[10px] text-gray-600 mt-0.5">Inclusive of GST</div>}
-                    </div>
-
-                    {/* Model Count */}
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                      {plan.modelCount} models unlocked • {plan.limits.messagesDay >= 99999 ? "Unlimited" : `${plan.limits.messagesDay}`} messages/day
-                    </div>
-
-                    {/* Features */}
-                    <ul className="flex-1 space-y-2 mb-4">
-                      {plan.features.map((feature, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
-                          <Check size={12} className="mt-0.5 shrink-0" style={{ color }} />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    {/* CTA */}
-                    <button
-                      onClick={() => onSelectPlan(plan.id)}
-                      disabled={isCurrent}
-                      className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`relative flex flex-col rounded-2xl border p-5 transition-colors duration-200 ${
                         isCurrent
-                          ? "bg-white/5 text-gray-500 cursor-default"
-                          : "text-white hover:opacity-90 active:scale-95"
+                          ? "border-cyan-400/40 bg-cyan-400/[0.04]"
+                          : isHighlighted
+                            ? "border-violet-400/40 bg-[#12142a] shadow-[0_0_70px_-25px_rgba(139,92,246,0.65)]"
+                            : "border-white/10 bg-white/[0.03] hover:border-white/20"
                       }`}
-                      style={!isCurrent ? { backgroundColor: color } : undefined}
                     >
-                      {isCurrent ? "Current Plan" : `Upgrade to ${plan.name}`}
-                    </button>
-                  </div>
-                );
-              })}
+                      {/* Badge row — reserved height keeps every card aligned */}
+                      <div className="mb-4 flex h-6 items-center justify-center">
+                        {isCurrent ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-cyan-300">
+                            <Check size={11} strokeWidth={3} />
+                            Your Plan
+                          </span>
+                        ) : badge ? (
+                          <span
+                            className="inline-flex items-center rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white"
+                            style={{
+                              background: gradient,
+                              boxShadow: `0 6px 20px -8px ${theme.color}`,
+                            }}
+                          >
+                            {badge}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Plan identity */}
+                      <div className="mb-4 flex items-center gap-3">
+                        <div
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                          style={{ background: theme.soft }}
+                        >
+                          <Icon size={18} style={{ color: theme.color }} />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-[15px] font-bold leading-tight text-white">
+                            {plan.name}
+                          </h3>
+                          <p className="mt-0.5 truncate text-[11px] text-gray-500">{tagline}</p>
+                        </div>
+                      </div>
+
+                      {/* Price */}
+                      <div className="mb-5">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-3xl font-black tracking-tight text-white">
+                            {plan.price}
+                          </span>
+                          {!isFree && (
+                            <span className="text-xs font-medium text-gray-500">/ month</span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[11px] text-gray-500">
+                          {isFree
+                            ? "Free forever · No card required"
+                            : "Inclusive of GST · Cancel anytime"}
+                        </p>
+                      </div>
+
+                      {/* Includes */}
+                      <div className="mb-3 flex items-center justify-between border-t border-white/[0.07] pt-4">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">
+                          Includes
+                        </span>
+                        <span
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold"
+                          style={{ color: theme.color }}
+                        >
+                          {modelLabel}
+                        </span>
+                      </div>
+
+                      {/* Features */}
+                      <ul className="mb-5 flex-1 space-y-2.5">
+                        {plan.features.map((feature, i) => (
+                          <li
+                            key={i}
+                            className="flex items-start gap-2.5 text-[12.5px] leading-snug text-gray-300"
+                          >
+                            <span
+                              className="mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full"
+                              style={{ background: theme.soft }}
+                            >
+                              <Check size={10} strokeWidth={3.5} style={{ color: theme.color }} />
+                            </span>
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {/* CTA */}
+                      <button
+                        onClick={() => onSelectPlan(plan.id)}
+                        disabled={isCurrent}
+                        className={`w-full rounded-xl px-4 py-3 text-[13px] font-bold transition-all duration-200 ${
+                          isCurrent
+                            ? "cursor-default bg-white/[0.06] text-gray-500"
+                            : "text-white hover:brightness-110 active:scale-[0.98]"
+                        }`}
+                        style={
+                          isCurrent
+                            ? undefined
+                            : {
+                                background: gradient,
+                                boxShadow: `0 10px 30px -12px ${theme.color}`,
+                              }
+                        }
+                      >
+                        {isCurrent
+                          ? "Current Plan"
+                          : isFree
+                            ? "Get started free"
+                            : `Upgrade to ${plan.name}`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Trust notes */}
+              <div className="mt-7 flex flex-col items-center justify-center gap-2 text-[11px] text-gray-500 sm:flex-row sm:gap-7">
+                <span className="inline-flex items-center gap-1.5">
+                  <Lock size={12} />
+                  Payments secured by Razorpay
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck size={12} />
+                  GST-inclusive pricing
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Check size={12} />
+                  Switch or cancel anytime
+                </span>
+              </div>
             </div>
           </motion.div>
         </motion.div>

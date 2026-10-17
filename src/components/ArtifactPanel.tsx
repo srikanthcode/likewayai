@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from "react";
 import { X, Copy, Check, Download, FileText, Code, Eye } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import CodeBlock from "@/components/CodeBlock";
 import { cn } from "@/lib/utils";
 
@@ -207,6 +208,7 @@ export default function ArtifactPanel({
             )}
           >
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 code: ({ node, inline, className, children, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || "");
@@ -222,6 +224,33 @@ export default function ArtifactPanel({
                     </code>
                   );
                 },
+                table: ({ children, ...props }: any) => (
+                  <div className="w-full my-4 overflow-x-auto rounded-xl border border-black/10 dark:border-white/10 shadow-sm bg-black/[0.02] dark:bg-white/[0.02]">
+                    <table className="w-full min-w-full text-left text-sm border-collapse" {...props}>
+                      {children}
+                    </table>
+                  </div>
+                ),
+                thead: ({ children, ...props }: any) => (
+                  <thead className="bg-black/5 dark:bg-white/5 border-b border-black/10 dark:border-white/10 text-xs uppercase tracking-wider font-semibold text-gray-700 dark:text-gray-200" {...props}>
+                    {children}
+                  </thead>
+                ),
+                tbody: ({ children, ...props }: any) => (
+                  <tbody className="divide-y divide-black/5 dark:divide-white/5" {...props}>
+                    {children}
+                  </tbody>
+                ),
+                th: ({ children, ...props }: any) => (
+                  <th className="px-4 py-2 font-bold text-gray-900 dark:text-white whitespace-nowrap" {...props}>
+                    {children}
+                  </th>
+                ),
+                td: ({ children, ...props }: any) => (
+                  <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 align-top" {...props}>
+                    {children}
+                  </td>
+                ),
               }}
             >
               {content}

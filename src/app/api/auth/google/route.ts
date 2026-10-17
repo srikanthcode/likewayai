@@ -23,7 +23,7 @@ async function issueSession(user: any, isNew: boolean, req: NextRequest) {
     { id: user._id.toString(), email: user.email, role: user.role, plan: user.plan },
     sessionId
   );
-  const refreshToken = createRefreshToken(user._id.toString(), sessionId);
+  const refreshToken = createRefreshToken(user._id.toString(), sessionId, user.role, user.plan);
 
   await createSession({
     userId: user._id.toString(),
@@ -48,25 +48,76 @@ async function issueSession(user: any, isNew: boolean, req: NextRequest) {
   return { accessToken, refreshToken, sessionId };
 }
 
-// ── POST /api/auth/google ──────────────────────────────────────────────────
-export async function POST(req: NextRequest) {
+// ── Verify a Google ID token against Google's public keys ──────────────────
+// We never trust { name, email } from the request body. The client must send
+// the `id_token` Google issued, and the audience must match our OAuth client.
+async function verifyGoogleIdToken(
+  idToken: string
+): Promise<{ email: string; name?: string; picture?: string; emailVerified: boolean } | null> {
   try {
-    const body = await req.json();
-    const { name, email, avatar } = body;
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return null;
 
-    if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    const claims = await res.json();
+
+    // The token MUST have been minted for OUR client id.
+    const expectedAud = process.env.GOOGLE_CLIENT_ID;
+    if (!expectedAud || claims.aud !== expectedAud) {
+      console.error("[Auth/Google] id_token audience mismatch", {
+        aud: claims.aud,
+        hasExpected: Boolean(expectedAud),
+      });
+      return null;
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const emailVerified =
+      claims.email_verified === true || claims.email_verified === "true";
+    if (!claims.email || !emailVerified) return null;
+
+    return {
+      email: String(claims.email).toLowerCase().trim(),
+      name: claims.name || undefined,
+      picture: claims.picture || undefined,
+      emailVerified: true,
+    };
+  } catch (err: any) {
+    console.error("[Auth/Google] id_token verification failed:", err?.message || err);
+    return null;
+  }
+}
+
+// ── POST /api/auth/google ──────────────────────────────────────────────────
+// Requires a cryptographically verified Google `id_token`. For the standard
+// browser flow use /api/auth/google/redirect (server-side code exchange).
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const { idToken } = body as { idToken?: string };
+
+    if (!idToken || typeof idToken !== "string") {
+      return NextResponse.json(
+        { error: "A Google id_token is required. Use /api/auth/google/redirect for the browser flow." },
+        { status: 401 }
+      );
+    }
+
+    const claims = await verifyGoogleIdToken(idToken);
+    if (!claims) {
+      return NextResponse.json({ error: "Invalid or unverified Google token" }, { status: 401 });
+    }
+
+    const normalizedEmail = claims.email;
     let user = await findUserByEmail(normalizedEmail);
     let isNew = false;
 
     if (!user) {
       user = await createUser({
-        name: name || normalizedEmail.split("@")[0],
+        name: claims.name || normalizedEmail.split("@")[0],
         email: normalizedEmail,
-        avatar: avatar || "",
+        avatar: claims.picture || "",
         provider: "google",
         emailVerified: true,
         role: "user",
@@ -78,8 +129,8 @@ export async function POST(req: NextRequest) {
     } else {
       await updateUser(user._id.toString(), {
         lastLoginAt: new Date(),
-        name: name || user.name,
-        avatar: avatar || user.avatar,
+        name: claims.name || user.name,
+        avatar: claims.picture || user.avatar,
         emailVerified: true,
       });
     }

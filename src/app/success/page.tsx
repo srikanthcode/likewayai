@@ -2,90 +2,121 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setCurrentPlan } from "@/lib/plans";
+import { setCurrentPlan, normalizePlan, PlanType } from "@/lib/plans";
 import { motion } from "framer-motion";
 import { useAuth } from "@/components/AuthProvider";
 
 export default function SuccessPage() {
   const router = useRouter();
   const { refreshUser } = useAuth();
-  const [upgradedPlan, setUpgradedPlan] = useState("Plus");
+  const [upgradedPlan, setUpgradedPlan] = useState<PlanType | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Read planId dynamically from search query on client side
-    const params = new URLSearchParams(window.location.search);
-    const planId = (params.get("planId") || "Plus") as any;
-    setUpgradedPlan(planId);
+    // ── Never trust ?planId= from the URL. The server is the source of truth:
+    // we read the authenticated user's REAL plan from /api/auth/me, which reads
+    // the verified `users.plan` value written by the payment confirmation.
+    const verifyAgainstServer = async () => {
+      let attempts = 0;
+      const maxAttempts = 4;
 
-    // Immediately persist to localStorage so the app state is correct
-    setCurrentPlan(planId);
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          const res = await fetch("/api/auth/me", { credentials: "include" });
+          if (!res.ok) {
+            router.replace("/login?next=/pricing");
+            return;
+          }
+          const data = await res.json();
+          const plan: PlanType = normalizePlan(data?.user?.plan);
 
-    // Refresh user session state from the SERVER — this is the authoritative
-    // source of truth. We must await this so the AuthProvider cache and JWT
-    // cookie reflect the new plan before we redirect.
-    const doRefresh = async () => {
-      try {
-        await refreshUser();
-      } catch (err) {
-        console.error("Failed to refresh user subscription:", err);
-      } finally {
-        setIsRefreshing(false);
+          if (plan !== "Core") {
+            setUpgradedPlan(plan);
+            setCurrentPlan(plan);
+            await refreshUser();
+            setIsRefreshing(false);
+            return;
+          }
+
+          // If still Core and attempts remain, wait 1.5s for webhook/DB processing
+          if (attempts < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+        } catch {
+          if (attempts >= maxAttempts) {
+            setError("We couldn't verify your subscription. Please check your account page.");
+            setIsRefreshing(false);
+            return;
+          }
+        }
       }
+
+      setError("Your payment is being processed. It may take a moment to reflect on your account — check your account page shortly.");
+      setIsRefreshing(false);
     };
 
-    doRefresh();
+    verifyAgainstServer();
 
-    const timer = setTimeout(() => {
-      router.push("/");
-    }, 4500);
-
+    const timer = setTimeout(() => router.push("/"), 5000);
     return () => clearTimeout(timer);
   }, [router, refreshUser]);
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-white">
       <div className="text-center space-y-6 px-6">
-        {/* Animated checkmark */}
+        {/* Animated checkmark / warning */}
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 20 }}
-          className="w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30"
+          className={`w-28 h-28 mx-auto rounded-full flex items-center justify-center shadow-2xl ${
+            error
+              ? "bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/30"
+              : "bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-emerald-500/30"
+          }`}
         >
-          <svg
-            className="w-14 h-14 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
-          >
-            <motion.path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M5 13l4 4L19 7"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ delay: 0.3, duration: 0.5 }}
-            />
-          </svg>
+          {error ? (
+            <span className="text-5xl font-black text-white">!</span>
+          ) : (
+            <svg className="w-14 h-14 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <motion.path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5 13l4 4L19 7"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+              />
+            </svg>
+          )}
         </motion.div>
 
-        {/* Text */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="space-y-3"
         >
-          <h1 className="text-4xl font-black tracking-tight">Payment Successful!</h1>
-          <p className="text-gray-400 text-lg">
-            Your <span className="font-extrabold text-cyan-400">{upgradedPlan}</span> plan is now active. Welcome to Likeway AI ✨
-          </p>
+          {error ? (
+            <>
+              <h1 className="text-3xl font-black tracking-tight">Verifying your plan…</h1>
+              <p className="text-gray-400 text-base max-w-md mx-auto">{error}</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-4xl font-black tracking-tight">Payment Successful!</h1>
+              <p className="text-gray-400 text-lg">
+                Your{" "}
+                <span className="font-extrabold text-cyan-400">{upgradedPlan || "…"}</span>{" "}
+                plan is now active. Welcome to Likeway AI ✨
+              </p>
+            </>
+          )}
         </motion.div>
 
-        {/* Session refresh indicator */}
-        {isRefreshing && (
+        {isRefreshing && !error && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -97,21 +128,10 @@ export default function SuccessPage() {
               transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
               className="inline-block w-3 h-3 border border-gray-600 border-t-gray-300 rounded-full"
             />
-            Activating your features...
+            Confirming with the server…
           </motion.div>
         )}
 
-        {/* Redirect hint */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="text-gray-600 text-sm"
-        >
-          Redirecting you to the app in a moment...
-        </motion.p>
-
-        {/* Manual redirect button */}
         <motion.button
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

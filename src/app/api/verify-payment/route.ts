@@ -24,12 +24,19 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    const generatedSignature = crypto
+    const orderSig = crypto
       .createHmac("sha256", razorpayKeySecret)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    if (!timingSafeEqual(generatedSignature, razorpay_signature)) {
+    const subSig = crypto
+      .createHmac("sha256", razorpayKeySecret)
+      .update(`${razorpay_payment_id}|${razorpay_order_id}`)
+      .digest("hex");
+
+    const isMatch = timingSafeEqual(orderSig, razorpay_signature) || timingSafeEqual(subSig, razorpay_signature);
+
+    if (!isMatch) {
       console.error("[Payment Verify] Signature mismatch");
       return NextResponse.json({ 
         error: "Invalid payment signature. Verification failed." 

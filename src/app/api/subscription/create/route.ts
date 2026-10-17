@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PLANS, PlanType } from "@/lib/plans";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { recordPaymentRef } from "@/lib/payments-store";
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,23 +27,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid plan ID" }, { status: 400 });
     }
 
-    const plan = PLANS[planId as PlanType];
-    if (!plan || !plan.razorpayPlanId) {
-      return NextResponse.json({ error: "Invalid plan or missing Razorpay Plan ID" }, { status: 400 });
-    }
-
     const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 
-    if (!razorpayKeyId || razorpayKeyId === "rzp_test_your_id") {
-      return NextResponse.json({
-        subscriptionId: "sub_test_" + Math.random().toString(36).substring(2, 11),
-        keyId: "rzp_test_mock_id",
-        isMock: true
-      });
+    // ── Degrade safely instead of returning a fake subscription ──────────
+    if (!razorpayKeyId || !razorpayKeySecret || razorpayKeyId === "rzp_test_your_id") {
+      return NextResponse.json(
+        { error: "Recurring billing is not configured yet. Please contact support." },
+        { status: 503 }
+      );
     }
 
-    const { createRazorpaySubscription } = await import("@/lib/razorpay");
-    const subscription = await createRazorpaySubscription(plan.razorpayPlanId, { userId });
+    const plan = PLANS[planId as PlanType];
+    if (!plan) {
+      return NextResponse.json({ error: "Invalid plan ID" }, { status: 400 });
+    }
+
+    const { createRazorpaySubscription, createRazorpayPlan } = await import("@/lib/razorpay");
+
+    let rzpPlanId = plan.razorpayPlanId;
+    if (!rzpPlanId) {
+      // Auto-provision plan on Razorpay if not preconfigured in environment variables
+      try {
+        const priceRupees = parseInt(String(plan.price).replace(/[^0-9]/g, ""), 10) || 0;
+        console.log(`[Subscription Create] Auto-provisioning Razorpay plan for ${planId} (₹${priceRupees})...`);
+        const created = await createRazorpayPlan(
+          `Likeway ${plan.name} Monthly`,
+          priceRupees,
+          `${plan.name} Subscription - Likeway AI Platform`
+        );
+        if (created?.id) {
+          rzpPlanId = created.id;
+        }
+      } catch (provisionErr: any) {
+        console.error(`[Subscription Create] Dynamic plan provisioning failed:`, provisionErr.message);
+      }
+    }
+
+    if (!rzpPlanId) {
+      console.error(`[Subscription Create] Missing RAZORPAY_PLAN_* for ${planId}`);
+      return NextResponse.json(
+        {
+          error:
+            "Recurring billing for this plan is not configured yet. " +
+            "Please use the standard checkout flow or contact support.",
+        },
+        { status: 503 }
+      );
+    }
+
+    const subscription = await createRazorpaySubscription(rzpPlanId, { userId, planId });
+
+    // Persist the subscription -> user/plan mapping so webhooks can resolve it
+    // even if Razorpay omits notes on a later event.
+    await recordPaymentRef({
+      id: subscription.id,
+      type: "subscription",
+      userId,
+      planId,
+      status: String(subscription.status || "created"),
+    });
 
     return NextResponse.json({
       subscriptionId: subscription.id,
@@ -50,13 +94,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Subscription Creation Error:", error);
-    
-    // Extract precise error message from Razorpay if available
+
     const errorMessage = error.error?.description || error.message || "Failed to create subscription";
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       error: errorMessage,
-      details: error.error || null 
+      details: error.error || null
     }, { status: 500 });
   }
 }

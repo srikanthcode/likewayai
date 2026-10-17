@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateWithComfyUI, checkComfyUIHealth, enhancePrompt, selectModel } from "@/lib/comfyui";
 import { generateImage } from "@/lib/tools";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { consumeEntitlement, entitlementDenied } from "@/lib/entitlements";
 
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Auth + entitlement (this route previously had NO gating at all) ──
+    const tokens = getTokenFromCookies(req);
+    const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Sign in to generate images." }, { status: 401 });
+    }
+
+    const entitlement = await consumeEntitlement(
+      payload.sub,
+      payload.plan,
+      "image_generation",
+      payload.role
+    );
+    if (!entitlement.allowed) {
+      return NextResponse.json(entitlementDenied(entitlement), { status: 402 });
+    }
+
     const body = await req.json();
     const { prompt, width = 1024, height = 1024, model } = body;
 

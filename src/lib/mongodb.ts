@@ -83,6 +83,22 @@ function createMockClient(): MongoClient {
         deleteMany: () => Promise.resolve({ acknowledged: true, deletedCount: 0 }),
         countDocuments: () => Promise.resolve(docs.length),
         aggregate: () => mockCursor([]),
+        findOneAndUpdate: (filter: any, update: any, options: any = {}) => {
+          const idx = docs.findIndex((d) => {
+            if (filter.status && d.status === filter.status) return true;
+            if (filter.email && d.email === filter.email.toLowerCase()) return true;
+            if (filter._id && d._id?.toString() === filter._id?.toString()) return true;
+            if (filter.id && d.id === filter.id) return true;
+            return false;
+          });
+          if (idx !== -1) {
+            if (update.$set) {
+              docs[idx] = { ...docs[idx], ...update.$set };
+            }
+            return Promise.resolve(docs[idx]);
+          }
+          return Promise.resolve(null);
+        },
       };
     },
   };
@@ -94,25 +110,42 @@ function createMockClient(): MongoClient {
   } as unknown as MongoClient;
 }
 
+let _lastConnectAttempt = 0;
+let _fallbackClient: MongoClient | null = null;
+const RETRY_COOLDOWN_MS = 60000;
+
 function createClientPromise(): Promise<MongoClient> {
   if (!uri) {
     console.warn("[MongoDB] MONGODB_URI not set — using resilient in-memory client.");
     return Promise.resolve(createMockClient());
   }
 
+  // If recent connection attempt failed, reuse fallback client during cooldown to avoid 5-second stalls
+  if (_fallbackClient && Date.now() - _lastConnectAttempt < RETRY_COOLDOWN_MS) {
+    return Promise.resolve(_fallbackClient);
+  }
+
   if (!global._mongoClientPromise) {
+    _lastConnectAttempt = Date.now();
     const client = new MongoClient(uri, options);
     global._mongoClientPromise = client
       .connect()
       .then((c) => {
         console.log("[MongoDB] Connected successfully to Atlas cluster.");
+        _fallbackClient = null;
         return c;
       })
       .catch((err) => {
         console.error("[MongoDB] Connection error, activating resilient fallback client:", err.message);
-        // Reset global promise so next request can retry Atlas connection
-        global._mongoClientPromise = undefined;
-        return createMockClient();
+        _lastConnectAttempt = Date.now();
+        _fallbackClient = createMockClient();
+        // Cache fallback so immediate subsequent requests don't hang for 5s
+        global._mongoClientPromise = Promise.resolve(_fallbackClient);
+        // Clear after cooldown so next request can retry
+        setTimeout(() => {
+          global._mongoClientPromise = undefined;
+        }, RETRY_COOLDOWN_MS);
+        return _fallbackClient;
       });
   }
 

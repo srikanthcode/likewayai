@@ -9,6 +9,7 @@
     "start": "next start",
     "postinstall": "node -e \"if(process.env.RENDER||process.env.RENDER_EXTERNAL_URL){const{execSync}=require('child_process');const env={...process.env,PLAYWRIGHT_BROWSERS_PATH:'/ms-playwright'};try{console.log('[Playwright] Installing Chromium for Render...');execSync('npx playwright install chromium --with-deps',{stdio:'inherit',env,timeout:120000})}catch(e){console.warn('[Playwright] Browser install failed (non-fatal):',e.message)}}\"",
     "lint": "eslint .",
+    "companion": "node companion/likeway-companion.js",
     "tailwind": "tailwindcss -i globals.css -o app/globals.css --minify",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

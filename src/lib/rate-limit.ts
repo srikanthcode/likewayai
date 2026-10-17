@@ -1,6 +1,5 @@
 // Simple in-memory rate limiting for API endpoints
 // For production, consider using Redis-based rate limiting
-import { isVipUser } from "./auth";
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
@@ -11,10 +10,11 @@ export interface RateLimitConfig {
 
 export function checkRateLimit(
   identifier: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
+  isAdmin: boolean = false
 ): { allowed: boolean; remaining: number; resetTime: number } {
-  // VIP / Owner unlock: bypass rate limiting (by ID or email)
-  if (isVipUser(identifier)) {
+  // Admins (role === "admin" from the DB) bypass rate limiting.
+  if (isAdmin) {
     return {
       allowed: true,
       remaining: 999999,

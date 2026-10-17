@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
       { id: user._id.toString(), email: user.email, role: user.role, plan: user.plan },
       sessionId
     );
-    const refreshToken = createRefreshToken(user._id.toString(), sessionId);
+    const refreshToken = createRefreshToken(user._id.toString(), sessionId, user.role, user.plan);
 
     await createSession({
       userId: user._id.toString(),

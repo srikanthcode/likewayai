@@ -1,3 +1,5 @@
+import { MODELS } from "./models";
+
 export type PlanType = "Core" | "Go" | "Plus" | "Pro";
 
 export interface Plan {
@@ -15,6 +17,7 @@ export interface Plan {
     imageGen: boolean;
     browserAutomation: number; // -1 = unlimited, 0 = none, >0 = daily limit
     browserAutomationDays: number; // Free trial days for new users (0 = no trial)
+    computerControl: number; // -1 = unlimited, >0 = daily limit
   };
   features: string[];
   modelCount: number;
@@ -27,23 +30,35 @@ export const PLANS: Record<PlanType, Plan> = {
     price: "Free",
     limits: {
       messagesDay: 200,
-      modelsAllowed: ["mistral-small-latest", "llama-3.1-8b-instant"],
+      modelsAllowed: [
+        "gpt-6-astra",
+        "deepseek-v4.1-flash:free",
+        "mimo-v2.6-flash:free",
+        "free-llama3-70b",
+        "free-mistral-7b",
+        "mistral-small-latest",
+        "llama-3.1-8b-instant",
+      ],
       tools: false,
       deepResearch: false,
       imageGen: false,
       browserAutomation: 0,
       browserAutomationDays: 2,
+      computerControl: 3,
     },
     features: [
       "200 responses/day",
-      "2 powerful models unlocked",
+      "Free models unlocked (Likeway Omni, Flash, Mimo)",
+      "Likeway Omni unlimited chat for 1 month",
+      "Multimodal vision, video & audio support",
       "Smart conversation assistant",
       "Web search capabilities",
       "Voice input support",
       "Code snippet formatting",
       "2-day free browser automation trial",
+      "Autonomous Computer Control preview (3 actions)",
     ],
-    modelCount: 2,
+    modelCount: 7,
   },
   Go: {
     id: "Go",
@@ -54,6 +69,19 @@ export const PLANS: Record<PlanType, Plan> = {
     limits: {
       messagesDay: 99999,
       modelsAllowed: [
+        "gpt-6-astra",
+        "deepseek-v4.1-flash:free",
+        "mimo-v2.6-flash:free",
+        "claude-fable-5",
+        "claude-fable-5.1",
+        "claude-opus-5.5",
+        "claude-sonnet-5",
+        "glm-5.2",
+        "kimi-k3",
+        "sol",
+        "terra",
+        "free-llama3-70b",
+        "free-mistral-7b",
         "mistral-small-latest",
         "llama-3.1-8b-instant",
         "mistral-medium-latest",
@@ -61,21 +89,24 @@ export const PLANS: Record<PlanType, Plan> = {
         "google/gemini-2.5-flash",
       ],
       tools: true,
-      deepResearch: false,
-      imageGen: false,
+      deepResearch: true,
+      imageGen: true,
       browserAutomation: 50,
       browserAutomationDays: 0,
+      computerControl: 25,
     },
     features: [
       "Unlimited messages",
-      "5 advanced models unlocked",
-      "Tool execution & web browsing",
-      "Code generation & debugging",
-      "File upload & analysis",
-      "Priority response speed",
+      "All 9 Likeway frontier models unlocked",
+      "Likeway Omni — 1 month unlimited free",
+      "AI Image Generation & Editing unlocked",
+      "Deep Thinking & Multi-Step Reasoning mode",
+      "Live Web Search & Deep Research with citations",
+      "Priority response speed & Code generation",
       "50 browser automation requests/day",
+      "25 Computer Control & Desktop actions/day",
     ],
-    modelCount: 5,
+    modelCount: 16,
   },
   Plus: {
     id: "Plus",
@@ -87,6 +118,19 @@ export const PLANS: Record<PlanType, Plan> = {
     limits: {
       messagesDay: 99999,
       modelsAllowed: [
+        "gpt-6-astra",
+        "deepseek-v4.1-flash:free",
+        "mimo-v2.6-flash:free",
+        "claude-fable-5",
+        "claude-fable-5.1",
+        "claude-opus-5.5",
+        "claude-sonnet-5",
+        "glm-5.2",
+        "kimi-k3",
+        "sol",
+        "terra",
+        "free-llama3-70b",
+        "free-mistral-7b",
         "mistral-small-latest",
         "llama-3.1-8b-instant",
         "mistral-medium-latest",
@@ -103,6 +147,7 @@ export const PLANS: Record<PlanType, Plan> = {
       imageGen: true,
       browserAutomation: -1,
       browserAutomationDays: 0,
+      computerControl: -1,
     },
     features: [
       "Unlimited messages",
@@ -114,6 +159,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Custom instructions & persistent memory",
       "Priority response queue",
       "Unlimited browser automation",
+      "Unlimited Autonomous Computer Control & Local Agent",
     ],
     modelCount: 10,
   },
@@ -132,6 +178,7 @@ export const PLANS: Record<PlanType, Plan> = {
       imageGen: true,
       browserAutomation: -1,
       browserAutomationDays: 0,
+      computerControl: -1,
     },
     features: [
       "Unlimited messages",
@@ -143,6 +190,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Voice Assistant with natural speech",
       "Priority support & feature requests",
       "Unlimited browser automation",
+      "Unlimited Autonomous 3D Game & App Building on Desktop",
     ],
     modelCount: 12,
   },
@@ -150,9 +198,87 @@ export const PLANS: Record<PlanType, Plan> = {
 
 export function getCurrentPlan(): PlanType {
   if (typeof window !== "undefined") {
-    return (localStorage.getItem("likeway_plan") as PlanType) || "Core";
+    try {
+      const direct = localStorage.getItem("likeway_plan");
+      if (direct && ["Core", "Go", "Plus", "Pro"].includes(direct)) {
+        return direct as PlanType;
+      }
+      const cached = localStorage.getItem("lw_user_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.plan) {
+          const norm = normalizePlan(parsed.plan);
+          localStorage.setItem("likeway_plan", norm);
+          return norm;
+        }
+      }
+    } catch {}
+    return "Core";
   }
   return "Core";
+}
+
+// ── Shared plan presentation data ─────────────────────────────────────
+// Used by the landing page, pricing modal and pricing page so every
+// surface stays visually consistent.
+
+export interface PlanTheme {
+  /** Primary accent color (hex) */
+  color: string;
+  /** Gradient endpoints for CTAs, badges and highlights */
+  gradient: [string, string];
+  /** Translucent tint used for icon chips and check bullets */
+  soft: string;
+}
+
+export const PLAN_THEME: Record<PlanType, PlanTheme> = {
+  Core: {
+    color: "#94a3b8",
+    gradient: ["#64748b", "#94a3b8"],
+    soft: "rgba(148, 163, 184, 0.14)",
+  },
+  Go: {
+    color: "#06b6d4",
+    gradient: ["#06b6d4", "#3b82f6"],
+    soft: "rgba(6, 182, 212, 0.14)",
+  },
+  Plus: {
+    color: "#8b5cf6",
+    gradient: ["#8b5cf6", "#6366f1"],
+    soft: "rgba(139, 92, 246, 0.14)",
+  },
+  Pro: {
+    color: "#f59e0b",
+    gradient: ["#f59e0b", "#f97316"],
+    soft: "rgba(245, 158, 11, 0.14)",
+  },
+};
+
+export const PLAN_BADGES: Record<PlanType, string | null> = {
+  Core: null,
+  Go: "LIMITED OFFER",
+  Plus: "MOST POPULAR",
+  Pro: "BEST VALUE",
+};
+
+export const PLAN_TAGLINES: Record<PlanType, string> = {
+  Core: "For getting started",
+  Go: "For everyday power users",
+  Plus: "For professionals & builders",
+  Pro: "Maximum power, no limits",
+};
+
+/** Number of models a plan can access (Pro/`"*"` = every registered model). */
+export function getPlanModels(planId: PlanType): number {
+  const plan = PLANS[planId];
+  if (!plan) return 0;
+  if (plan.limits.modelsAllowed[0] === "*") return MODELS.length;
+  return plan.limits.modelsAllowed.length;
+}
+
+/** True when the plan unlocks every registered model. */
+export function isAllModelsPlan(planId: PlanType): boolean {
+  return PLANS[planId]?.limits.modelsAllowed[0] === "*";
 }
 
 // Normalize plan names between DB (lowercase) and frontend (capitalized)

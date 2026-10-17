@@ -3,6 +3,8 @@ import { API_KEYS, getMergedApiKeys } from "@/config/keys";
 import { fetchAI } from "@/lib/api-manager";
 import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { SEARCH_KEYWORDS, TIME_KEYWORDS, REAL_TIME_TERM_PATTERN } from "@/lib/constants";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { consumeEntitlement, entitlementDenied } from "@/lib/entitlements";
 
 export const maxDuration = 60;
 
@@ -309,14 +311,32 @@ async function callGeminiDirect(
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Auth + entitlement (voice minutes are a metered feature) ──
+    const tokens = getTokenFromCookies(req);
+    const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Sign in to use the voice assistant." }, { status: 401 });
+    }
+
+    const entitlement = await consumeEntitlement(
+      payload.sub,
+      payload.plan,
+      "realtime_voice",
+      payload.role
+    );
+    if (!entitlement.allowed) {
+      return NextResponse.json(entitlementDenied(entitlement), { status: 402 });
+    }
+
     const body = await req.json();
-    const { prompt, history = [], userId } = body;
+    const { prompt, history = [] } = body;
+    const userId = payload.sub;
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return NextResponse.json({ error: "Voice prompt is required" }, { status: 400 });
     }
 
-    const mergedKeys = userId ? await getMergedApiKeys(userId) : API_KEYS;
+    const mergedKeys = await getMergedApiKeys(userId);
     const geminiKey =
       (typeof mergedKeys.gemini === "string" ? mergedKeys.gemini : "") || process.env.GEMINI_API_KEY || "";
 

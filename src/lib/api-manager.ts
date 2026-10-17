@@ -1,6 +1,6 @@
 import { API_KEYS } from "@/config/keys";
 
-type Provider = "openrouter" | "groq" | "mistral" | "image";
+type Provider = "openrouter" | "groq" | "mistral" | "image" | "freemodels" | "tokenharbor";
 
 // ── Model mapping for each provider ──────────────────────────────────────
 // Key insight: Direct Mistral API expects model names WITHOUT "mistral/" prefix
@@ -10,13 +10,22 @@ const FALLBACK_MODELS: Record<Provider, string> = {
   groq: "llama-3.3-70b-versatile",
   openrouter: "google/gemini-2.5-flash",
   image: "",
+  freemodels: "llama-3.3-70b-versatile", // fallback within free proxy
+  tokenharbor: "mimo-v2.6-flash:free",   // default to mimo for tokenharbor
 };
+
+// TokenHarbor API key — server-side only. MUST come from the environment;
+// it is never hardcoded in source. Set TOKENHARBOR_API_KEY in .env / Vercel.
+const TOKENHARBOR_API_KEY = process.env.TOKENHARBOR_API_KEY || "";
+const TOKENHARBOR_BASE_URL = process.env.TOKENHARBOR_BASE_URL || "https://tokenharbor.ai/v1";
 
 const PROVIDER_INFO: Record<Provider, { envVar: string; url: string }> = {
   groq: { envVar: "GROQ_KEYS", url: "https://api.groq.com/openai/v1/chat/completions" },
   openrouter: { envVar: "OPENROUTER_KEYS", url: "https://openrouter.ai/api/v1/chat/completions" },
   mistral: { envVar: "MISTRAL_API_KEY", url: "https://api.mistral.ai/v1/chat/completions" },
   image: { envVar: "IMAGE_GENERATION_KEYS", url: "https://api.deepai.org/api/text2img" },
+  freemodels: { envVar: "", url: "https://freemodels-chat.freemodels.workers.dev/v1/chat/completions" },
+  tokenharbor: { envVar: "TOKENHARBOR_API_KEY", url: `${TOKENHARBOR_BASE_URL}/chat/completions` },
 };
 
 class KeyPool {
@@ -30,12 +39,16 @@ class KeyPool {
       groq: API_KEYS.groq || [],
       mistral: API_KEYS.mistral || [],
       image: API_KEYS.image || [],
+      freemodels: [], // no API key needed — direct fetch in route
+      tokenharbor: [TOKENHARBOR_API_KEY].filter(Boolean), // TokenHarbor key
     };
     this.indices = {
       openrouter: 0,
       groq: 0,
       mistral: 0,
       image: 0,
+      freemodels: 0,
+      tokenharbor: 0,
     };
   }
 
@@ -113,8 +126,105 @@ function logAttempt(
   );
 }
 
-// ── fetchAI: Core AI provider router with fallback chain ─────────────────
 export async function fetchAI(provider: Provider, url: string, options: any) {
+  // ── TokenHarbor handler (OpenAI-compatible, Bearer auth) ─────────────
+  if (provider === "tokenharbor") {
+    try {
+      let bodyObj: any = {};
+      try {
+        bodyObj = typeof options.body === "string" ? JSON.parse(options.body) : (options.body || {});
+      } catch {}
+
+      const thRes = await fetch(`${TOKENHARBOR_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${TOKENHARBOR_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: bodyObj.model || "mimo-v2.6-flash:free",
+          messages: bodyObj.messages || [],
+          stream: !!bodyObj.stream,
+          temperature: bodyObj.temperature ?? 0.7,
+          max_tokens: bodyObj.max_tokens,
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+
+      if (thRes.ok) {
+        if (!bodyObj.stream) {
+          const rawJson = await thRes.json();
+          const content = rawJson.choices?.[0]?.message?.content || rawJson.content || "";
+          const normalized = {
+            choices: [{ message: { content, role: "assistant" } }],
+            content,
+            usage: rawJson.usage || { total_tokens: Math.ceil(content.length / 4) },
+          };
+          return new Response(JSON.stringify(normalized), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return thRes;
+      }
+      console.warn("[fetchAI] TokenHarbor returned error status:", thRes.status, await thRes.text().catch(() => ""));
+    } catch (err) {
+      console.warn("[fetchAI] TokenHarbor request failed:", err);
+    }
+    // Fall back to freemodels proxy if TokenHarbor fails
+    provider = "freemodels";
+  }
+
+  // freemodels proxy handler — no API key needed
+  if (provider === "freemodels") {
+    try {
+      let bodyObj: any = {};
+      try {
+        bodyObj = typeof options.body === "string" ? JSON.parse(options.body) : (options.body || {});
+      } catch {}
+
+      const proxyRes = await fetch("https://freemodels-chat.freemodels.workers.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": "https://freemodels.pro",
+          "Referer": "https://freemodels.pro/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        },
+        body: JSON.stringify({
+          model: bodyObj.model || "gpt-6-astra",
+          messages: bodyObj.messages || [],
+          stream: !!bodyObj.stream,
+          temperature: bodyObj.temperature ?? 0.7,
+          max_tokens: bodyObj.max_tokens,
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (proxyRes.ok) {
+        if (!bodyObj.stream) {
+          const rawJson = await proxyRes.json();
+          const content = rawJson.content || rawJson.choices?.[0]?.message?.content || "";
+          const normalized = {
+            choices: [{ message: { content, role: "assistant" } }],
+            content,
+            usage: rawJson.usage || { total_tokens: Math.ceil(content.length / 4) },
+          };
+          return new Response(JSON.stringify(normalized), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return proxyRes;
+      }
+      console.warn("[fetchAI] freemodels proxy returned error status:", proxyRes.status);
+    } catch (err) {
+      console.warn("[fetchAI] freemodels proxy request failed:", err);
+    }
+    // Fall back to openrouter if proxy fails
+    provider = "openrouter";
+  }
+
   // Build fallback order: primary provider first, then fallbacks
   const providerOrder: Provider[] = [];
   const allProviders: Provider[] = ["openrouter", "groq", "mistral"];

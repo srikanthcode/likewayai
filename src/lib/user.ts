@@ -1,6 +1,5 @@
 import clientPromise from "./mongodb";
 import { ObjectId, Collection } from "mongodb";
-import { isVipUser } from "./auth";
 
 const DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
 
@@ -24,17 +23,6 @@ function toObjectId(id: string): ObjectId | null {
 }
 
 export async function getUserPlan(userId: string): Promise<UserSubscription> {
-  // VIP / Owner unlock: full Pro provisions (check by ID)
-  if (isVipUser(userId)) {
-    return {
-      userId,
-      plan: "Pro",
-      subscriptionId: "vip_unlimited_pro",
-      status: "active",
-      updatedAt: new Date(),
-    };
-  }
-
   try {
     const client = await clientPromise;
     const db = client.db(DB_NAME);
@@ -61,12 +49,12 @@ export async function getUserPlan(userId: string): Promise<UserSubscription> {
       };
     }
 
-    // VIP check by email too (covers mismatched MongoDB _id)
-    if (isVipUser(user._id?.toString(), user.email)) {
+    // Admins are an explicit, DB-backed role — grant full Pro provisions.
+    if (user.role === "admin") {
       return {
         userId,
         plan: "Pro",
-        subscriptionId: "vip_unlimited_pro",
+        subscriptionId: user.subscriptionId || "admin_unlimited_pro",
         status: "active",
         updatedAt: new Date(),
       };

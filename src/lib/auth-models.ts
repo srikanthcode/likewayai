@@ -1,6 +1,5 @@
 import { Collection, ObjectId } from "mongodb";
 import clientPromise from "./mongodb";
-import { isVipUser } from "./auth";
 
 const DB_NAME = process.env.MONGODB_DB_NAME || "likeway_ai";
 
@@ -25,7 +24,7 @@ export interface User {
   passwordHash?: string;
   emailVerified: boolean;
   role: "user" | "admin";
-  plan: "free" | "core" | "pro";
+  plan: "free" | "core" | "go" | "plus" | "pro";
   onboardingCompleted: boolean;
   onboardingGoal?: string;
   onboardingExperience?: string;
@@ -67,11 +66,16 @@ async function getDb() {
   return client.db(DB_NAME);
 }
 
+// No hardcoded, in-memory, or implicitly-privileged accounts exist.
+// Every user (including admins) is persisted in MongoDB with an explicit role.
+
 // ── Users ──────────────────────────────────────────────────────────────────
 export async function findUserByEmail(email: string): Promise<User | null> {
+  const normEmail = (email || "").toLowerCase().trim();
   try {
     const db = await getDb();
-    return db.collection<User>("users").findOne({ email: email.toLowerCase() }) as any;
+    const user = await db.collection<User>("users").findOne({ email: normEmail }) as any;
+    return user || null;
   } catch (err: any) {
     console.error("[AuthModels] findUserByEmail failed:", err?.message || err);
     return null;
@@ -83,31 +87,7 @@ export async function findUserById(id: string): Promise<User | null> {
     const db = await getDb();
     const oid = toObjectId(id);
     if (!oid) return null;
-    const user: any = await db.collection<User>("users").findOne({ _id: oid as any });
-    if (user) {
-      // VIP check: match by _id OR by email (owner may have any MongoDB _id)
-      if (isVipUser(user._id?.toString(), user.email)) {
-        user.plan = "pro";
-        user.role = "admin";
-      }
-      return user;
-    }
-    if (isVipUser(id)) {
-      return {
-        _id: oid,
-        name: "Pro User",
-        email: "srikanthz1011@gmail.com",
-        avatar: "",
-        provider: "email",
-        emailVerified: true,
-        role: "admin",
-        plan: "pro",
-        onboardingCompleted: true,
-        createdAt: new Date(),
-        lastLoginAt: new Date(),
-      };
-    }
-    return null;
+    return await db.collection<User>("users").findOne({ _id: oid as any }) as any;
   } catch { return null; }
 }
 
@@ -144,7 +124,9 @@ export async function updateUser(userId: string, updates: Partial<User>): Promis
       { $set: { ...updates, updatedAt: new Date() } }
     );
     return res.acknowledged;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 // ── Sessions ───────────────────────────────────────────────────────────────

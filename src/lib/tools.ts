@@ -329,11 +329,19 @@ export async function tavilySearch(query: string): Promise<string> {
   }
 }
 
+function cleanImagePrompt(p: string): string {
+  let cleaned = p.replace(/\b(generate|create|make|draw|design|paint|render|produce)\s+(an?\s+)?(image|picture|photo|photograph|illustration|artwork|art|portrait|wallpaper|logo|banner|sketch|graphic)\s+(of\s+)?/gi, "");
+  cleaned = cleaned.replace(/\b(show me|can you draw|please draw|draw)\s+(an?\s+)?/gi, "");
+  cleaned = cleaned.trim();
+  return cleaned.length > 3 ? cleaned : p;
+}
+
 /**
  * Generates an image using the Image Router.
- * Route: ComfyUI (self-hosted, free) → Pollinations FLUX.1 Schnell → Pollinations SDXL → OpenRouter FLUX Dev → HuggingFace FLUX → Stability AI
+ * Route: ComfyUI (self-hosted, free) → Pollinations FLUX.1 High Definition
  */
-export async function generateImage(prompt: string): Promise<string> {
+export async function generateImage(rawPrompt: string): Promise<string> {
+  const prompt = cleanImagePrompt(rawPrompt);
   const seed = Math.floor(Math.random() * 1000000);
   const encodedPrompt = encodeURIComponent(prompt);
 
@@ -348,180 +356,87 @@ export async function generateImage(prompt: string): Promise<string> {
       if (result.success && result.imageBase64) {
         console.log(`Image Router: ComfyUI ${modelType.toUpperCase()} succeeded.`);
         return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-          `![Generated Image](${result.imageBase64})\n` +
-          "Prompt: " + prompt + "\n" +
-          `Model: ComfyUI / ${modelType.toUpperCase()}\n` +
+          `![Generated Image](${result.imageBase64})\n\n` +
+          "**Prompt:** " + prompt + "\n\n" +
+          `*Model: ComfyUI / ${modelType.toUpperCase()}*\n` +
           "</artifact>";
       }
     }
   } catch { /* fall through to cloud */ }
 
-  // 1st Route: Pollinations FLUX.1 Schnell — free, fast, no key
-  try {
-    const schnellUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux-schnell`;
-    const schnellRes = await fetch(schnellUrl, { method: "HEAD" });
-    if (schnellRes.ok) {
-      const contentLength = schnellRes.headers.get("content-length");
-      if (contentLength && parseInt(contentLength) > 100) {
-        console.log("Image Router: Pollinations FLUX.1 Schnell succeeded.");
-        return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-          `![Generated Image](${schnellUrl})\n` +
-          "Prompt: " + prompt + "\n" +
-          "Model: FLUX.1 Schnell (fast)\n" +
-          "</artifact>";
-      }
-    }
-  } catch { /* fall through */ }
-
-  // 2nd Route: Pollinations SDXL — free, higher quality
-  try {
-    const sdxlUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=sdxl`;
-    const sdxlRes = await fetch(sdxlUrl, { method: "HEAD" });
-    if (sdxlRes.ok) {
-      const contentLength = sdxlRes.headers.get("content-length");
-      if (contentLength && parseInt(contentLength) > 100) {
-        console.log("Image Router: Pollinations SDXL succeeded.");
-        return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-          `![Generated Image](${sdxlUrl})\n` +
-          "Prompt: " + prompt + "\n" +
-          "Model: SDXL (quality)\n" +
-          "</artifact>";
-      }
-    }
-  } catch { /* fall through */ }
-
-  // 3rd Route: OpenRouter FLUX Dev (if OPENROUTER_KEYS are set)
-  const rawORKeys = getLiveKey("OPENROUTER_KEYS");
-  const orKeys = rawORKeys ? rawORKeys.split(",").map(k => k.trim()).filter(Boolean) : [];
-  for (const orKey of orKeys) {
-    try {
-      console.log("Image Router: Trying OpenRouter black-forest-labs/flux-dev...");
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${orKey}`,
-          "HTTP-Referer": "https://likeway.ai",
-          "X-Title": "Likeway AI"
-        },
-        body: JSON.stringify({
-          model: "black-forest-labs/flux-dev",
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const urlMatch = content.match(/(https?:\/\/[^\s]+|data:image\/\w+;base64,[A-Za-z0-9+/=]+)/);
-          const imageUrl = urlMatch ? urlMatch[0] : content;
-          if (imageUrl.startsWith("data:image") || imageUrl.startsWith("http")) {
-            console.log("Image Router: OpenRouter FLUX Dev succeeded.");
-            return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-              `![Generated Image](${imageUrl})\n` +
-              "Prompt: " + prompt + "\n" +
-              "Model: FLUX Dev (OpenRouter)\n" +
-              "</artifact>";
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Image Router: OpenRouter failed, trying next...", e);
-    }
-  }
-
-  // 4th Route: HuggingFace FLUX (if HF_TOKEN set)
-  const hfToken = process.env.HF_TOKEN;
-  if (hfToken) {
-    try {
-      const res = await fetch(
-        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev",
-        {
-          headers: { "Authorization": `Bearer ${hfToken}`, "Content-Type": "application/json" },
-          method: "POST",
-          body: JSON.stringify({ inputs: prompt }),
-        }
-      );
-      if (res.ok) {
-        const buffer = await res.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString("base64");
-        return "<artifact type=\"doc\" title=\"Generated Image (HuggingFace FLUX)\">\n" +
-          `![Generated Image](data:image/jpeg;base64,${base64})\n` +
-          "Prompt: " + prompt + "\n" +
-          "</artifact>";
-      }
-    } catch (e) {
-      console.warn("Image Router: HuggingFace failed, trying next...", e);
-    }
-  }
-
-  // 5th Route: Stability AI (if key set)
-  const stabilityKeys = (() => {
-    const raw = getLiveKey("IMAGE_GENERATION_KEYS");
-    const keys = raw ? raw.split(",").map(k => k.trim()).filter(Boolean) : [];
-    const extra = process.env.STABILITY_API_KEY;
-    if (extra) keys.push(extra);
-    return keys;
-  })();
-  for (const stabilityKey of stabilityKeys) {
-    try {
-      const formData = new FormData();
-      formData.append("prompt", prompt);
-      formData.append("output_format", "webp");
-      formData.append("none", new Blob([""], { type: "text/plain" }));
-      const res = await fetch("https://api.stability.ai/v2beta/stable-image/generate/ultra", {
-        method: "POST",
-        headers: { authorization: `Bearer ${stabilityKey}`, accept: "image/*" },
-        body: formData as any,
-      });
-      if (res.status === 200) {
-        const buffer = await res.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString("base64");
-        return "<artifact type=\"doc\" title=\"Generated Image (Stability AI)\">\n" +
-          `![Generated Image](data:image/webp;base64,${base64})\n` +
-          "Prompt: " + prompt + "\n" +
-          "</artifact>";
-      }
-    } catch (e) {
-      console.warn(`Image Router: Stability AI failed:`, e);
-    }
-  }
-
-  // Final fallback: plain Pollinations FLUX URL (no problematic params)
-  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux`;
+  // 1st Route: High-Definition FLUX (1024x1024, fast, instant delivery)
+  const fluxUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
   return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-    `![Generated Image](${fallbackUrl})\n` +
-    "Prompt: " + prompt + "\n" +
+    `![Generated Image](${fluxUrl})\n\n` +
+    `**Prompt:** ${prompt}\n\n` +
+    `*Model: FLUX.1 High Definition (1024x1024)*\n` +
     "</artifact>";
 }
 
 /**
- * Edits an uploaded image using free AI services.
- * Route: Pollinations image-to-image → HuggingFace img2img → OpenRouter fallback
+ * Edits an uploaded image (true image-to-image) using an image-capable model
+ * on OpenRouter. Unlike the previous implementation, this sends the ORIGINAL
+ * image to the model — it does not generate an unrelated new image.
+ *
+ * Configure via IMAGE_EDIT_MODEL (default: google/gemini-2.5-flash-image).
+ * Throws a descriptive error when editing is unavailable or returns no image.
  */
 export async function editImage(imageUrl: string, editPrompt: string): Promise<string> {
-  const seed = Math.floor(Math.random() * 1000000);
+  const { fetchAI } = await import("@/lib/api-manager");
+  const model = process.env.IMAGE_EDIT_MODEL || "google/gemini-2.5-flash-image";
+  const instruction = cleanImagePrompt(editPrompt) || editPrompt;
 
-  // 1st Route: Pollinations image-to-image (free, no key)
-  try {
-    const encodedPrompt = encodeURIComponent(editPrompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux-schnell`;
-    const pollinationsRes = await fetch(pollinationsUrl, { method: "HEAD" });
-    if (pollinationsRes.ok) {
-      console.log("Image Edit: Pollinations succeeded.");
-      return "<artifact type=\"doc\" title=\"Edited Image\">\n" +
-        `![Edited Image](${pollinationsUrl})\n` +
-        `Original: ![Original](${imageUrl})\n\n` +
-        "Edit Prompt: " + editPrompt + "\n" +
-        "</artifact>";
-    }
-  } catch { /* fall through */ }
+  const res = await fetchAI("openrouter", "https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      modalities: ["image", "text"],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                `Edit the provided image as follows: "${instruction}". ` +
+                "Preserve the subject and composition; apply only the requested change. " +
+                "Return the resulting image.",
+            },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+    }),
+  });
 
-  // Fallback: return original with edit context note
-  return "<artifact type=\"doc\" title=\"Image Edit\">\n" +
-    `![Original Image](${imageUrl})\n\n` +
-    "**Edit Request:** " + editPrompt + "\n\n" +
-    "*Note: Full image editing requires a paid Stability AI or Clipdrop API key for precise edits.*\n" +
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Image editing failed (${res.status}). ${errText.slice(0, 160)}`);
+  }
+
+  const data = await res.json();
+  const message = data.choices?.[0]?.message;
+
+  // Providers return generated images in different shapes — normalize them.
+  const images = Array.isArray(message?.images) ? message.images : [];
+  let outUrl: string | undefined =
+    images[0]?.image_url?.url || images[0]?.url || undefined;
+
+  if (!outUrl && typeof message?.content === "string") {
+    const match = message.content.match(/(?:https?:\/\/|data:image\/)[^\s)"']+/i);
+    if (match) outUrl = match[0];
+  }
+
+  if (!outUrl) {
+    throw new Error("Image editing returned no image. Check IMAGE_EDIT_MODEL availability.");
+  }
+
+  return "<artifact type=\"doc\" title=\"Edited Image\">\n" +
+    `![Edited Image](${outUrl})\n\n` +
+    `**Original Reference:** [View Original](${imageUrl})\n\n` +
+    `**Edit Instruction:** ${instruction}\n\n` +
+    `*Model: ${model} (image-to-image)*\n` +
     "</artifact>";
 }
 

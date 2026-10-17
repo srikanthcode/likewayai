@@ -42,13 +42,15 @@ import {
   Cpu,
   Lock,
   FileText,
-  Download
+  Download,
+  Video
 } from "lucide-react";
 
 
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { MODELS } from "@/lib/models";
 import { PLANS, getCurrentPlan, PlanType, getBrowserAutomationRemaining, startBrowserTrial } from "@/lib/plans";
 import { AgentMode } from "@/lib/agents";
@@ -66,7 +68,12 @@ import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
 import AccountMenu from "@/components/AccountMenu";
 import SlashCommandMenu from "@/components/SlashCommandMenu";
 import SupportModal from "@/components/SupportModal";
+import SuggestionChips from "@/components/chat/SuggestionChips";
+import EmptyStateChips from "@/components/chat/EmptyStateChips";
+import ModePills from "@/components/chat/ModePills";
 import { cn } from "@/lib/utils";
+import { consumeChatStream } from "@/hooks/useSSEChatStream";
+import { cleanTextForSpeech } from "@/lib/voice-text";
 import { type SlashCommand } from "@/lib/commands";
 import {
   SEARCH_KEYWORDS,
@@ -462,6 +469,38 @@ function buildMarkdownComponents() {
       );
     },
     img: (props: any) => <MarkdownImage {...props} />,
+    table: ({ children, ...props }: any) => (
+      <div className="w-full my-4 overflow-x-auto rounded-xl border border-black/10 dark:border-white/10 shadow-sm bg-black/[0.02] dark:bg-white/[0.02]">
+        <table className="w-full min-w-full text-left text-sm border-collapse" {...props}>
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children, ...props }: any) => (
+      <thead className="bg-black/5 dark:bg-white/5 border-b border-black/10 dark:border-white/10 text-xs uppercase tracking-wider font-semibold text-gray-700 dark:text-gray-200" {...props}>
+        {children}
+      </thead>
+    ),
+    tbody: ({ children, ...props }: any) => (
+      <tbody className="divide-y divide-black/5 dark:divide-white/5" {...props}>
+        {children}
+      </tbody>
+    ),
+    tr: ({ children, ...props }: any) => (
+      <tr className="hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors" {...props}>
+        {children}
+      </tr>
+    ),
+    th: ({ children, ...props }: any) => (
+      <th className="px-4 py-2.5 font-bold text-gray-900 dark:text-white whitespace-nowrap" {...props}>
+        {children}
+      </th>
+    ),
+    td: ({ children, ...props }: any) => (
+      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 align-top" {...props}>
+        {children}
+      </td>
+    ),
   };
 }
 
@@ -484,6 +523,8 @@ export default function ChatPage() {
   
   // High-performance streaming & scroll state
   const [isStreaming, setIsStreaming] = useState(false);
+  // Follow-up "next step" chips emitted by the assistant after each answer
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const bufferRef = useRef("");
   const [userScrolling, setUserScrolling] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -505,8 +546,9 @@ export default function ChatPage() {
   const [selectedAgentId, setSelectedAgentId] = useState("general");
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isInputModelMenuOpen, setIsInputModelMenuOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+  const [selectedModel, setSelectedModel] = useState(MODELS.find(m => m.id === "gpt-6-astra") || MODELS[0]);
   const [isExtendedThinking, setIsExtendedThinking] = useState(false);
+  const [isWebSearchMode, setIsWebSearchMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editingMessageText, setEditingMessageText] = useState<string>("");
@@ -538,6 +580,30 @@ export default function ChatPage() {
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'acting' | 'speaking'>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [activeAppLaunch, setActiveAppLaunch] = useState<{ name: string; url: string; status?: string } | null>(null);
+  const [showCompanionModal, setShowCompanionModal] = useState(false);
+  const [companionStatus, setCompanionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [companionInfo, setCompanionInfo] = useState<any>(null);
+  const [computerPermissionMode, setComputerPermissionMode] = useState<'autonomous' | 'assisted' | 'chat_only'>('autonomous');
+
+  useEffect(() => {
+    const checkCompanion = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:4141/health", { signal: AbortSignal.timeout(1500) });
+        if (res.ok) {
+          const data = await res.json();
+          setCompanionStatus('connected');
+          setCompanionInfo(data);
+        } else {
+          setCompanionStatus('disconnected');
+        }
+      } catch {
+        setCompanionStatus('disconnected');
+      }
+    };
+    checkCompanion();
+    const interval = setInterval(checkCompanion, 8000);
+    return () => clearInterval(interval);
+  }, []);
   const voiceRecognitionRef = useRef<any>(null);
   const voiceRecognitionActiveRef = useRef(false);
   const isSpeakingRef = useRef(false);
@@ -545,6 +611,12 @@ export default function ChatPage() {
   const utteranceRef = useRef<any>(null);
   const speechWatchdogRef = useRef<NodeJS.Timeout | null>(null);
   const speechHeartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  // Sentence-queue generation token (bumped to cancel in-flight speech) and
+  // neural-TTS/Web Audio plumbing.
+  const speechTokenRef = useRef(0);
+  const neuralTtsAvailableRef = useRef<boolean | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const activeAudioSrcRef = useRef<AudioBufferSourceNode | null>(null);
   const micPermissionGrantedRef = useRef(false);
   const [showVoiceCharSelector, setShowVoiceCharSelector] = useState(false);
   const [pendingVoiceLaunch, setPendingVoiceLaunch] = useState(false);
@@ -788,22 +860,56 @@ export default function ChatPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Play one base64 audio chunk (neural TTS) through the Web Audio API.
+  // Handles raw PCM (audio/L16) and compressed formats.
+  const playBase64Audio = async (b64: string, mimeType?: string): Promise<void> => {
+    if (!audioCtxRef.current) {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) throw new Error("Web Audio unavailable");
+      audioCtxRef.current = new Ctx();
+    }
+    const ctx = audioCtxRef.current!;
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    let buffer: AudioBuffer;
+    if (/L16|pcm/i.test(mimeType || "")) {
+      const rateMatch = /rate=(\d+)/i.exec(mimeType || "");
+      const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
+      const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+      buffer = ctx.createBuffer(1, Math.max(1, pcm.length), sampleRate);
+      const ch = buffer.getChannelData(0);
+      for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    } else {
+      buffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    activeAudioSrcRef.current = src;
+    await new Promise<void>((resolve) => {
+      src.onended = () => resolve();
+      src.start();
+    });
+    if (activeAudioSrcRef.current === src) activeAudioSrcRef.current = null;
+  };
+
   const speakText = (text: string, onEnd?: () => void) => {
     window.speechSynthesis.cancel();
+    try { activeAudioSrcRef.current?.stop(); } catch {}
+    activeAudioSrcRef.current = null;
     if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
     if (speechHeartbeatRef.current) {
       clearInterval(speechHeartbeatRef.current);
       speechHeartbeatRef.current = null;
     }
-    
+
     // 1. Strip Artifacts and Tags for Speech
-    let cleaned = text;
-    cleaned = cleaned.replace(/<artifact\s+type="code"[\s\S]*?<\/artifact>/gi, '[Code block shared]');
-    cleaned = cleaned.replace(/<artifact[\s\S]*?>/gi, '').replace(/<\/artifact>/gi, '');
-    cleaned = cleaned.replace(/[#*`_~>\[\]()!]/g, '')
-                     .replace(/https?:\/\/\S+/g, 'link')
-                     .replace(/\n+/g, ' ')
-                     .trim();
+    const cleaned = cleanTextForSpeech(text);
 
     if (!cleaned) {
       isSpeakingRef.current = false;
@@ -812,18 +918,20 @@ export default function ChatPage() {
     }
 
     currentSpeakingTextRef.current = cleaned;
-    
+
     const isTamilText = /[\u0B80-\u0BFF]/.test(cleaned);
     const isHindiText = /[\u0900-\u097F]/.test(cleaned);
     const isTamilChar = selectedVoiceChar === 'kani' || selectedVoiceChar === 'valluvar';
 
-    const utterance = new SpeechSynthesisUtterance(cleaned);
-    utteranceRef.current = utterance; 
-    (window as any).__currentUtterance = utterance; // Pin to window to prevent Chromium GC freeze bug
+    // Split into sentences so the first words are audible almost immediately
+    // and a long answer never stalls behind a single giant utterance.
+    const sentences = cleaned
+      .split(/(?<=[.!?।])\s+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (sentences.length === 0) sentences.push(cleaned);
 
-    utterance.rate = isTamilText ? 0.95 : 1.05;
-    utterance.pitch = selectedVoiceChar === 'spark' ? 1.15 : selectedVoiceChar === 'luna' ? 0.9 : 1.0;
-
+    const token = ++speechTokenRef.current;
     let hasEnded = false;
     const cleanupAndEnd = () => {
       if (hasEnded) return;
@@ -841,26 +949,16 @@ export default function ChatPage() {
       (window as any).__currentUtterance = null;
       onEnd?.();
     };
-    
-    const assignVoiceAndSpeak = () => {
-      const allVoices = window.speechSynthesis.getVoices();
 
-      // Tamil voice check — Windows does NOT ship Tamil TTS by default.
-      // If user has Tamil character selected but no ta-IN voice is installed,
-      // fall back to Indian English so audio isn't silently skipped.
+    const pickLang = () => {
+      const allVoices = window.speechSynthesis.getVoices();
       const tamilVoiceAvailable = allVoices.some(v =>
         v.lang?.toLowerCase().startsWith('ta') ||
         v.name.toLowerCase().includes('tamil') ||
         v.name.includes('தமிழ்')
       );
-
-      if (isTamilText && tamilVoiceAvailable) {
-        utterance.lang = 'ta-IN';
-      } else if (isTamilChar && tamilVoiceAvailable) {
-        utterance.lang = 'ta-IN';
-      } else if (isTamilChar && !tamilVoiceAvailable) {
-        // No Tamil TTS installed — speak in Indian English and inform user once
-        utterance.lang = 'en-IN';
+      if ((isTamilText || isTamilChar) && tamilVoiceAvailable) return 'ta-IN';
+      if (isTamilChar && !tamilVoiceAvailable) {
         const warnKey = 'likeway_tamil_tts_warned';
         if (!sessionStorage.getItem(warnKey)) {
           sessionStorage.setItem(warnKey, '1');
@@ -868,46 +966,67 @@ export default function ChatPage() {
             '⚠️ Tamil voice not installed on this device. Speaking in English. To enable Tamil voice: Settings → Time & Language → Speech → Add voices → Tamil (India)'
           );
         }
-      } else if (isHindiText) {
-        utterance.lang = 'hi-IN';
-      } else {
-        utterance.lang = 'en-IN';
+        return 'en-IN';
       }
+      if (isHindiText) return 'hi-IN';
+      return 'en-IN';
+    };
 
-      const voice = findVoiceForChar(selectedVoiceChar, cleaned);
-      if (voice) utterance.voice = voice;
-      isSpeakingRef.current = true;
+    const speakSentenceWithBrowser = (sentence: string) => new Promise<void>((resolve) => {
+      const u = new SpeechSynthesisUtterance(sentence);
+      utteranceRef.current = u;
+      (window as any).__currentUtterance = u; // pinned to window to avoid Chromium GC freeze
+      u.rate = isTamilText ? 0.95 : 1.05;
+      u.pitch = selectedVoiceChar === 'spark' ? 1.15 : selectedVoiceChar === 'luna' ? 0.9 : 1.0;
+      u.lang = pickLang();
+      const voice = findVoiceForChar(selectedVoiceChar, sentence);
+      if (voice) u.voice = voice;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+    });
 
-      // Watchdog: estimated duration + 4s grace to guarantee onEnd fires
-      const estimatedMs = Math.max(3500, Math.ceil((cleaned.length / 10) * 1000) + 4000);
+    // Try a neural TTS chunk first; fall back to the browser voice silently.
+    const tryNeuralSentence = async (sentence: string): Promise<boolean> => {
+      if (neuralTtsAvailableRef.current === false) return false;
+      try {
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ text: sentence }),
+        });
+        if (!res.ok) { neuralTtsAvailableRef.current = false; return false; }
+        const data = await res.json();
+        if (!data?.audioBase64) return false;
+        await playBase64Audio(data.audioBase64, data.mimeType);
+        neuralTtsAvailableRef.current = true;
+        return true;
+      } catch {
+        neuralTtsAvailableRef.current = false;
+        return false;
+      }
+    };
+
+    isSpeakingRef.current = true;
+
+    (async () => {
+      const estimatedMs = Math.max(6000, Math.ceil((cleaned.length / 10) * 1000) + 6000);
       speechWatchdogRef.current = setTimeout(() => {
         if (isSpeakingRef.current) {
-          console.warn("[Voice] Speech synthesis watchdog triggered completion recovery");
+          console.warn("[Voice] Speech watchdog triggered completion recovery");
           cleanupAndEnd();
         }
       }, estimatedMs);
 
-      // NOTE: Heartbeat interval removed — pause/resume every 7.5s caused main-thread jank.
-      // Modern Chrome/Edge (90+) no longer needs this workaround.
-
-      utterance.onend = () => { 
-        cleanupAndEnd(); 
-      };
-      utterance.onerror = () => {
-        cleanupAndEnd();
-      };
-      window.speechSynthesis.speak(utterance);
-    };
-
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length === 0) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        assignVoiceAndSpeak();
-        window.speechSynthesis.onvoiceschanged = null;
-      };
-    } else {
-      assignVoiceAndSpeak();
-    }
+      for (const sentence of sentences) {
+        if (speechTokenRef.current !== token || !isSpeakingRef.current) return;
+        const played = await tryNeuralSentence(sentence);
+        if (speechTokenRef.current !== token || !isSpeakingRef.current) return;
+        if (!played) await speakSentenceWithBrowser(sentence);
+      }
+      cleanupAndEnd();
+    })();
   };
 
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -919,7 +1038,11 @@ export default function ChatPage() {
     }
 
     // Cut off any ongoing speech immediately if user asks a new question
+    // (barge-in): cancel the sentence queue AND any playing neural audio.
+    speechTokenRef.current++;
     window.speechSynthesis.cancel();
+    try { activeAudioSrcRef.current?.stop(); } catch {}
+    activeAudioSrcRef.current = null;
     if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
     if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
     isSpeakingRef.current = false;
@@ -1093,17 +1216,11 @@ export default function ChatPage() {
 
         if (res.ok && res.body) {
           const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            for (const line of chunk.split('\n').filter(l => l.startsWith('data: '))) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
-              try { fullContent += JSON.parse(data).choices?.[0]?.delta?.content || ''; } catch {}
-            }
-          }
+          await consumeChatStream(reader, {
+            onDelta: (full) => {
+              fullContent = full;
+            },
+          });
         }
       }
 
@@ -1236,7 +1353,11 @@ export default function ChatPage() {
         const isFiller = fillers.includes(currentText.toLowerCase());
         
         if (!isFiller) {
+          // Barge-in: stop the sentence queue and any playing neural audio.
+          speechTokenRef.current++;
           window.speechSynthesis.cancel();
+          try { activeAudioSrcRef.current?.stop(); } catch {}
+          activeAudioSrcRef.current = null;
           if (speechWatchdogRef.current) clearTimeout(speechWatchdogRef.current);
           if (speechHeartbeatRef.current) clearInterval(speechHeartbeatRef.current);
           isSpeakingRef.current = false;
@@ -1549,6 +1670,9 @@ export default function ChatPage() {
     const messageToSend = overrideMessage || input.trim();
     if (!messageToSend || isLoading) return;
 
+    // A new turn starts: clear the previous follow-up chips.
+    setSuggestions([]);
+
     // Mark sending state to prevent history load from clearing messages
     isSendingRef.current = true;
 
@@ -1585,10 +1709,12 @@ export default function ChatPage() {
     const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(userMessage);
 
     // Detect image generation requests
-    const isImageRequest = /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(userMessage);
+    const isImageRequest = /\b(generate|create|make|draw|design|paint|render|produce)\s+(an?\s+)?(image|picture|photo|photograph|illustration|artwork|art|portrait|wallpaper|logo|banner|sketch|graphic)\b/i.test(userMessage) ||
+      /\b(image|picture|photo|portrait|wallpaper)\s+of\b/i.test(userMessage);
 
     const needsSearch =
       !isImageRequest && (
+        isWebSearchMode ||
         hasRealTimeTerm ||
         SEARCH_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) ||
         (TIME_KEYWORDS.some((w) => userMessage.toLowerCase().includes(w)) && !isCodingQ)
@@ -1598,7 +1724,7 @@ export default function ChatPage() {
       id: assistantMsgId,
       role: "assistant", 
       content: "", 
-      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : 'typing',
+      status: isImageRequest ? 'generating' : needsSearch ? 'searching' : (isExtendedThinking ? 'thinking' : 'typing'),
       animationPlayed: false
     }]);
 
@@ -1626,6 +1752,7 @@ export default function ChatPage() {
           customInstructions,
           experimental: settings.experimental,
           extendedThinking: isExtendedThinking,
+          webSearch: isWebSearchMode,
           userId: userId,
           conversationId: conversationIdToUse
         }),
@@ -1709,95 +1836,36 @@ export default function ChatPage() {
 
       const reader = res.body.getReader();
       readerRef.current = reader;
-      const decoder = new TextDecoder();
-      let fullContent = "";
-      let didFinalize = false;
-      let streamingStarted = false;
 
       // Transition the placeholder message to streaming mode smoothly
       setIsStreaming(true);
       bufferRef.current = "";
 
-      let responseBuffer = "";
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          responseBuffer += decoder.decode(value, { stream: true });
-
-          let newlineIndex;
-          while ((newlineIndex = responseBuffer.indexOf("\n")) !== -1) {
-            const line = responseBuffer.slice(0, newlineIndex).trim();
-            responseBuffer = responseBuffer.slice(newlineIndex + 1);
-
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") {
-                if (!didFinalize) {
-                  didFinalize = true;
-                  setMessages(prev => {
-                    const copy = [...prev];
-                    const lastIdx = copy.length - 1;
-                    if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                      copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
-                    } else {
-                      copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
-                    }
-                    return copy;
-                  });
-                  setIsStreaming(false);
-                  bufferRef.current = "";
-                  setFiles([]);
-                  setFilePreviews([]);
-                  fetchRecentConversations();
-                  try {
-                    const cached = JSON.parse(localStorage.getItem("likeway_recent_chats") || "[]");
-                    const idx = cached.findIndex((c: any) => c._id === conversationIdToUse);
-                    const entry = { _id: conversationIdToUse, title: userMessage.substring(0, 40), updatedAt: new Date() };
-                    if (idx >= 0) cached[idx] = entry; else cached.unshift(entry);
-                    localStorage.setItem("likeway_recent_chats", JSON.stringify(cached.slice(0, 50)));
-                  } catch {}
-                }
-                break;
-              }
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta?.content || "";
-                if (delta) {
-                  fullContent += delta;
-                  bufferRef.current += delta;
-                  if (!streamingStarted) {
-                    streamingStarted = true;
-                  }
-                  setMessages(prev => {
-                    const copy = [...prev];
-                    const lastIdx = copy.length - 1;
-                    if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                      copy[lastIdx] = {
-                        ...copy[lastIdx],
-                        role: "assistant",
-                        content: fullContent,
-                        status: 'streaming'
-                      };
-                    }
-                    return copy;
-                  });
-                }
-              } catch {}
+      const { fullContent, sawDone } = await consumeChatStream(reader, {
+        onDelta: (full) => {
+          bufferRef.current = full;
+          setMessages(prev => {
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+              copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: full, status: 'streaming' };
             }
+            return copy;
+          });
+        },
+        onSuggestions: (items) => setSuggestions(items),
+        onReadError: (readErr: any) => {
+          if (readErr?.name === "AbortError" || readErr?.message?.includes("aborted") || readErr?.message?.includes("BodyStreamBuffer")) {
+            console.log("Stream reader aborted");
+          } else {
+            console.error("Stream read error:", readErr);
           }
-        }
-      } catch (readErr: any) {
-        // Catch reader errors (abort, network, etc.)
-        if (readErr.name === "AbortError" || readErr.message?.includes("aborted") || readErr.message?.includes("BodyStreamBuffer")) {
-          console.log("Stream reader aborted");
-        } else {
-          console.error("Stream read error:", readErr);
-        }
-      }
+        },
+      });
 
-      if (!didFinalize) {
-        didFinalize = true;
+      // Finalize the assistant message whether the stream ended with [DONE]
+      // or the connection closed early (partial answer still shown).
+      {
         setMessages(prev => {
           const copy = [...prev];
           const lastIdx = copy.length - 1;
@@ -1810,7 +1878,16 @@ export default function ChatPage() {
         });
         setIsStreaming(false);
         bufferRef.current = "";
+        setFiles([]);
+        setFilePreviews([]);
         fetchRecentConversations();
+        try {
+          const cached = JSON.parse(localStorage.getItem("likeway_recent_chats") || "[]");
+          const idx = cached.findIndex((c: any) => c._id === conversationIdToUse);
+          const entry = { _id: conversationIdToUse, title: userMessage.substring(0, 40), updatedAt: new Date() };
+          if (idx >= 0) cached[idx] = entry; else cached.unshift(entry);
+          localStorage.setItem("likeway_recent_chats", JSON.stringify(cached.slice(0, 50)));
+        } catch {}
       }
     } catch (err: any) {
       // Gracefully handle abort (user clicked stop or timeout)
@@ -1918,6 +1995,7 @@ export default function ChatPage() {
           customInstructions,
           experimental: settings.experimental,
           extendedThinking: isExtendedThinking,
+          webSearch: isWebSearchMode,
           userId: userId,
           conversationId: conversationIdToUse
         }),
@@ -1973,80 +2051,52 @@ export default function ChatPage() {
 
       const reader = res.body.getReader();
       readerRef.current = reader;
-      const decoder = new TextDecoder();
       let fullContent = "";
-      let didFinalize = false;
       let streamingStarted = false;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const dataStr = line.slice(6).trim();
-            if (dataStr === "[DONE]") {
-              didFinalize = true;
-              setMessages(prev => {
-                const copy = [...prev];
-                const lastIdx = copy.length - 1;
-                if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                  copy[lastIdx] = { role: "assistant", content: fullContent, status: 'done' };
-                } else {
-                  copy.push({ role: "assistant", content: fullContent, status: 'done' });
-                }
-                return copy;
-              });
-              setIsStreaming(false);
-              fetchRecentConversations();
-              break;
+      await consumeChatStream(reader, {
+        onDelta: (full) => {
+          fullContent = full;
+          if (!streamingStarted) {
+            setIsStreaming(true);
+            streamingStarted = true;
+          }
+          setMessages(prev => {
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+              copy[lastIdx] = {
+                ...copy[lastIdx],
+                role: "assistant",
+                content: fullContent,
+                status: 'streaming'
+              };
             }
-
-            try {
-              const parsed = JSON.parse(dataStr);
-              const content = parsed.choices?.[0]?.delta?.content || "";
-              fullContent += content;
-
-              if (content) {
-                if (!streamingStarted) {
-                  setIsStreaming(true);
-                  streamingStarted = true;
-                }
-                setMessages(prev => {
-                  const copy = [...prev];
-                  const lastIdx = copy.length - 1;
-                  if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                    copy[lastIdx] = { 
-                      ...copy[lastIdx],
-                      role: "assistant", 
-                      content: fullContent, 
-                      status: 'streaming' 
-                    };
-                  }
-                  return copy;
-                });
-              }
-            } catch {}
-          }
-        }
-      }
-
-      if (!didFinalize) {
-        didFinalize = true;
-        setMessages(prev => {
-          const copy = [...prev];
-          const lastIdx = copy.length - 1;
-          if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-            copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
+            return copy;
+          });
+        },
+        onReadError: (readErr: any) => {
+          if (readErr?.name === "AbortError" || readErr?.message?.includes("aborted") || readErr?.message?.includes("BodyStreamBuffer")) {
+            console.log("Edit request aborted");
           } else {
-            copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
+            console.error("Stream read error:", readErr);
           }
-          return copy;
-        });
-        setIsStreaming(false);
-      }
+        },
+      });
+
+      // Finalize the edited assistant message once streaming completes.
+      setMessages(prev => {
+        const copy = [...prev];
+        const lastIdx = copy.length - 1;
+        if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+          copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
+        } else {
+          copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
+        }
+        return copy;
+      });
+      setIsStreaming(false);
+      fetchRecentConversations();
     } catch (err: any) {
       // Gracefully handle abort
       if (err.name === "AbortError" || err.message?.includes("aborted") || err.message?.includes("BodyStreamBuffer")) {
@@ -2373,12 +2423,175 @@ export default function ChatPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Computer Control Agent Status Button */}
+            <button
+              onClick={() => setShowCompanionModal(true)}
+              className={cn(
+                "h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
+                companionStatus === 'connected'
+                  ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
+                  : (theme === 'dark' ? "bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10" : "bg-black/5 border-black/10 text-gray-700 hover:text-black hover:bg-black/8")
+              )}
+              title="Autonomous Computer Agent"
+            >
+              <Monitor size={12} className={companionStatus === 'connected' ? "text-emerald-400" : "opacity-60"} />
+              <span className="hidden sm:inline">
+                {companionStatus === 'connected' ? "Desktop Agent" : "Computer Control"}
+              </span>
+              <span className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                companionStatus === 'connected' ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
+              )} />
+            </button>
+
             {/* Theme Toggle */}
             <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className={cn("p-1.5 rounded-lg transition-colors", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Toggle Theme">
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </header>
+
+        {/* Autonomous Computer Agent Modal */}
+        <AnimatePresence>
+          {showCompanionModal && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80]"
+                onClick={() => setShowCompanionModal(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.2 }}
+                className={cn(
+                  "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[90] w-full max-w-lg rounded-2xl shadow-2xl p-6 border",
+                  theme === 'dark' ? "bg-[#18181b] border-white/10 text-white" : "bg-white border-black/10 text-gray-900"
+                )}
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <Monitor size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold flex items-center gap-2">
+                        Autonomous Computer Agent
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          PRO ENGINE
+                        </span>
+                      </h2>
+                      <p className="text-xs opacity-60">Physical OS automation, app launching, & 3D software development</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowCompanionModal(false)} className="p-1.5 rounded-lg hover:bg-white/10 opacity-60 hover:opacity-100 transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Connection Status Card */}
+                <div className={cn(
+                  "p-3.5 rounded-xl border mb-4 flex items-center justify-between",
+                  companionStatus === 'connected'
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                    : "bg-amber-500/10 border-amber-500/25 text-amber-200"
+                )}>
+                  <div className="flex items-center gap-2.5">
+                    <span className={cn(
+                      "w-2.5 h-2.5 rounded-full",
+                      companionStatus === 'connected' ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
+                    )} />
+                    <div>
+                      <div className="text-xs font-bold">
+                        {companionStatus === 'connected' ? "Local Desktop Agent Connected" : "Local Companion Agent Ready"}
+                      </div>
+                      <div className="text-[10px] opacity-75">
+                        {companionStatus === 'connected'
+                          ? `Workspace: ${companionInfo?.workspace || '~/LikewayProjects'} · OS: ${companionInfo?.platform || 'Windows'}`
+                          : "Run companion to enable native app launching and local dev servers"}
+                      </div>
+                    </div>
+                  </div>
+                  {companionStatus !== 'connected' && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText("npm run companion");
+                        alert("Copied 'npm run companion' to clipboard! Run it in your terminal or double-click start-companion.bat.");
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 transition-all"
+                    >
+                      Copy Run Command
+                    </button>
+                  )}
+                </div>
+
+                {/* Permission Mode Selector */}
+                <div className="mb-4">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider opacity-60 mb-2">Permission Mode</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'autonomous', title: '⚡ Autonomous', desc: 'Auto-run & launch' },
+                      { id: 'assisted', title: '🛡️ Assisted', desc: 'Confirm before launch' },
+                      { id: 'chat_only', title: '💬 Chat Only', desc: 'No computer access' },
+                    ].map(mode => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setComputerPermissionMode(mode.id as any)}
+                        className={cn(
+                          "p-2.5 rounded-xl border text-left transition-all",
+                          computerPermissionMode === mode.id
+                            ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300"
+                            : (theme === 'dark' ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-black/5 border-black/10 hover:bg-black/10")
+                        )}
+                      >
+                        <div className="text-xs font-bold">{mode.title}</div>
+                        <div className="text-[10px] opacity-60 mt-0.5">{mode.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Fast One-Click Autonomous Actions */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider opacity-60 mb-2">Try Autonomous Actions</label>
+                  <div className="flex flex-col gap-1.5">
+                    {[
+                      { icon: '🏎️', text: 'Build me a 3D racing game and run it on my computer', tag: 'Autonomous Project' },
+                      { icon: '💬', text: 'Open WhatsApp on my computer', tag: 'App Control' },
+                      { icon: '🎵', text: 'Launch Spotify', tag: 'App Control' },
+                      { icon: '🧮', text: 'Open Calculator', tag: 'Utility' },
+                    ].map((item, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setInput(item.text);
+                          setShowCompanionModal(false);
+                        }}
+                        className={cn(
+                          "flex items-center justify-between p-2.5 rounded-xl border text-left transition-all",
+                          theme === 'dark' ? "bg-white/5 border-white/8 hover:bg-white/10" : "bg-black/4 border-black/8 hover:bg-black/8"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-base">{item.icon}</span>
+                          <span className="text-xs font-medium truncate">{item.text}</span>
+                        </div>
+                        <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-white/5 opacity-60 border border-white/10 flex-shrink-0">
+                          {item.tag}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* New Project Modal */}
         <AnimatePresence>
@@ -2656,7 +2869,7 @@ export default function ChatPage() {
                   <h1 className={cn("text-4xl font-black tracking-tight mb-2", theme === 'dark' ? "text-white" : "text-[#1a1a1a]")}>
                     LikeWay
                   </h1>
-                  <p className={cn("text-sm max-w-md", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
+                  <p className={cn("text-sm max-w-md px-4", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
                     How can I assist you today? Select a specialized mode or just start typing to experience Elite reasoning.
                   </p>
                 </div>
@@ -2794,7 +3007,11 @@ export default function ChatPage() {
                             "prose max-w-none overflow-hidden break-words prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown allowedElements={["p","h1","h2","h3","h4","h5","h6","strong","em","a","img","ul","ol","li","pre","code","blockquote","hr","table","thead","tbody","tr","th","td","br","span","div","del","sup","sub","details","summary"]} components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              allowedElements={["p","h1","h2","h3","h4","h5","h6","strong","em","a","img","ul","ol","li","pre","code","blockquote","hr","table","thead","tbody","tr","th","td","br","span","div","del","sup","sub","details","summary"]}
+                              components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}
+                            >
                               {formatAIResponse(m.content || "Thinking...")}
                             </ReactMarkdown>
                             <span className="inline-block w-[2px] h-[1em] bg-cyan-400 ml-0.5 align-middle animate-pulse" />
@@ -2804,7 +3021,11 @@ export default function ChatPage() {
                             "prose max-w-none overflow-hidden break-words prose-p:leading-relaxed prose-p:my-2 prose-p:text-[15px] prose-blockquote:border-[#6c757d] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:mb-4 prose-blockquote:not-italic",
                             theme === 'dark' ? "prose-invert prose-blockquote:bg-white/5 prose-blockquote:text-gray-300" : "prose-stone prose-blockquote:bg-black/5 prose-blockquote:text-gray-800 font-medium"
                           )}>
-                            <ReactMarkdown allowedElements={["p","h1","h2","h3","h4","h5","h6","strong","em","a","img","ul","ol","li","pre","code","blockquote","hr","table","thead","tbody","tr","th","td","br","span","div","del","sup","sub","details","summary"]} components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              allowedElements={["p","h1","h2","h3","h4","h5","h6","strong","em","a","img","ul","ol","li","pre","code","blockquote","hr","table","thead","tbody","tr","th","td","br","span","div","del","sup","sub","details","summary"]}
+                              components={(() => { _isGeneratingRef.current = isMsgStreaming; return markdownComponents; })()}
+                            >
                               {formatAIResponse(m.content)}
                             </ReactMarkdown>
                           </div>
@@ -3006,6 +3227,12 @@ export default function ChatPage() {
         {/* ── Input Area ───────────────────────────────────── */}
         <div className="chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom">
           <div className="chat-container">
+            {/* Follow-up suggestion chips from the assistant */}
+            <SuggestionChips
+              suggestions={suggestions}
+              disabled={isStreaming}
+              onSelect={(s) => handleSend(undefined, s)}
+            />
             <form
               onSubmit={handleSend}
               onDragOver={handleDragOver}
@@ -3059,24 +3286,10 @@ export default function ChatPage() {
               <div>
                 {/* Smart Suggestion Chips — only on empty chat */}
                 {messages.length === 0 && !isLoading && (
-                  <div className={cn("premium-suggestion-chips", theme === 'light' && "premium-suggestion-chips-light")}>
-                    {[
-                      { icon: "✦", label: "Write code", prompt: "Write a Python script to " },
-                      { icon: "⟡", label: "Analyze data", prompt: "Analyze this data and " },
-                      { icon: "⊕", label: "Search web", prompt: "Search the web for " },
-                      { icon: "◈", label: "Create image", prompt: "Generate an image of " },
-                      { icon: "◎", label: "Summarize", prompt: "Summarize the following: " },
-                      { icon: "⚡", label: "Brainstorm", prompt: "Brainstorm ideas for " },
-                    ].map((chip) => (
-                      <button
-                        key={chip.label}
-                        type="button"
-                        onClick={() => { setInput(chip.prompt); setTimeout(() => textareaRef.current?.focus(), 50); }}
-                      >
-                        <span className="opacity-60">{chip.icon}</span> {chip.label}
-                      </button>
-                    ))}
-                  </div>
+                  <EmptyStateChips
+                    theme={theme}
+                    onPick={(prompt) => { setInput(prompt); setTimeout(() => textareaRef.current?.focus(), 50); }}
+                  />
                 )}
 
                 {/* ── Premium Input Box ─────────────────────── */}
@@ -3105,28 +3318,14 @@ export default function ChatPage() {
                 </AnimatePresence>
 
                 {/* Active Mode Pills */}
-                {(settings.experimental || isBrowserMode || isAutomationMode) && (
-                  <div className="absolute -top-3 left-4 z-10 flex gap-2">
-                    {settings.experimental && (
-                      <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-md text-[9px] font-black uppercase tracking-widest", theme === 'dark' ? "bg-[#0d0d0f] border-cyan-500/40 text-cyan-400 shadow-cyan-500/15" : "bg-white border-cyan-500/30 text-cyan-600 shadow-cyan-500/10")}>
-                        <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
-                        Elite Reasoning
-                      </div>
-                    )}
-                    {isBrowserMode && (
-                      <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-md text-[9px] font-black uppercase tracking-widest", theme === 'dark' ? "bg-[#0d0d0f] border-emerald-500/40 text-emerald-400 shadow-emerald-500/15" : "bg-white border-emerald-500/30 text-emerald-600 shadow-emerald-500/10")}>
-                        <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-                        <Monitor size={9} /> Browser
-                      </div>
-                    )}
-                    {isAutomationMode && (
-                      <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-md text-[9px] font-black uppercase tracking-widest", theme === 'dark' ? "bg-[#0d0d0f] border-purple-500/40 text-purple-400 shadow-purple-500/15" : "bg-white border-purple-500/30 text-purple-600 shadow-purple-500/10")}>
-                        <div className="w-1 h-1 rounded-full bg-purple-400 animate-pulse" />
-                        <Cpu size={9} /> Automation
-                      </div>
-                    )}
-                  </div>
-                )}
+                <ModePills
+                  theme={theme}
+                  webSearch={isWebSearchMode}
+                  deepThinking={isExtendedThinking}
+                  eliteReasoning={settings.experimental}
+                  browser={isBrowserMode}
+                  automation={isAutomationMode}
+                />
 
                 {/* Textarea */}
                 <textarea
@@ -3266,6 +3465,36 @@ export default function ChatPage() {
                       <Cpu size={14} strokeWidth={2} />
                     </button>
 
+                    {/* Web Search Mode */}
+                    <button
+                      type="button"
+                      onClick={() => setIsWebSearchMode(!isWebSearchMode)}
+                      title="Web Search mode — search live web with fresh sources & citations"
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200",
+                        isWebSearchMode
+                          ? "text-sky-400 bg-sky-500/15 border border-sky-500/35 shadow-[0_0_10px_rgba(56,189,248,0.25)]"
+                          : (theme === 'dark' ? "text-gray-500 hover:text-gray-200 hover:bg-white/8" : "text-gray-400 hover:text-gray-700 hover:bg-black/6")
+                      )}
+                    >
+                      <Globe size={14} strokeWidth={2} />
+                    </button>
+
+                    {/* Deep Thinking Mode */}
+                    <button
+                      type="button"
+                      onClick={() => setIsExtendedThinking(!isExtendedThinking)}
+                      title="Deep Thinking mode — comprehensive multi-step reasoning"
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200",
+                        isExtendedThinking
+                          ? "text-purple-400 bg-purple-500/15 border border-purple-500/35 shadow-[0_0_10px_rgba(168,85,247,0.25)]"
+                          : (theme === 'dark' ? "text-gray-500 hover:text-gray-200 hover:bg-white/8" : "text-gray-400 hover:text-gray-700 hover:bg-black/6")
+                      )}
+                    >
+                      <Brain size={14} strokeWidth={2} />
+                    </button>
+
                   </div>
 
                   {/* Right: Model selector + Mic + Send */}
@@ -3277,14 +3506,19 @@ export default function ChatPage() {
                         onClick={() => setIsInputModelMenuOpen(!isInputModelMenuOpen)}
                         title="Select model"
                         className={cn(
-                          "h-7 px-2 rounded-full flex items-center gap-1 text-[10px] font-semibold border transition-all duration-200",
-                          theme === 'dark'
-                            ? "bg-white/5 border-white/8 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/15"
-                            : "bg-black/4 border-black/8 text-gray-500 hover:text-gray-900 hover:bg-black/8"
+                          "h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
+                          selectedModel.id === "gpt-6-astra"
+                            ? (theme === 'dark' ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/15" : "bg-emerald-50 border-emerald-300 text-emerald-800")
+                            : (theme === 'dark'
+                                ? "bg-white/5 border-white/8 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/15"
+                                : "bg-black/4 border-black/8 text-gray-600 hover:text-gray-900 hover:bg-black/8")
                         )}
                       >
-                        <Sparkles size={10} />
-                        <span className="max-w-[70px] truncate hidden sm:block">{selectedModel.name.split(' ')[0]}</span>
+                        <Sparkles size={11} className={selectedModel.id === "gpt-6-astra" ? "text-emerald-400" : "opacity-70"} />
+                        <span className="max-w-[110px] truncate hidden sm:block">{selectedModel.name}</span>
+                        {selectedModel.id === "gpt-6-astra" && (
+                          <span className="px-1 py-0.2 rounded text-[7px] font-extrabold uppercase bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hidden md:inline">1M Free</span>
+                        )}
                         <ChevronDown size={10} className="opacity-60" />
                       </button>
                       <AnimatePresence>
@@ -3296,33 +3530,255 @@ export default function ChatPage() {
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: 8 }}
                               transition={{ duration: 0.15 }}
-                              className={cn("absolute bottom-full left-0 mb-3 w-72 max-h-[55vh] overflow-y-auto p-1.5 border rounded-2xl shadow-2xl z-50 flex flex-col gap-0.5 origin-bottom-left scrollbar-hide", theme === 'dark' ? "bg-[#1e1e20] border-white/10" : "bg-white border-black/8")}
+                              className={cn(
+                                "absolute bottom-full right-0 mb-3 w-[400px] max-w-[min(400px,calc(100vw-1rem))] max-h-[75vh] overflow-y-auto p-2 border rounded-2xl shadow-2xl z-50 flex flex-col gap-1 origin-bottom-right scrollbar-hide",
+                                theme === 'dark' ? "bg-[#161619]/95 backdrop-blur-xl border-white/10" : "bg-white/95 backdrop-blur-xl border-black/10"
+                              )}
                             >
-                              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-500 border-b border-white/5 mb-1">Models</div>
-                              {MODELS.map(model => {
+                              {/* ── Section 1: Featured Free Model ──────────────────── */}
+                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles size={13} className="text-emerald-400" />
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Featured Free Model</span>
+                                </div>
+                                <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  Free · 1 Month Unlimited
+                                </span>
+                              </div>
+                              {MODELS.filter(m => m.id === "gpt-6-astra").map(model => {
+                                const isSelected = selectedModel.id === model.id;
+                                return (
+                                  <button
+                                    key={`${model.id}-featured`}
+                                    onClick={() => { setSelectedModel(model); setIsInputModelMenuOpen(false); }}
+                                    className={cn(
+                                      "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all text-left group relative border",
+                                      theme === 'dark'
+                                        ? (isSelected
+                                            ? "bg-gradient-to-r from-emerald-500/20 via-emerald-950/40 to-teal-900/30 border-emerald-500/50 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                                            : "bg-emerald-950/25 hover:bg-emerald-950/45 border-emerald-500/25 text-emerald-100")
+                                        : (isSelected
+                                            ? "bg-emerald-50 border-emerald-400 text-emerald-950 shadow-sm"
+                                            : "bg-emerald-50/60 hover:bg-emerald-50 border-emerald-200 text-emerald-900")
+                                    )}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[13px] font-bold tracking-tight">{model.name}</span>
+                                        <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide bg-gradient-to-r from-amber-500/25 to-yellow-500/25 text-amber-300 border border-amber-500/40 flex items-center gap-1 shadow-sm">
+                                          ★ 1 Month Unlimited Free
+                                        </span>
+                                        {model.reasoning && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25 flex items-center gap-0.5">
+                                            <Brain size={8} /> Reasoning
+                                          </span>
+                                        )}
+                                        {model.vision && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25 flex items-center gap-0.5">
+                                            <ImageIcon size={8} /> Vision
+                                          </span>
+                                        )}
+                                        {model.video && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 flex items-center gap-0.5">
+                                            <Video size={8} /> Video
+                                          </span>
+                                        )}
+                                        {model.audio && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/25 flex items-center gap-0.5">
+                                            <AudioLines size={8} /> Audio
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] opacity-70 leading-snug mt-1">{model.description}</div>
+                                    </div>
+                                    {isSelected && (
+                                      <Check size={14} className="flex-shrink-0 mt-0.5 text-emerald-400" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+
+                              {/* ── Section 2: TokenHarbor Free Models (Vision · Video · Audio) ─────── */}
+                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mt-3 mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles size={13} className="text-cyan-400" />
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">TokenHarbor Free Models</span>
+                                  <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Vision · Video · Audio</span>
+                                </div>
+                                <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                  Free
+                                </span>
+                              </div>
+                              {MODELS.filter(m => m.provider === "tokenharbor").map(model => {
+                                const isSelected = selectedModel.id === model.id;
+                                return (
+                                  <button
+                                    key={`${model.id}-tokenharbor`}
+                                    onClick={() => { setSelectedModel(model); setIsInputModelMenuOpen(false); }}
+                                    className={cn(
+                                      "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all text-left group relative border",
+                                      theme === 'dark'
+                                        ? (isSelected
+                                            ? "bg-cyan-950/30 border-cyan-500/40 text-cyan-100 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+                                            : "border-transparent hover:bg-white/5 text-gray-300 hover:text-white")
+                                        : (isSelected
+                                            ? "bg-cyan-50 border-cyan-300 text-cyan-900"
+                                            : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900")
+                                    )}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[13px] font-bold tracking-tight">{model.name}</span>
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                          Free
+                                        </span>
+                                        {model.fast && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25 flex items-center gap-0.5">
+                                            <Zap size={8} /> Fast
+                                          </span>
+                                        )}
+                                        {model.reasoning && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25 flex items-center gap-0.5">
+                                            <Brain size={8} /> Reasoning
+                                          </span>
+                                        )}
+                                        {model.vision && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25 flex items-center gap-0.5">
+                                            <ImageIcon size={8} /> Vision
+                                          </span>
+                                        )}
+                                        {model.video && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 flex items-center gap-0.5">
+                                            <Video size={8} /> Video
+                                          </span>
+                                        )}
+                                        {model.audio && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/25 flex items-center gap-0.5">
+                                            <AudioLines size={8} /> Audio
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] opacity-70 leading-snug mt-1">{model.description}</div>
+                                    </div>
+                                    {isSelected && (
+                                      <Check size={14} className={cn("flex-shrink-0 mt-0.5", theme === 'dark' ? "text-cyan-400" : "text-cyan-600")} />
+                                    )}
+                                  </button>
+                                );
+                              })}
+
+                              {/* ── Section 3: Likeway Frontier Models (₹299 Plan) ──────────────────── */}
+                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mt-3 mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles size={13} className="text-purple-400" />
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400">Likeway Frontier Models</span>
+                                  <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">8 Models</span>
+                                </div>
+                                <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                  ₹299 Likeway Plan
+                                </span>
+                              </div>
+                              {MODELS.filter(m => m.provider === "freemodels" && m.id !== "gpt-6-astra").map(model => {
                                 const planConfig = PLANS[currentPlan];
                                 const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
+                                const isSelected = selectedModel.id === model.id;
+                                return (
+                                  <button
+                                    key={`${model.id}-frontier`}
+                                    onClick={() => {
+                                      if (isAllowed) {
+                                        setSelectedModel(model);
+                                        setIsInputModelMenuOpen(false);
+                                      } else {
+                                        setIsPricingOpen(true);
+                                      }
+                                    }}
+                                    className={cn(
+                                      "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all text-left group relative border",
+                                      !isAllowed ? "opacity-75 hover:opacity-100" : "",
+                                      isSelected
+                                        ? (theme === 'dark' ? "bg-white/10 border-white/20 text-white" : "bg-gray-100 border-gray-300 text-gray-900")
+                                        : (theme === 'dark' ? "border-transparent hover:bg-white/5 text-gray-300 hover:text-white" : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900")
+                                    )}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[13px] font-bold tracking-tight">{model.name}</span>
+                                        {!isAllowed && (
+                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                            <Lock size={7} /> ₹299 Plan
+                                          </span>
+                                        )}
+                                        {model.fast && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25 flex items-center gap-0.5">
+                                            <Zap size={8} /> Fast
+                                          </span>
+                                        )}
+                                        {model.reasoning && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25 flex items-center gap-0.5">
+                                            <Brain size={8} /> Reasoning
+                                          </span>
+                                        )}
+                                        {model.vision && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25 flex items-center gap-0.5">
+                                            <ImageIcon size={8} /> Vision
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] opacity-70 leading-snug mt-1">{model.description}</div>
+                                    </div>
+                                    {isSelected && (
+                                      <Check size={14} className={cn("flex-shrink-0 mt-0.5", theme === 'dark' ? "text-white" : "text-gray-900")} />
+                                    )}
+                                  </button>
+                                );
+                              })}
+
+                              {/* ── Section 4: Paid / Key-Pool Models ──────────────────── */}
+                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mt-3 mb-1">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Likeway Key-Pool Models</span>
+                                <span className="text-[8px] font-semibold text-gray-500 uppercase">Plus / Pro Tier</span>
+                              </div>
+                              {MODELS.filter(m => m.provider !== "freemodels" && m.provider !== "tokenharbor").map(model => {
+                                const planConfig = PLANS[currentPlan];
+                                const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
+                                const isSelected = selectedModel.id === model.id && selectedModel.provider === model.provider;
                                 return (
                                   <button
                                     key={`${model.id}-${model.provider}-${model.name}`}
-                                    onClick={() => { if (isAllowed) { setSelectedModel(model); setIsInputModelMenuOpen(false); } }}
-                                    disabled={!isAllowed}
+                                    onClick={() => {
+                                      if (isAllowed) {
+                                        setSelectedModel(model);
+                                        setIsInputModelMenuOpen(false);
+                                      } else {
+                                        setIsPricingOpen(true);
+                                      }
+                                    }}
                                     className={cn(
-                                      "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group",
-                                      !isAllowed ? "opacity-40 cursor-not-allowed" : "",
-                                      selectedModel.id === model.id && selectedModel.provider === model.provider
-                                        ? (theme === 'dark' ? "bg-violet-500/10 text-violet-300" : "bg-violet-50 text-violet-700")
+                                      "flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-left group",
+                                      !isAllowed ? "opacity-60 hover:opacity-90" : "",
+                                      isSelected
+                                        ? (theme === 'dark' ? "bg-violet-500/10 text-violet-300 border border-violet-500/30" : "bg-violet-50 text-violet-700 border border-violet-300")
                                         : (theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")
                                     )}
                                   >
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2">
                                         <span className="text-[13px] font-semibold truncate">{model.name}</span>
-                                        {!isAllowed && <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/12 text-amber-400 border border-amber-500/20"><Lock size={7} />{model.plan}</span>}
+                                        {!isAllowed && (
+                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/12 text-amber-400 border border-amber-500/20">
+                                            <Lock size={7} />{model.plan}
+                                          </span>
+                                        )}
+                                        {model.contextWindow >= 1000000 && (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                            1M ctx
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="text-[11px] opacity-60 truncate mt-0.5">{model.description}</div>
                                     </div>
-                                    {selectedModel.id === model.id && selectedModel.provider === model.provider && <Check size={14} className="flex-shrink-0" />}
+                                    {isSelected && <Check size={14} className="flex-shrink-0" />}
                                   </button>
                                 );
                               })}

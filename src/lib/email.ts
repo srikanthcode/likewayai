@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.EMAIL_FROM || "Likeway AI <onboarding@resend.dev>";
 
@@ -70,5 +72,5 @@ export async function sendOTPEmail(
 }
 
 export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }

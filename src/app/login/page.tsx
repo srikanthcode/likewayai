@@ -209,6 +209,7 @@ export default function LoginPage() {
               </a>
             </p>
           </footer>
+
         </div>
 
         {/* Footer Links */}

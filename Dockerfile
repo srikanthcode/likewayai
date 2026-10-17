@@ -7,6 +7,10 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 ENV PORT=10000
 ENV NODE_ENV=production
+ARG NEXT_PUBLIC_APP_URL=https://likewayai.onrender.com
+ARG NEXT_PUBLIC_API_URL=https://likewayai.onrender.com
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Copy package files first for better caching
 COPY package.json package-lock.json ./

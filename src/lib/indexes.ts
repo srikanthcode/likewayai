@@ -41,6 +41,43 @@ const INDEXES: IndexDefinition[] = [
     },
   },
 
+  // ── Entitlement Metering (server-side plan limits) ──────────────────
+  {
+    collection: "daily_usage",
+    index: { userId: 1, date: 1 },
+    options: { name: "daily_usage_user_date", unique: true },
+  },
+  // TTL index - keep 90 days of metered usage then purge
+  {
+    collection: "daily_usage",
+    index: { createdAt: 1 },
+    options: { name: "daily_usage_ttl", expireAfterSeconds: 90 * 24 * 60 * 60 },
+  },
+
+  // ── Payment References (order/subscription -> user/plan) ────────────
+  {
+    collection: "payment_refs",
+    index: { id: 1 },
+    options: { name: "payment_refs_id", unique: true },
+  },
+  {
+    collection: "payment_refs",
+    index: { userId: 1, createdAt: -1 },
+    options: { name: "payment_refs_user" },
+  },
+
+  // ── Password Reset OTPs ─────────────────────────────────────────────
+  {
+    collection: "password_resets",
+    index: { email: 1 },
+    options: { name: "password_resets_email", unique: true },
+  },
+  {
+    collection: "password_resets",
+    index: { expiresAt: 1 },
+    options: { name: "password_resets_ttl", expireAfterSeconds: 0 },
+  },
+
   // ── Usage Tracking Indexes ──────────────────────────────────────────
   {
     collection: "usage",

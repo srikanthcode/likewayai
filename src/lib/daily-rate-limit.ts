@@ -1,6 +1,5 @@
 // Daily rate limiting for plan-based message limits
 // Tracks messages per user per day using in-memory store
-import { isVipUser } from "./auth";
 
 interface DailyRecord {
   count: number;
@@ -24,10 +23,11 @@ export interface DailyLimitResult {
 
 export function checkDailyLimit(
   userId: string,
-  maxMessages: number
+  maxMessages: number,
+  isAdmin: boolean = false
 ): DailyLimitResult {
-  // VIP / Owner unlock: unlimited messages (by ID or email)
-  if (isVipUser(userId)) {
+  // Admins (role === "admin" from the DB) get unlimited messages.
+  if (isAdmin) {
     return {
       allowed: true,
       remaining: 999999,
@@ -83,8 +83,8 @@ export function checkDailyLimit(
 }
 
 // Get current usage without incrementing
-export function getDailyUsage(userId: string, maxMessages: number): DailyLimitResult {
-  if (isVipUser(userId)) {
+export function getDailyUsage(userId: string, maxMessages: number, isAdmin: boolean = false): DailyLimitResult {
+  if (isAdmin) {
     return {
       allowed: true,
       remaining: 999999,

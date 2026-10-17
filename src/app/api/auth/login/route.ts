@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyPassword, createAccessToken, createRefreshToken, generateSessionId, setAuthCookies, fingerprint, isVipUser } from "@/lib/auth";
+import { verifyPassword, createAccessToken, createRefreshToken, generateSessionId, setAuthCookies, fingerprint } from "@/lib/auth";
 import { findUserByEmail, createSession, updateUser, recordLogin } from "@/lib/auth-models";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { normalizePlan } from "@/lib/plans";
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const sessionId = generateSessionId();
     const fp = fingerprint(req);
     const accessToken = createAccessToken({ id: user._id.toString(), email: user.email, role: user.role, plan: user.plan }, sessionId);
-    const refreshToken = createRefreshToken(user._id.toString(), sessionId);
+    const refreshToken = createRefreshToken(user._id.toString(), sessionId, user.role, user.plan);
 
     await createSession({
       userId: user._id.toString(),
@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
       location: "unknown",
     });
 
-    const vip = isVipUser(user._id.toString(), user.email);
     const cookies = setAuthCookies(accessToken, refreshToken);
     const response = NextResponse.json({
       user: {
@@ -63,9 +62,9 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        // VIP override: always admin + Pro (must match token claims)
-        role: vip ? "admin" : user.role,
-        plan: vip ? "Pro" : normalizePlan(user.plan),
+        // Role and plan come straight from the DB user record.
+        role: user.role,
+        plan: normalizePlan(user.plan),
         onboardingCompleted: user.onboardingCompleted,
       },
       redirect: user.onboardingCompleted ? "/" : "/onboarding",

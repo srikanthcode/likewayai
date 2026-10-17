@@ -23,6 +23,12 @@ const CRITICAL_VARS: EnvVarConfig[] = [
   { key: "NEXT_PUBLIC_APP_URL", required: false, description: "Public app URL" },
   { key: "RAZORPAY_KEY_ID", required: false, description: "Razorpay key ID" },
   { key: "RAZORPAY_KEY_SECRET", required: false, description: "Razorpay key secret" },
+  { key: "RAZORPAY_WEBHOOK_SECRET", required: false, description: "Razorpay webhook signing secret (required for renewals/cancellations)" },
+  { key: "TOKENHARBOR_API_KEY", required: false, description: "TokenHarbor key — no longer hardcoded; model family unavailable without it" },
+  { key: "CSRF_SECRET", required: false, description: "HMAC secret for CSRF tokens (must be stable across instances)" },
+  { key: "INTERNAL_API_SECRET", required: false, description: "Shared secret for Vercel→Render server-to-server calls" },
+  { key: "IMAGE_EDIT_MODEL", required: false, description: "OpenRouter image-to-image model for image editing" },
+  { key: "TTS_MODEL", required: false, description: "Neural TTS model (falls back to browser speech when unset)" },
   { key: "RENDER_API_URL", required: false, description: "Render backend URL for browser automation proxy (used on Vercel)" },
 ];
 
@@ -62,6 +68,26 @@ export function validateEnv(): { valid: boolean; errors: string[]; warnings: str
   // Validate RENDER_API_URL when on Vercel (needed for proxy to Render)
   if (process.env.VERCEL_REGION && !process.env.RENDER_API_URL) {
     warnings.push('RENDER_API_URL not set — browser automation proxy from Vercel to Render will fail');
+  }
+
+  // Google OAuth: the callback + id_token verification both need a client id.
+  if (isProd && !process.env.GOOGLE_CLIENT_ID) {
+    warnings.push('GOOGLE_CLIENT_ID not set — Google sign-in and id_token verification will fail');
+  }
+
+  // CSRF secret must be stable across serverless instances.
+  if (isProd && !process.env.CSRF_SECRET) {
+    warnings.push('CSRF_SECRET not set — CSRF tokens will not validate across instances');
+  }
+
+  // Razorpay subscription plans (recurring billing).
+  if (process.env.RAZORPAY_KEY_ID && !process.env.RAZORPAY_PLAN_GO) {
+    warnings.push('RAZORPAY_PLAN_GO/PLUS/PRO not set — /api/subscription/create will reject every request');
+  }
+
+  // Insecure JWT secret fallback guard.
+  if (isProd && process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+    errors.push('JWT_SECRET must be at least 32 characters in production');
   }
 
   if (errors.length > 0) {

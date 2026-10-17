@@ -67,4 +67,6 @@ h origin HEAD
 .aider*
 .claude/
 .mimocode/
+.kilo/
+*.log
 *.zip

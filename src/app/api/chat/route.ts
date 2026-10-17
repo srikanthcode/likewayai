@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
 import { MODELS, getProviderForModel } from "@/lib/models";
-import { SYSTEM_PROMPTS, AgentMode } from "@/lib/agents";
+import { SYSTEM_PROMPTS, AgentMode, LIKEWAY_RESPONSE_ARCHITECTURE } from "@/lib/agents";
 import { getVerifiedLatestInfo } from "@/lib/browsing";
 import { executeDeepResearch } from "@/lib/deep-research";
 import { saveMessage, getHistory, getConversationContext, getUserPreferences } from "@/lib/memory";
@@ -17,34 +17,111 @@ import {
 } from "@/lib/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
-import { getTokenFromCookies, verifyAccessToken, isVipUser } from "@/lib/auth";
+import { checkModelAccess, consumeEntitlement, entitlementDenied } from "@/lib/entitlements";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import { detectPromptInjection, sanitizeInput } from "@/lib/security";
 import { logger, generateRequestId } from "@/lib/logger";
 import { orchestrator, analyzeIntent } from "@/lib/orchestrator";
 import type { OrchestratorContext } from "@/lib/orchestrator";
+import { detectComputerControlIntent, launchSystemApp, formatComputerControlCard, isLocalExecutionHost } from "@/lib/system/computer-control";
+import { isAutonomousDevIntent, generate3DRacingGameSpec, executeAutonomousProject, isBuildIntent, generateProjectSpec } from "@/lib/autonomous/engine";
 import crypto from "crypto";
+
+// ── Free proxy URL — SERVER-SIDE ONLY. Never imported by client bundle.
+const FREE_MODELS_PROXY = "https://freemodels-chat.freemodels.workers.dev";
+const TOKENHARBOR_PROXY = "https://tokenharbor.ai/v1";
+const TOKENHARBOR_KEY = process.env.TOKENHARBOR_API_KEY || "";
 
 // Lazy import — browser-engine has heavy deps that crash on Vercel serverless
 let runBrowserEngine: any = null;
 
 export const maxDuration = 120;
 
-// ── Formatting Cleanup: Clean up messy output while keeping tables ──────
+// ── Formatting Cleanup: Clean up messy output while preserving markdown tables ──────
 function cleanFormatting(text: string): string {
   if (!text) return text;
 
   return text
     // Clean up flowchart arrows
     .replace(/(\n\s*[│┌┐└┘├┤┬┴┼─▼↑↓→←]+\s*\n)/g, "\n")
-    // Remove excessive blank lines
+    // Remove excessive blank lines (3+ to 2)
     .replace(/\n{3,}/g, "\n\n")
-    // Clean up broken table formats (extra dashes)
-    .replace(/\|[\s]*-{3,}[\s]*\|/g, "|---|")
-    // Ensure table header separator is clean
-    .replace(/(\|[^\n]+\|)\n[\s]*\|[-| :]+\|/g, "$1\n|---|---|---|")
     // Remove leading/trailing whitespace on lines
     .replace(/\n[ \t]+/g, "\n");
 }
+
+// ── Likeway engine labels ──────────────────────────────────────────────────
+// Likeway is a MODEL ROUTER: it selects the best available upstream provider
+// per request, and that choice can change at any time. We therefore:
+//   1. Never claim a specific third-party model authored a response.
+//   2. Never rewrite model output to impersonate another company's model.
+// These are Likeway's own engine names. Upstream providers are disclosed in
+// the UI/API where relevant, not fabricated here.
+interface SuggestionStreamState {
+  inBlock: boolean;
+  raw: string;
+}
+
+/**
+ * Remove a trailing <suggestions>…</suggestions> block from the visible
+ * content stream and collect it separately, so follow-up chips can be sent
+ * as their own SSE event instead of leaking into the chat text.
+ */
+function stripSuggestions(delta: string, st: SuggestionStreamState): string {
+  let out = "";
+  let rest = delta;
+  while (rest.length > 0) {
+    if (!st.inBlock) {
+      const open = rest.indexOf("<suggestions>");
+      if (open === -1) {
+        out += rest;
+        rest = "";
+      } else {
+        out += rest.slice(0, open);
+        st.inBlock = true;
+        rest = rest.slice(open + "<suggestions>".length);
+      }
+    } else {
+      const close = rest.indexOf("</suggestions>");
+      if (close === -1) {
+        st.raw += rest;
+        rest = "";
+      } else {
+        st.raw += rest.slice(0, close);
+        st.inBlock = false;
+        rest = rest.slice(close + "</suggestions>".length);
+      }
+    }
+  }
+  return out;
+}
+
+function parseSuggestionLines(raw: string): string[] {
+  return raw
+    .split("\n")
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
+    .filter((l) => l.replace(/[[\]]/g, "").trim().length > 2)
+    .slice(0, 4);
+}
+
+interface LikewayEngineLabel {
+  name: string;
+  intro: string;
+}
+
+const LIKEWAY_ENGINE_LABELS: Record<string, LikewayEngineLabel> = {
+  "gpt-6-astra": { name: "Likeway Omni", intro: "Likeway's smart router automatically picks the fastest, strongest engine for each prompt" },
+  "glm-5.2": { name: "Likeway Bilingual", intro: "Likeway's bilingual reasoning engine" },
+  "kimi-k3": { name: "Likeway LongContext", intro: "Likeway's long-context research engine" },
+  "sol": { name: "Likeway Sol", intro: "Likeway's low-latency fast engine" },
+  "terra": { name: "Likeway Terra", intro: "Likeway's analytical and scientific engine" },
+  "claude-opus-5.5": { name: "Likeway Opus", intro: "Likeway's deep-reasoning engine" },
+  "claude-sonnet-5": { name: "Likeway Sonnet", intro: "Likeway's balanced fast-reasoning engine" },
+  "claude-fable-5": { name: "Likeway Fable", intro: "Likeway's creative writing engine" },
+  "claude-fable-5.1": { name: "Likeway Fable Pro", intro: "Likeway's creative and visual reasoning engine" },
+  "deepseek-v4.1-flash:free": { name: "Likeway Flash", intro: "Likeway's ultra-fast reasoning engine" },
+  "mimo-v2.6-flash:free": { name: "Likeway Mimo", intro: "Likeway's multimodal engine" },
+};
 
 // Input validation for chat prompts
 function validatePrompt(prompt: string): { valid: boolean; error?: string } {
@@ -110,6 +187,7 @@ export async function POST(req: NextRequest) {
       customInstructions = "",
       experimental: _experimental = false,
       extendedThinking = false,
+      webSearch = false,
       conversationId,
       startUrl = "",
     } = body;
@@ -121,10 +199,39 @@ export async function POST(req: NextRequest) {
     const tokens = getTokenFromCookies(req);
     const tokenPayload = tokens.access ? verifyAccessToken(tokens.access) : null;
     let plan = normalizePlan(tokenPayload?.plan) || "Core";
-    // Check by userId AND by email claim in the token (email-based VIP match)
-    if (isVipUser(userId, tokenPayload?.email as string | undefined)) {
+    // Admins are identified by the DB-backed `role` claim, never by a hardcoded id/email.
+    const isAdmin = tokenPayload?.role === "admin";
+    if (isAdmin) {
       plan = "Pro";
     }
+
+    // Real-time plan sync: If token has Core, check DB to ensure paying users are never blocked
+    if (userId !== "anonymous" && plan === "Core" && !isAdmin) {
+      try {
+        const { getUserPlan } = await import("@/lib/user");
+        const userSub = await getUserPlan(userId);
+        if (userSub && userSub.status === "active" && userSub.plan !== "Core") {
+          plan = userSub.plan;
+        }
+      } catch (e) {
+        // Fallback to token plan
+      }
+    }
+
+    // ── Server-side model allowlist (previously enforced in the UI only) ──
+    const modelAccess = checkModelAccess(plan, modelId, tokenPayload?.role);
+    if (!modelAccess.allowed) {
+      return new Response(
+        JSON.stringify({ error: modelAccess.reason, upgradeTo: modelAccess.upgradeTier }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Metered features are consumed server-side for authenticated users.
+    const meter = async (feature: Parameters<typeof consumeEntitlement>[2]) => {
+      if (userId === "anonymous") return null;
+      return consumeEntitlement(userId, plan, feature, tokenPayload?.role);
+    };
 
     // Validate prompt
     const validation = validatePrompt(prompt);
@@ -158,7 +265,7 @@ export async function POST(req: NextRequest) {
 
     // Rate limiting - Per minute
     const rateLimitConfig = { windowMs: 60000, maxRequests: 20 }; // 20 requests per minute
-    const rateLimit = checkRateLimit(userId, rateLimitConfig);
+    const rateLimit = checkRateLimit(userId, rateLimitConfig, isAdmin);
     if (!rateLimit.allowed) {
       return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
         status: 429,
@@ -171,10 +278,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Rate limiting - Daily plan limit
+    // Rate limiting - Daily plan limit (gpt-6-astra has free unlimited chat for 1 month)
+    const isGpt6Promo = modelId === "gpt-6-astra";
     const planConfig = PLANS[plan] || PLANS.Core;
-    const dailyLimit = checkDailyLimit(userId, planConfig.limits.messagesDay);
-    if (!dailyLimit.allowed) {
+    const dailyLimit = checkDailyLimit(userId, planConfig.limits.messagesDay, isAdmin);
+    if (!dailyLimit.allowed && !isGpt6Promo) {
       return new Response(JSON.stringify({
         error: `Daily message limit reached (${dailyLimit.limit} messages/day). Upgrade your plan for unlimited messages.`,
         limit: dailyLimit.limit,
@@ -197,6 +305,147 @@ export async function POST(req: NextRequest) {
       console.error("[Chat API] Failed to save user message:", error);
     });
 
+    // ── Computer Control & App Launcher ──────────────────────────────
+    // If user asks to open an app (e.g. "open whatsapp", "open spotify", "launch calculator"):
+    // Automatically find it in the user's system and launch it natively or via protocol
+    const computerControl = detectComputerControlIntent(sanitizedPrompt);
+    if (computerControl.isComputerControl && computerControl.targetApp) {
+      const cc = await meter("computer_control");
+      if (cc && !cc.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(cc)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // OS-level launching must NEVER run inside a hosted server process.
+      // Only the user's own machine (with the Likeway Companion) may do this.
+      if (!isLocalExecutionHost()) {
+        const guidance =
+          "### 🖥️ Computer Control — Desktop Launch Required\n\n" +
+          `I can see you want to open **${computerControl.targetApp}**, but this app is running on a cloud server, ` +
+          "so it cannot launch programs on your computer.\n\n" +
+          "Start the **Likeway Companion** on your own machine (`npm run companion`), then ask me again.";
+        const encoder = new TextEncoder();
+        const guideStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ choices: [{ delta: { content: guidance } }] })}\n\n`
+              )
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        if (userId !== "anonymous") {
+          saveMessage(userId, { role: "assistant", content: guidance }, projectId, conversationId).catch(() => {});
+        }
+        return new Response(guideStream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
+      const launchResult = await launchSystemApp(computerControl.targetApp);
+      const formattedCard = formatComputerControlCard(launchResult);
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ choices: [{ delta: { content: formattedCard } }] })}\n\n`
+            )
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+
+      if (userId !== "anonymous") {
+        saveMessage(userId, { role: "assistant", content: formattedCard }, projectId, conversationId).catch(() => {});
+      }
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
+    // ── Autonomous Software Development & Game Engine ───────────────
+    // When user requests "Build me a 3D racing game", "build game and run it", etc.:
+    // Automatically plans, generates code, serves on localhost, launches on desktop, and verifies.
+    const autoDev = isAutonomousDevIntent(sanitizedPrompt);
+    const wantsBuild = autoDev.isDev || isBuildIntent(sanitizedPrompt);
+    if (wantsBuild) {
+      const ab = await meter("autonomous_app_builder");
+      if (ab && !ab.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(ab)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Plan the project spec with the model first; fall back to the built-in
+      // 3D racing template only when the request is clearly that game.
+      let spec = await generateProjectSpec(sanitizedPrompt);
+      if (!spec && autoDev.isDev && autoDev.projectType === "3d_racing_game") {
+        spec = generate3DRacingGameSpec();
+      }
+
+      if (!spec) {
+        const encoder = new TextEncoder();
+        const guidance =
+          "⚠️ I couldn't generate a runnable project plan for that request. " +
+          "Try naming the kind of app (e.g. \"build a Pomodoro timer web app\") and I'll scaffold it.";
+        const planStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: guidance } }] })}\n\n`)
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(planStream, {
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+        });
+      }
+
+      const devResult = await executeAutonomousProject(spec);
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ choices: [{ delta: { content: devResult.summaryMarkdown } }] })}\n\n`
+            )
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+
+      if (userId !== "anonymous") {
+        saveMessage(userId, { role: "assistant", content: devResult.summaryMarkdown }, projectId, conversationId).catch(() => {});
+      }
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
     // ── Orchestrator: understand the task BEFORE routing ──────────────
     // Every request gets a structured plan (type, complexity, steps, tools,
     // model recommendation). Routing decisions below are driven by the plan.
@@ -212,6 +461,13 @@ export async function POST(req: NextRequest) {
     // Determine if this is a deep research request
     const isDeepResearch = mode === "Researcher" || mode === "deep-research";
     if (isDeepResearch) {
+      const dr = await meter("deep_research");
+      if (dr && !dr.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(dr)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       const deepRes = await executeDeepResearch(
         sanitizedPrompt,
         modelId || "google/gemini-2.5-flash",
@@ -229,6 +485,13 @@ export async function POST(req: NextRequest) {
     // ── LikeWay Browser Mode (v6 — unified engine) ────────────────────
     const isBrowserAgent = mode === "Browser";
     if (isBrowserAgent) {
+      const ba = await meter("browser_automation");
+      if (ba && !ba.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(ba)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
       if (isOnVercel) {
         // Use RENDER_API_URL env var for the Render backend URL.
@@ -255,7 +518,12 @@ export async function POST(req: NextRequest) {
               try {
                 const res = await fetch(`${renderUrl}/api/browser-agent`, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(process.env.INTERNAL_API_SECRET
+                      ? { "x-likeway-internal": process.env.INTERNAL_API_SECRET }
+                      : {}),
+                  },
                   body: JSON.stringify({ task: sanitizedPrompt, startUrl, headless: true }),
                 // Timeout matches the Vercel serverless maxDuration (120s)
                 signal: AbortSignal.timeout(115000),
@@ -369,6 +637,13 @@ export async function POST(req: NextRequest) {
     // ── Automation Mode (v6 — uses unified engine) ───────────────────
     const isAutomation = mode === "Automation";
     if (isAutomation) {
+      const ba = await meter("browser_automation");
+      if (ba && !ba.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(ba)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       // On actual Vercel deployment: proxy to Render backend (no Chromium on Vercel)
       if (isOnVercel) {
         const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
@@ -390,7 +665,12 @@ export async function POST(req: NextRequest) {
             try {
               const res = await fetch(`${renderUrl}/api/browser-agent`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(process.env.INTERNAL_API_SECRET
+                    ? { "x-likeway-internal": process.env.INTERNAL_API_SECRET }
+                    : {}),
+                },
                 body: JSON.stringify({ task: sanitizedPrompt, headless: true }),
                 signal: AbortSignal.timeout(180000),
               });
@@ -583,12 +863,20 @@ export async function POST(req: NextRequest) {
 
     // Intent: Image Generation (text-to-image, no images attached)
     const isImageGenRequest = !hasImages && (
-      /\b(generate|create|make|draw|design|paint|render)\s+(an?\s+)?(image|picture|photo|illustration|artwork|art|poster|wallpaper|logo|banner)\b/i.test(sanitizedPrompt) ||
+      /\b(generate|create|make|draw|design|paint|render|produce)\s+(an?\s+)?(image|picture|photo|photograph|illustration|artwork|art|portrait|wallpaper|logo|banner|sketch|graphic)\b/i.test(sanitizedPrompt) ||
+      /\b(image|picture|photo|portrait|wallpaper)\s+of\b/i.test(sanitizedPrompt) ||
       mode === "Visionary"
     );
 
     // ── Image Generation Route ───────────────────────────────────────────
     if (isImageGenRequest) {
+      const ig = await meter("image_generation");
+      if (ig && !ig.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(ig)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       try {
         const imageResult = await generateImage(sanitizedPrompt);
         const encoder = new TextEncoder();
@@ -610,6 +898,13 @@ export async function POST(req: NextRequest) {
 
     // ── Image Editing Route ──────────────────────────────────────────────
     if (isImageEditing) {
+      const ie = await meter("image_editing");
+      if (ie && !ie.allowed) {
+        return new Response(JSON.stringify(entitlementDenied(ie)), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       try {
         const imageUrl = images[0].url;
         const editedImage = await editImage(imageUrl, sanitizedPrompt);
@@ -625,17 +920,34 @@ export async function POST(req: NextRequest) {
         return new Response(stream, {
           headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
         });
-      } catch (e) {
-        console.warn("[Chat API] Image editing failed, falling through to text:", e);
+      } catch (e: any) {
+        console.warn("[Chat API] Image editing failed:", e);
+        // Surface the failure honestly instead of silently producing text.
+        const encoder = new TextEncoder();
+        const msg =
+          `⚠️ **Image editing failed.** ${e?.message || "Please try again."}\n\n` +
+          "Image editing requires an image-capable model. Set `IMAGE_EDIT_MODEL` (e.g. `google/gemini-2.5-flash-image`) and a valid `OPENROUTER_KEYS` value.";
+        const errStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: msg } }] })}\n\n`)
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(errStream, {
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+        });
       }
     }
 
     // ── Image Understanding Route (Vision Model) ─────────────────────────
     if (isImageUnderstanding) {
       // Force vision-capable model for image understanding
-      const visionModel = modelId && MODELS.find(m => m.id === modelId && m.vision)
+      const visionModel = modelId && MODELS.find(m => m.id === modelId && (m.vision || m.video || m.audio))
         ? modelId
-        : "google/gemini-2.5-flash";
+        : "mimo-v2.6-flash:free";
 
       const visionUrl = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -653,39 +965,150 @@ export async function POST(req: NextRequest) {
         { role: "user", content: multimodalContent },
       ];
 
-      const response = await fetchAI("openrouter", visionUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: visionModel,
-          messages: visionMessages,
-          stream: true,
-          max_tokens: 4096,
-          temperature: 0.3,
-        }),
-      });
+      let response: Response | null = null;
+      const visionProvider = getProviderForModel(visionModel);
 
-      if (response.ok && response.body) {
+      const tryTokenHarborVision = async (targetModel: string) => {
+        if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
+        return fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${TOKENHARBOR_KEY}`,
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: visionMessages,
+            stream: true,
+            max_tokens: 4096,
+            temperature: 0.3,
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+      };
+
+      const tryFreeModelsVision = async (targetModel: string) => {
+        return fetch(`${FREE_MODELS_PROXY}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Origin": "https://freemodels.pro",
+            "Referer": "https://freemodels.pro/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: visionMessages,
+            stream: true,
+            max_tokens: 4096,
+            temperature: 0.3,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+      };
+
+      const tryOpenRouterVision = async (targetModel: string) => {
+        return fetchAI("openrouter", visionUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: visionMessages,
+            stream: true,
+            max_tokens: 4096,
+            temperature: 0.3,
+          }),
+        });
+      };
+
+      try {
+        if (visionProvider === "tokenharbor") {
+          try {
+            response = await tryTokenHarborVision(visionModel);
+            if (!response || !response.ok) {
+              const altModel = visionModel === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
+              response = await tryTokenHarborVision(altModel);
+            }
+          } catch {
+            response = null;
+          }
+        } else if (visionProvider === "freemodels") {
+          // If user chose gpt-6-astra or other freemodel for image analysis:
+          // Try freemodels proxy first; if it fails or returns error, silently use TokenHarbor Mimo!
+          try {
+            response = await tryFreeModelsVision(visionModel);
+          } catch {
+            response = null;
+          }
+          if (!response || !response.ok) {
+            console.warn(`[Chat API] Freemodels vision failed for ${visionModel}. Silently routing to TokenHarbor Mimo...`);
+            try {
+              response = await tryTokenHarborVision("mimo-v2.6-flash:free");
+            } catch {
+              response = null;
+            }
+          }
+        } else {
+          try {
+            response = await tryOpenRouterVision(visionModel);
+          } catch {
+            response = null;
+          }
+          if (!response || !response.ok) {
+            try {
+              response = await tryTokenHarborVision("mimo-v2.6-flash:free");
+            } catch {
+              response = null;
+            }
+          }
+        }
+
+        // Safety fallback: OpenRouter Gemini
+        if (!response || !response.ok) {
+          try {
+            response = await tryOpenRouterVision("google/gemini-2.5-flash");
+          } catch {
+            response = null;
+          }
+        }
+      } catch (err: any) {
+        console.warn("[Chat API] Vision attempt exception:", err?.message || err);
+      }
+
+      if (response && response.ok && response.body) {
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
         let fullContent = "";
 
         const transformStream = new TransformStream({
           transform(chunk, controller) {
-            controller.enqueue(chunk);
             const text = decoder.decode(chunk, { stream: true });
+            const cleanChunks: string[] = [];
             for (const line of text.split("\n")) {
-              if (line.startsWith("data: ") && line.slice(6) !== "[DONE]") {
+              if (line.startsWith("data: ") && line.slice(6).trim() !== "[DONE]") {
                 try {
                   const parsed = JSON.parse(line.slice(6));
-                  fullContent += parsed.choices?.[0]?.delta?.content || "";
-                } catch {}
+                  const delta = parsed.choices?.[0]?.delta?.content || "";
+                  if (delta) {
+                    fullContent += delta;
+                    const cleaned = cleanFormatting(delta);
+                    cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`);
+                  }
+                } catch {
+                  cleanChunks.push(line + "\n");
+                }
+              } else if (line.trim().startsWith("data: [DONE]")) {
+                cleanChunks.push("data: [DONE]\n\n");
               }
+            }
+            if (cleanChunks.length > 0) {
+              controller.enqueue(encoder.encode(cleanChunks.join("")));
             }
           },
           flush() {
             if (fullContent.trim()) {
-              saveMessage(userId, { role: "assistant", content: fullContent }, projectId, conversationId).catch(() => {});
+              const cleanedFull = cleanFormatting(fullContent);
+              saveMessage(userId, { role: "assistant", content: cleanedFull }, projectId, conversationId).catch(() => {});
             }
           },
         });
@@ -703,6 +1126,7 @@ export async function POST(req: NextRequest) {
     const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(sanitizedPrompt);
 
     const needsSearch =
+      webSearch ||
       hasRealTimeTerm ||
       SEARCH_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) ||
       (TIME_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) && !isCodingQ);
@@ -725,8 +1149,32 @@ export async function POST(req: NextRequest) {
     const routedModelId = modelId || selectedModel.id;
 
     const provider = getProviderForModel(routedModelId);
+
+    // ── Free proxy model ID mapping ──────────────────────────────────────
+    // All 9 proxy models use their actual IDs — the proxy recognizes them natively.
+    // This map exists for future remapping; currently all IDs pass through as-is.
+    const FREE_MODEL_ID_MAP: Record<string, string> = {
+      "gpt-6-astra":    "gpt-6-astra",
+      "claude-opus-5.5": "claude-opus-5.5",
+      "claude-sonnet-5": "claude-sonnet-5",
+      "claude-fable-5":  "claude-fable-5",
+      "claude-fable-5.1":"claude-fable-5.1",
+      "glm-5.2":         "glm-5.2",
+      "kimi-k3":         "kimi-k3",
+      "sol":             "sol",
+      "terra":           "terra",
+      // Legacy free model IDs (kept for backwards compat)
+      "free-llama3-70b": "gpt-6-astra",
+      "free-mistral-7b": "sol",
+    };
+    const resolvedModelId = FREE_MODEL_ID_MAP[routedModelId] ?? routedModelId;
+
     const url =
-      provider === "groq"
+      provider === "freemodels"
+        ? `${FREE_MODELS_PROXY}/v1/chat/completions`
+        : provider === "tokenharbor"
+        ? "https://tokenharbor.ai/v1/chat/completions"
+        : provider === "groq"
         ? "https://api.groq.com/openai/v1/chat/completions"
         : provider === "mistral"
         ? "https://api.mistral.ai/v1/chat/completions"
@@ -838,7 +1286,9 @@ Java is a high-level, object-oriented programming language developed by Sun Micr
 
 ### QUICK ANSWER EXAMPLE (for "What is the capital of France?"):
 The capital of France is **Paris**. It is the largest city in France, located in the north-central part of the country along the Seine River. Paris is known for the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral. It has been France's capital since the 10th century.`;
-    systemPrompt = FORMATTING_OVERRIDE + "\n\n" + systemPrompt;
+    // The response architecture is appended LAST so it is the most specific,
+    // highest-recency instruction, overriding older formatting guidance.
+    systemPrompt = FORMATTING_OVERRIDE + "\n\n" + systemPrompt + "\n\n" + LIKEWAY_RESPONSE_ARCHITECTURE;
 
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -863,26 +1313,243 @@ The capital of France is **Paris**. It is the largest city in France, located in
     messages.push({ role: "user", content: userContent });
 
     let maxTokens = 4096;
-    if (extendedThinking) maxTokens = 8192;
+    if (extendedThinking) {
+      maxTokens = 8192;
+      const thinkingInstruction = `\n\n## DEEP THINKING & REASONING MODE ACTIVATED
+You MUST conduct a rigorous, comprehensive step-by-step reasoning breakdown before presenting your final answer.
+Start your response with an internal reasoning section enclosed in <thought> ... </thought> tags.
+In your <thought> block, detail:
+1. Core objectives & problem decomposition
+2. Constraints, assumptions & potential edge cases
+3. Step-by-step logical derivation or analysis
+4. Solution verification
+After the </thought> tag, present your final structured, authoritative answer.`;
+      systemPrompt += thinkingInstruction;
+    }
+
     if (provider === "groq") maxTokens = Math.min(maxTokens, 4096);
 
-    const response = await fetchAI(provider, url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: routedModelId,
-        messages,
+    // ── Provider fallback ──────────────────────────────────────────────────────
+    // Priority chain: requested model → alternate engine → key-pool fallback.
+    // We do not fabricate which upstream model answered; Likeway presents the
+    // engine name the user selected, and the provider is chosen at runtime.
+    let response: Response | null = null;
+    if (provider === "freemodels" || provider === "tokenharbor") {
+      const meta = LIKEWAY_ENGINE_LABELS[resolvedModelId] || {
+        name: selectedModel.name,
+        intro: "a Likeway AI engine",
+      };
+
+      // Construct messages for freemodels:
+      // The worker strips system messages, so we prepend the persona instruction.
+      const freeMessages: { role: string; content: string }[] = [];
+      const thinkingDirective = extendedThinking
+        ? " [Deep Thinking Mode: Enclose your detailed step-by-step reasoning inside a <thought> ... </thought> block first, then present your final answer.]"
+        : "";
+      const personaPrefix =
+        `[Directive: You are ${meta.name}, ${meta.intro}. ` +
+        `Identify only as ${meta.name}, a Likeway AI engine created by Aixphonic — ` +
+        `never claim to be, or to be made by, another company's model or product.${thinkingDirective}]\n\n`;
+
+      for (const msg of messages) {
+        if (msg.role === "system") continue;
+        freeMessages.push({ ...msg });
+      }
+
+      if (freeMessages.length > 0) {
+        const lastIdx = freeMessages.length - 1;
+        freeMessages[lastIdx] = {
+          ...freeMessages[lastIdx],
+          content: `${personaPrefix}${freeMessages[lastIdx].content}`,
+        };
+      } else {
+        freeMessages.push({
+          role: "user",
+          content: `${personaPrefix}${userContent}`,
+        });
+      }
+
+      const freePayload = {
+        model: resolvedModelId,
+        messages: freeMessages,
         stream: true,
         max_tokens: maxTokens,
         temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
-      }),
-    });
+      };
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "Unknown error");
-      console.error(`[Chat API] AI request failed (${response.status}):`, errText);
-      return new Response(JSON.stringify({ error: "AI request failed" }), {
-        status: response.status,
+      const makeTokenHarborRequest = async (targetModel: string) => {
+        if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
+        return fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${TOKENHARBOR_KEY}`,
+          },
+          body: JSON.stringify({ ...freePayload, model: targetModel }),
+          signal: AbortSignal.timeout(60000),
+        });
+      };
+
+      const makeFreeRequest = async (targetModel: string) => {
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Origin": "https://freemodels.pro",
+            "Referer": "https://freemodels.pro/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          },
+          body: JSON.stringify({ ...freePayload, model: targetModel }),
+          signal: AbortSignal.timeout(30000),
+        });
+      };
+
+      try {
+        // Primary: try the tokenharbor models first if that's the provider
+        if (provider === "tokenharbor") {
+          try {
+            response = await makeTokenHarborRequest(resolvedModelId);
+            if (!response || !response.ok) {
+              console.warn(`[Chat API] TokenHarbor ${resolvedModelId} returned ${response?.status}. Trying mimo fallback...`);
+              const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
+              response = await makeTokenHarborRequest(altModel);
+              if (!response || !response.ok) {
+                console.warn(`[Chat API] TokenHarbor fallback failed. Switching to freemodels...`);
+                response = await makeFreeRequest("gpt-6-astra");
+              }
+            }
+          } catch (thErr: any) {
+            console.warn(`[Chat API] TokenHarbor request error:`, thErr?.message);
+            response = await makeFreeRequest("gpt-6-astra").catch(() => null);
+          }
+        } else {
+          // Primary: freemodels proxy
+          response = await makeFreeRequest(resolvedModelId);
+          if (!response || !response.ok) {
+            console.warn(`[Chat API] Free model ${resolvedModelId} returned ${response?.status}. Trying TokenHarbor mimo...`);
+            // Silently try TokenHarbor mimo before gpt-6-astra
+            try {
+              const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
+              if (mimoRes && mimoRes.ok) {
+                response = mimoRes;
+              } else {
+                const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
+                if (retryRes?.ok) response = retryRes;
+              }
+            } catch {
+              const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
+              if (retryRes?.ok) response = retryRes;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[Chat API] Primary request error for ${resolvedModelId}:`, err?.message || err);
+        try {
+          const mimoFallback = await makeTokenHarborRequest("mimo-v2.6-flash:free");
+          if (mimoFallback && mimoFallback.ok) {
+            response = mimoFallback;
+          } else {
+            response = await makeFreeRequest("gpt-6-astra").catch(() => null);
+          }
+        } catch {
+          response = await makeFreeRequest("gpt-6-astra").catch(() => null);
+        }
+      }
+
+      // If freemodels proxy completely failed, seamlessly fallback to key-pool openrouter / groq
+      if (!response || !response.ok) {
+        console.warn(`[Chat API] Freemodels proxy unavailable. Activating key-pool fallback...`);
+        try {
+          response = await fetchAI(
+            "openrouter",
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash",
+                messages,
+                stream: true,
+                max_tokens: maxTokens,
+                temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+              }),
+            }
+          );
+        } catch (fallbackErr) {
+          console.error("[Chat API] Key-pool fallback failed:", fallbackErr);
+        }
+      }
+    } else {
+      // Key-pool providers (OpenRouter, Groq, Mistral)
+      try {
+        response = await fetchAI(
+          provider,
+          url,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: resolvedModelId,
+              messages,
+              stream: true,
+              max_tokens: maxTokens,
+              temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+            }),
+          }
+        );
+      } catch (err) {
+        console.warn(`[Chat API] Provider ${provider} error:`, err);
+      }
+
+      // If key-pool failed or rate limited, seamlessly fallback to TokenHarbor or Freemodels!
+      if (!response || !response.ok) {
+        console.warn(`[Chat API] Provider ${provider} failed (${response?.status}). Silently routing to TokenHarbor Mimo...`);
+        try {
+          if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
+          response = await fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${TOKENHARBOR_KEY}`,
+            },
+            body: JSON.stringify({
+              model: "mimo-v2.6-flash:free",
+              messages,
+              stream: true,
+              max_tokens: maxTokens,
+              temperature: 0.7,
+            }),
+            signal: AbortSignal.timeout(45000),
+          });
+        } catch {
+          try {
+            response = await fetch("https://freemodels-chat.freemodels.workers.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Origin": "https://freemodels.pro",
+                "Referer": "https://freemodels.pro/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              },
+              body: JSON.stringify({
+                model: "gpt-6-astra",
+                messages,
+                stream: true,
+                max_tokens: maxTokens,
+                temperature: 0.7,
+              }),
+              signal: AbortSignal.timeout(30000),
+            });
+          } catch {}
+        }
+      }
+    }
+
+    if (!response || !response.ok) {
+      const errText = response ? await response.text().catch(() => "Unknown error") : "No response from AI providers";
+      console.error(`[Chat API] AI request failed:`, errText);
+      return new Response(JSON.stringify({ error: "AI request failed: " + errText }), {
+        status: response?.status || 503,
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -890,31 +1557,56 @@ The capital of France is **Paris**. It is the largest city in France, located in
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let fullContent = "";
+    let introBuffer = "";
+    let introEmitted = false;
+    let sseLineBuffer = "";
+    const sugState: SuggestionStreamState = { inBlock: false, raw: "" };
 
     const transformStream = new TransformStream({
       transform(chunk, controller) {
-        const text = decoder.decode(chunk, { stream: true });
+        const text = sseLineBuffer + decoder.decode(chunk, { stream: true });
         const lines = text.split("\n");
+        // Keep any trailing incomplete line in buffer
+        sseLineBuffer = lines.pop() || "";
         const cleanChunks: string[] = [];
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
+          const trimmed = line.trim();
+          if (trimmed.startsWith("data: ")) {
+            const data = trimmed.slice(6).trim();
             if (data === "[DONE]") {
-              cleanChunks.push(`data: [DONE]\n`);
+              if (!introEmitted && introBuffer) {
+                const cleaned = cleanFormatting(introBuffer);
+                cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`);
+                introEmitted = true;
+                introBuffer = "";
+              }
+              cleanChunks.push(`data: [DONE]\n\n`);
               continue;
             }
             try {
               const parsed = JSON.parse(data);
-              const delta = parsed.choices?.[0]?.delta?.content || "";
+              const rawDelta = parsed.choices?.[0]?.delta?.content || "";
+              const delta = stripSuggestions(rawDelta, sugState);
               if (delta) {
                 fullContent += delta;
-                // Clean the delta before sending
-                const cleanDelta = cleanFormatting(delta);
-                cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleanDelta } }] })}\n`);
+
+                if (!introEmitted) {
+                  introBuffer += delta;
+                  // If buffer reached sentence break or sufficient length, flush it cleanly
+                  if (introBuffer.includes("\n") || introBuffer.length >= 80) {
+                    const cleaned = cleanFormatting(introBuffer);
+                    cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`);
+                    introEmitted = true;
+                    introBuffer = "";
+                  }
+                } else {
+                  const cleanDelta = cleanFormatting(delta);
+                  cleanChunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: cleanDelta } }] })}\n\n`);
+                }
               }
             } catch {
-              cleanChunks.push(line + "\n");
+              // Ignore partial or non-JSON comments
             }
           }
         }
@@ -923,11 +1615,26 @@ The capital of France is **Paris**. It is the largest city in France, located in
           controller.enqueue(encoder.encode(cleanChunks.join("")));
         }
       },
-      flush() {
+      flush(controller) {
+        if (!introEmitted && introBuffer) {
+          const cleaned = cleanFormatting(introBuffer);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: cleaned } }] })}\n\n`));
+          introEmitted = true;
+          introBuffer = "";
+        }
         if (fullContent.trim()) {
-          saveMessage(userId, { role: "assistant", content: fullContent }, projectId, conversationId).catch((error) => {
+          const finalCleaned = cleanFormatting(fullContent);
+          saveMessage(userId, { role: "assistant", content: finalCleaned }, projectId, conversationId).catch((error) => {
             console.error("[Chat API] Failed to save assistant message:", error);
           });
+        }
+
+        // Emit follow-up suggestion chips as their own SSE event.
+        const suggestions = parseSuggestionLines(sugState.raw);
+        if (suggestions.length > 0) {
+          controller.enqueue(
+            encoder.encode(`event: suggestions\ndata: ${JSON.stringify({ suggestions })}\n\n`)
+          );
         }
       },
     });

@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Sparkles, Zap, ArrowLeft, Shield, Globe, Code, Wand2, Mic, Brain, Eye, Star, Lock, Rocket, Layers, Search, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PLANS, setCurrentPlan, getCurrentPlan, PlanType } from "@/lib/plans";
-import { MODELS } from "@/lib/models";
+import { PLANS, setCurrentPlan, getCurrentPlan, getPlanModels, isAllModelsPlan, PlanType, PLAN_THEME, PLAN_BADGES } from "@/lib/plans";
 import { useState, useEffect, useRef } from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -47,16 +46,7 @@ const PLAN_PRICES_INR: Record<string, number> = {
 function convertPrice(amountINR: number, currency: typeof CURRENCIES[0]): string {
   if (amountINR === 0) return "Free";
   const converted = Math.round(amountINR * currency.rate);
-  if (currency.code === "JPY" || currency.code === "KRW" || currency.code === "NGN") {
-    return `${currency.symbol}${converted.toLocaleString()}`;
-  }
-  return `${currency.symbol}${converted}`;
-}
-
-function getPlanModels(planId: PlanType): number {
-  const plan = PLANS[planId];
-  if (plan.limits.modelsAllowed[0] === "*") return MODELS.length;
-  return plan.limits.modelsAllowed.length;
+  return `${currency.symbol}${converted.toLocaleString("en-IN")}`;
 }
 
 export default function PricingPage() {
@@ -152,9 +142,6 @@ export default function PricingPage() {
 
     const userId = user.id;
     const plan = PLANS[planId];
-    
-    const priceInt = parseInt(plan.price.replace(/[₹,]/g, '')) || 0;
-    const amountInPaise = priceInt * 100;
 
     try {
       const loaded = await loadRazorpayScript();
@@ -168,9 +155,9 @@ export default function PricingPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ 
-          amount: amountInPaise, 
-          currency: "INR",
+        // The server derives the amount from planId — the client never sets price.
+        body: JSON.stringify({
+          planId,
           receipt: generateReceiptId(planId)
         }),
       });
@@ -416,7 +403,8 @@ export default function PricingPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {Object.values(PLANS).map((plan, index) => {
             const modelCount = getPlanModels(plan.id);
-            const isPro = plan.id === "Pro";
+            const planTheme = PLAN_THEME[plan.id];
+            const planGradient = `linear-gradient(135deg, ${planTheme.gradient[0]}, ${planTheme.gradient[1]})`;
             // Use server plan (authoritative) so the button reflects the real
             // subscription state — not just what's in localStorage.
             const effectiveCurrentPlan = serverPlan || (getCurrentPlan() as PlanType);
@@ -436,36 +424,27 @@ export default function PricingPage() {
                   plan.id === "Go"
                     ? "border-cyan-500/50 shadow-[0_0_40px_rgba(6,182,212,0.15)] ring-1 ring-cyan-500/20 bg-gradient-to-b from-[#0a1628] to-[#0a0e16]"
                     : plan.id === "Pro"
-                    ? "border-violet-500/50 shadow-[0_0_40px_rgba(139,92,246,0.15)] ring-1 ring-violet-500/20 bg-gradient-to-b from-[#140a28] to-[#0a0e16]"
+                    ? "border-amber-500/50 shadow-[0_0_40px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20 bg-gradient-to-b from-[#1a1408] to-[#0a0e16]"
                     : plan.id === "Plus"
-                    ? "border-blue-500/50 shadow-[0_0_50px_rgba(59,130,246,0.2)] ring-1 ring-blue-500/30 bg-gradient-to-b from-[#0a1430] to-[#0a0e16] md:scale-[1.02] z-10"
+                    ? "border-violet-500/50 shadow-[0_0_50px_rgba(139,92,246,0.2)] ring-1 ring-violet-500/30 bg-gradient-to-b from-[#140a28] to-[#0a0e16] md:scale-[1.02] z-10"
                     : "border-white/5 bg-[#0a0e16] hover:border-white/10"
                 }`}
               >
                 {/* Badge */}
-                {plan.id === "Go" && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-cyan-500 to-blue-500 text-black text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-cyan-500/30 whitespace-nowrap z-10">
-                     LIMITED TIME OFFER
-                  </div>
-                )}
-
-                {plan.id === "Plus" && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-blue-500/30 whitespace-nowrap z-10">
-                     MOST POPULAR
-                  </div>
-                )}
-
-                {plan.id === "Pro" && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-violet-500/30 whitespace-nowrap z-10">
-                     BEST VALUE
+                {PLAN_BADGES[plan.id] && (
+                  <div
+                    className="absolute -top-4 left-1/2 -translate-x-1/2 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest whitespace-nowrap z-10"
+                    style={{ background: planGradient, boxShadow: `0 8px 30px -8px ${planTheme.color}` }}
+                  >
+                    {PLAN_BADGES[plan.id]}
                   </div>
                 )}
 
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xl font-black tracking-tight">{plan.name}</h3>
-                    {plan.id === "Pro" && <Rocket size={16} className="text-violet-400" />}
-                    {plan.id === "Plus" && <Sparkles size={16} className="text-blue-400" />}
+                    {plan.id === "Pro" && <Rocket size={16} className="text-amber-400" />}
+                    {plan.id === "Plus" && <Sparkles size={16} className="text-violet-400" />}
                     {plan.id === "Go" && <Zap size={16} className="text-cyan-400" />}
                   </div>
 
@@ -483,15 +462,15 @@ export default function PricingPage() {
                   <div className={cn(
                     "mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider",
                     plan.id === "Pro" 
-                      ? "border-violet-500/30 text-violet-400 bg-violet-500/5"
+                      ? "border-amber-500/30 text-amber-400 bg-amber-500/5"
                       : plan.id === "Go"
                       ? "border-cyan-500/30 text-cyan-400 bg-cyan-500/5"
                       : plan.id === "Plus"
-                      ? "border-blue-500/30 text-blue-400 bg-blue-500/5"
+                      ? "border-violet-500/30 text-violet-400 bg-violet-500/5"
                       : "border-gray-500/20 text-gray-400"
                   )}>
                     <Lock size={10} className={plan.id === "Core" ? "opacity-50" : ""} />
-                    {modelCount === MODELS.length 
+                    {isAllModelsPlan(plan.id)
                       ? `All ${modelCount} models unlocked` 
                       : `${modelCount} models unlocked`}
                   </div>
@@ -502,8 +481,8 @@ export default function PricingPage() {
                     <div key={i} className="flex items-start gap-3 text-[12px] text-gray-400 leading-tight group">
                       <Check size={14} className={cn("mt-0.5 shrink-0", 
                           plan.id === 'Go' ? 'text-cyan-400' : 
-                          plan.id === 'Pro' ? 'text-violet-400' : 
-                          plan.id === 'Plus' ? 'text-blue-400' : 'text-gray-500'
+                          plan.id === 'Pro' ? 'text-amber-400' : 
+                          plan.id === 'Plus' ? 'text-violet-400' : 'text-gray-500'
                       )} />
                       <span className="font-medium">{feature}</span>
                     </div>
@@ -518,11 +497,11 @@ export default function PricingPage() {
                     isCurrentPlan
                       ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default opacity-90"
                       : plan.id === "Go"
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-black hover:from-cyan-400 hover:to-blue-400 hover:shadow-cyan-500/25 cursor-pointer"
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:from-cyan-400 hover:to-blue-400 hover:shadow-cyan-500/25 cursor-pointer"
                       : plan.id === "Pro"
-                      ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white hover:from-violet-400 hover:to-purple-400 hover:shadow-violet-500/25 cursor-pointer"
+                      ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-400 hover:to-orange-400 hover:shadow-amber-500/25 cursor-pointer"
                       : plan.id === "Plus"
-                      ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-400 hover:to-indigo-400 hover:shadow-blue-500/25 cursor-pointer"
+                      ? "bg-gradient-to-r from-violet-500 to-indigo-500 text-white hover:from-violet-400 hover:to-indigo-400 hover:shadow-violet-500/25 cursor-pointer"
                       : "bg-white/5 hover:bg-white/10 text-white border border-white/10 cursor-pointer"
                   } ${!isCurrentPlan && hoveredPlan === plan.id ? "scale-[1.02]" : ""}`}
                 >

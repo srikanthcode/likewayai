@@ -10,8 +10,8 @@ import {
   createRefreshToken,
   setAuthCookies,
   generateSessionId,
-  isVipUser,
 } from "@/lib/auth";
+import { getPaymentRef, markPaymentRefStatus } from "@/lib/payments-store";
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -70,37 +70,67 @@ export async function POST(req: NextRequest) {
     }
 
     // Standard checkout signature: HMAC-SHA256(order_id + "|" + payment_id, KEY_SECRET)
-    const generatedSignature = crypto
+    // Subscription checkout signature: HMAC-SHA256(payment_id + "|" + subscription_id, KEY_SECRET)
+    const orderSig = crypto
       .createHmac("sha256", razorpayKeySecret)
       .update(`${orderId}|${razorpay_payment_id}`)
       .digest("hex");
 
-    if (!razorpay_signature || !timingSafeEqual(generatedSignature, razorpay_signature)) {
+    const subSig = crypto
+      .createHmac("sha256", razorpayKeySecret)
+      .update(`${razorpay_payment_id}|${orderId}`)
+      .digest("hex");
+
+    const isMatch =
+      Boolean(razorpay_signature) &&
+      (timingSafeEqual(orderSig, razorpay_signature) || timingSafeEqual(subSig, razorpay_signature));
+
+    if (!isMatch) {
       console.error("[Subscription Confirm] Signature mismatch");
       return NextResponse.json({ error: "Invalid signature verification" }, { status: 400 });
     }
 
+    // ── Defense in depth: the paid order must belong to THIS user and must have
+    // been created for THIS plan. This prevents paying for a cheap plan and
+    // confirming an expensive one.
+    const ref = await getPaymentRef(orderId);
+    if (!ref) {
+      console.error(`[Subscription Confirm] No payment reference for ${orderId}`);
+      return NextResponse.json(
+        { error: "Unknown order. Please start checkout again from the pricing page." },
+        { status: 400 }
+      );
+    }
+    if (ref.userId !== userId || ref.planId !== planId) {
+      console.error("[Subscription Confirm] Order/plan mismatch", {
+        refUserId: ref.userId,
+        userId,
+        refPlan: ref.planId,
+        planId,
+      });
+      return NextResponse.json({ error: "Order does not match this account or plan." }, { status: 403 });
+    }
+
     // Persist the plan upgrade to the DB
     await updateUserSubscription(userId, planId as PlanType, "active", orderId);
+    await markPaymentRefStatus(orderId, "paid");
 
     // Re-fetch user to get the freshest DB state
     const updatedUser = await findUserById(userId);
     if (updatedUser) {
-      const vip = isVipUser(userId, updatedUser.email);
-      // VIP always gets Pro regardless of what they paid for
-      const effectivePlan = vip ? "Pro" : planId;
+      const effectivePlan = planId;
 
       // Issue new tokens with the upgraded plan — reusing existing sessionId
       const newAccessToken = createAccessToken(
         {
           id: userId,
           email: updatedUser.email,
-          role: vip ? "admin" : updatedUser.role,
+          role: updatedUser.role,
           plan: effectivePlan,
         },
         existingSessionId
       );
-      const newRefreshToken = createRefreshToken(userId, existingSessionId);
+      const newRefreshToken = createRefreshToken(userId, existingSessionId, updatedUser.role, effectivePlan);
 
       const response = NextResponse.json({
         status: "success",

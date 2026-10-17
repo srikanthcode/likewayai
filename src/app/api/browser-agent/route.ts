@@ -5,6 +5,7 @@ import { fetchAI } from "@/lib/api-manager";
 import { getProviderForModel } from "@/lib/models";
 import { browserJobQueue } from "@/lib/automation/job-queue";
 import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { consumeEntitlement, entitlementDenied } from "@/lib/entitlements";
 import crypto from "crypto";
 
 export const maxDuration = 180;
@@ -36,10 +37,38 @@ export async function POST(req: NextRequest) {
 
     const tokens = getTokenFromCookies(req);
     const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    const userId = payload?.sub || req.headers.get("x-user-id") || "anonymous";
+
+    // Server-to-server calls (Vercel → Render proxy) authenticate with a shared
+    // secret instead of a user cookie. The browser `x-user-id` header is NEVER
+    // trusted for identity.
+    const internalSecret = process.env.INTERNAL_API_SECRET || "";
+    const isInternal =
+      internalSecret.length > 0 && req.headers.get("x-likeway-internal") === internalSecret;
+
+    if (!payload && !isInternal) {
+      return NextResponse.json(
+        { error: "Sign in to use browser automation." },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    const userId = payload?.sub || "anonymous";
 
     const body = await req.json();
     const { task, modelId: requestedModel, startUrl, headless = isProduction, async: isAsync } = body;
+
+    // Meter user-initiated calls. The Vercel→Render proxy is metered at the edge.
+    if (payload) {
+      const entitlement = await consumeEntitlement(
+        payload.sub,
+        payload.plan,
+        "browser_automation",
+        payload.role
+      );
+      if (!entitlement.allowed) {
+        return NextResponse.json(entitlementDenied(entitlement), { status: 402, headers: corsHeaders });
+      }
+    }
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
       return NextResponse.json(
