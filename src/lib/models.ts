@@ -39,7 +39,7 @@ export const MODELS: Model[] = [
     contextWindow: 1000000,
     vision: true,
     plan: "Core",
-    description: "Likeway Omni — the smart router that automatically picks the fastest, strongest available engine for each prompt.",
+    description: "Autonomous smart router selecting the optimal engine for each query.",
     featured: true,
     promoLabel: "Free for 1 month",
     reasoning: true,
@@ -51,7 +51,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Fable — creative writing and long-form composition engine.",
+    description: "Creative writing, storytelling, and long-form composition.",
     reasoning: true,
   },
   {
@@ -61,7 +61,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Fable Pro — creative and visual reasoning engine with higher precision.",
+    description: "Advanced creative composition with nuanced reasoning.",
     reasoning: true,
   },
   {
@@ -71,7 +71,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Opus — deep-reasoning engine for complex analysis and problem solving.",
+    description: "Deep reasoning for complex mathematical and analytical problem solving.",
     reasoning: true,
   },
   {
@@ -81,7 +81,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Sonnet — balanced, low-latency reasoning engine with vision support.",
+    description: "Balanced, low-latency reasoning and fast general assistance.",
     fast: true,
     reasoning: true,
   },
@@ -92,7 +92,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Bilingual — multilingual reasoning engine with vision support.",
+    description: "High-accuracy multilingual reasoning and translation.",
     reasoning: true,
   },
   {
@@ -102,7 +102,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway LongContext — long-context research and document understanding engine.",
+    description: "Deep research across large documents and long-form context.",
     fast: true,
     reasoning: true,
   },
@@ -113,7 +113,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Sol — ultra-low-latency engine for fast everyday and analytical tasks.",
+    description: "Ultra-low-latency assistant for everyday fast execution.",
     fast: true,
     reasoning: true,
   },
@@ -124,12 +124,12 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Go",
-    description: "Likeway Terra — factual, grounded reasoning engine with image understanding.",
+    description: "Grounded, factual analysis with strong factual accuracy.",
     reasoning: true,
   },
 
   // ══════════════════════════════════════════════════════════════
-  //  TOKENHARBOR MODELS — High quality, vision + video + audio
+  //  FAST & MULTIMODAL MODELS
   // ══════════════════════════════════════════════════════════════
   {
     id: "deepseek-v4.1-flash:free",
@@ -138,7 +138,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Core",
-    description: "Likeway Flash — ultra-fast reasoning engine with image understanding. Requires TOKENHARBOR_API_KEY.",
+    description: "Ultra-fast reasoning engine with image understanding.",
     fast: true,
     reasoning: true,
   },
@@ -149,13 +149,13 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: true,
     plan: "Core",
-    description: "Likeway Mimo — multimodal engine with image understanding and fast reasoning. Requires TOKENHARBOR_API_KEY.",
+    description: "Multimodal engine with image understanding and fast reasoning.",
     fast: true,
     reasoning: true,
   },
 
   // ══════════════════════════════════════════════════════════════
-  //  PAID / API-KEY MODELS
+  //  SPECIALIZED CODING & KNOWLEDGE MODELS
   // ══════════════════════════════════════════════════════════════
   {
     id: "mistral-medium-latest",
@@ -164,7 +164,7 @@ export const MODELS: Model[] = [
     contextWindow: 32000,
     vision: false,
     plan: "Go",
-    description: "Main chat model – excellent for chat, reasoning, and coding.",
+    description: "Full-stack coding, debugging, and code refactoring.",
   },
   {
     id: "codestral-latest",
@@ -173,7 +173,7 @@ export const MODELS: Model[] = [
     contextWindow: 32000,
     vision: false,
     plan: "Go",
-    description: "World-class coding model for complex software engineering tasks.",
+    description: "Specialized code generation for complex architectures.",
   },
   {
     id: "mistral-small-latest",
@@ -182,7 +182,7 @@ export const MODELS: Model[] = [
     contextWindow: 32000,
     vision: false,
     plan: "Go",
-    description: "Lightweight model for fast responses.",
+    description: "Compact and ultra-responsive lightweight engine.",
     fast: true,
   },
   {
@@ -192,7 +192,7 @@ export const MODELS: Model[] = [
     contextWindow: 128000,
     vision: false,
     plan: "Go",
-    description: "Focused and precise knowledge retrieval for basic research",
+    description: "Precise knowledge retrieval and academic research.",
   },
   {
     id: "llama-3.1-8b-instant",
@@ -201,7 +201,7 @@ export const MODELS: Model[] = [
     contextWindow: 128000,
     vision: false,
     plan: "Go",
-    description: "Ultra-responsive and efficient for everyday tasks",
+    description: "Lightning-fast responses for quick questions and editing.",
     fast: true,
   },
   {
@@ -211,7 +211,7 @@ export const MODELS: Model[] = [
     contextWindow: 1000000,
     vision: true,
     plan: "Plus",
-    description: "High-speed multimodal engine with basic image understanding",
+    description: "High-speed multimodal engine with 1M token context.",
   },
   {
     id: "google/gemini-2.5-pro",
@@ -220,7 +220,7 @@ export const MODELS: Model[] = [
     contextWindow: 1000000,
     vision: true,
     plan: "Plus",
-    description: "Incredibly fast mid-tier intelligence with advanced vision",
+    description: "Mid-tier intelligence with advanced vision and 1M context.",
   },
   {
     id: "deepseek/deepseek-chat",
@@ -229,7 +229,7 @@ export const MODELS: Model[] = [
     contextWindow: 128000,
     vision: false,
     plan: "Plus",
-    description: "Lightning-fast and highly secure analysis engine",
+    description: "Fast, secure logical analysis engine.",
   },
   {
     id: "deepseek/deepseek-r1",
@@ -238,7 +238,7 @@ export const MODELS: Model[] = [
     contextWindow: 128000,
     vision: false,
     plan: "Plus",
-    description: "World-class coding capabilities and logical flow",
+    description: "Deep coding logic with step-by-step reasoning.",
     reasoning: true,
   },
   {
@@ -248,7 +248,7 @@ export const MODELS: Model[] = [
     contextWindow: 128000,
     vision: true,
     plan: "Plus",
-    description: "Comprehensive multimodal powerhouse with elite visual precision",
+    description: "Comprehensive multimodal reasoning with high visual precision.",
   },
   {
     id: "openai/o3",
@@ -257,7 +257,7 @@ export const MODELS: Model[] = [
     contextWindow: 200000,
     vision: false,
     plan: "Pro",
-    description: "Ultra-high reasoning capacity for mathematical and scientific breakthroughs",
+    description: "Maximum reasoning capacity for scientific breakthroughs.",
     reasoning: true,
   },
   {
@@ -267,7 +267,7 @@ export const MODELS: Model[] = [
     contextWindow: 1000000,
     vision: true,
     plan: "Pro",
-    description: "The absolute pinnacle of creative generation and structural mastery",
+    description: "Frontier multimodal creativity with 1M context window.",
   },
 ];
 

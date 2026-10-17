@@ -580,7 +580,26 @@ export default function ChatPage() {
   const [selectedAgentId, setSelectedAgentId] = useState("general");
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isInputModelMenuOpen, setIsInputModelMenuOpen] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const [modelCategoryFilter, setModelCategoryFilter] = useState<"all" | "free" | "frontier" | "pro">("all");
   const [selectedModel, setSelectedModel] = useState(MODELS.find(m => m.id === "gpt-6-astra") || MODELS[0]);
+
+  const filteredModelsList = useMemo(() => {
+    let list = MODELS;
+    if (modelCategoryFilter === "free") {
+      list = list.filter(m => m.plan === "Core" || m.id === "gpt-6-astra");
+    } else if (modelCategoryFilter === "frontier") {
+      list = list.filter(m => m.provider === "freemodels" && m.id !== "gpt-6-astra");
+    } else if (modelCategoryFilter === "pro") {
+      list = list.filter(m => m.plan === "Plus" || m.plan === "Pro" || (m.provider !== "freemodels" && m.provider !== "tokenharbor"));
+    }
+
+    if (modelSearchQuery.trim()) {
+      const q = modelSearchQuery.trim().toLowerCase();
+      list = list.filter(m => m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+    }
+    return list;
+  }, [modelCategoryFilter, modelSearchQuery]);
   const [isExtendedThinking, setIsExtendedThinking] = useState(false);
   const [isWebSearchMode, setIsWebSearchMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -3717,18 +3736,13 @@ export default function ChatPage() {
                         title="Select model"
                         className={cn(
                           "h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
-                          selectedModel.id === "gpt-6-astra"
-                            ? (theme === 'dark' ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/15" : "bg-emerald-50 border-emerald-300 text-emerald-800")
-                            : (theme === 'dark'
-                                ? "bg-white/5 border-white/8 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/15"
-                                : "bg-black/4 border-black/8 text-gray-600 hover:text-gray-900 hover:bg-black/8")
+                          theme === 'dark'
+                            ? "bg-white/5 border-white/8 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/15"
+                            : "bg-black/4 border-black/8 text-gray-700 hover:text-gray-900 hover:bg-black/8"
                         )}
                       >
-                        <Sparkles size={11} className={selectedModel.id === "gpt-6-astra" ? "text-emerald-400" : "opacity-70"} />
-                        <span className="max-w-[110px] truncate hidden sm:block">{selectedModel.name}</span>
-                        {selectedModel.id === "gpt-6-astra" && (
-                          <span className="px-1 py-0.2 rounded text-[7px] font-extrabold uppercase bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hidden md:inline">1M Free</span>
-                        )}
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                        <span className="max-w-[110px] truncate">{selectedModel.name}</span>
                         <ChevronDown size={10} className="opacity-60" />
                       </button>
                       <AnimatePresence>
@@ -3736,262 +3750,150 @@ export default function ChatPage() {
                           <>
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40" onClick={() => setIsInputModelMenuOpen(false)} />
                             <motion.div
-                              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                              initial={{ opacity: 0, scale: 0.96, y: 6 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-                              transition={{ duration: 0.15 }}
+                              exit={{ opacity: 0, scale: 0.96, y: 6 }}
+                              transition={{ duration: 0.15, ease: "easeOut" }}
                               className={cn(
-                                "absolute bottom-full right-0 mb-3 w-[400px] max-w-[min(400px,calc(100vw-1rem))] max-h-[75vh] overflow-y-auto p-2 border rounded-2xl shadow-2xl z-50 flex flex-col gap-1 origin-bottom-right scrollbar-hide",
-                                theme === 'dark' ? "bg-[#161619]/95 backdrop-blur-xl border-white/10" : "bg-white/95 backdrop-blur-xl border-black/10"
+                                "absolute bottom-full right-0 mb-2 w-[340px] max-w-[calc(100vw-1.5rem)] rounded-2xl border shadow-2xl z-50 flex flex-col overflow-hidden origin-bottom-right",
+                                theme === 'dark'
+                                  ? "bg-[#18181b]/98 backdrop-blur-2xl border-white/10 text-white"
+                                  : "bg-white/98 backdrop-blur-2xl border-black/10 text-gray-900"
                               )}
                             >
-                              {/* ── Section 1: Featured Free Model ──────────────────── */}
-                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mb-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Sparkles size={13} className="text-emerald-400" />
-                                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Featured Free Model</span>
+                              {/* Header & Search */}
+                              <div className={cn("p-2.5 border-b space-y-2", theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-black/5 bg-black/[0.01]")}>
+                                <div className="flex items-center justify-between px-1">
+                                  <span className="text-xs font-bold tracking-tight">Select Model</span>
+                                  <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full border", theme === 'dark' ? "bg-white/5 border-white/10 text-gray-400" : "bg-black/5 border-black/10 text-gray-500")}>
+                                    {MODELS.length} models
+                                  </span>
                                 </div>
-                                <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                  Free · 1 Month Unlimited
-                                </span>
-                              </div>
-                              {MODELS.filter(m => m.id === "gpt-6-astra").map(model => {
-                                const isSelected = selectedModel.id === model.id;
-                                return (
-                                  <button
-                                    key={`${model.id}-featured`}
-                                    onClick={() => { setSelectedModel(model); setIsInputModelMenuOpen(false); }}
+
+                                <div className="relative">
+                                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-40" />
+                                  <input
+                                    type="text"
+                                    value={modelSearchQuery}
+                                    onChange={(e) => setModelSearchQuery(e.target.value)}
+                                    placeholder="Filter models..."
                                     className={cn(
-                                      "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all text-left group relative border",
+                                      "w-full pl-7 pr-7 py-1 text-xs rounded-lg border focus:outline-none transition-all",
                                       theme === 'dark'
-                                        ? (isSelected
-                                            ? "bg-gradient-to-r from-emerald-500/20 via-emerald-950/40 to-teal-900/30 border-emerald-500/50 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
-                                            : "bg-emerald-950/25 hover:bg-emerald-950/45 border-emerald-500/25 text-emerald-100")
-                                        : (isSelected
-                                            ? "bg-emerald-50 border-emerald-400 text-emerald-950 shadow-sm"
-                                            : "bg-emerald-50/60 hover:bg-emerald-50 border-emerald-200 text-emerald-900")
+                                        ? "bg-black/30 border-white/10 text-white placeholder-gray-500 focus:border-cyan-500/50"
+                                        : "bg-gray-50 border-black/10 text-gray-900 placeholder-gray-400 focus:border-cyan-500/50"
                                     )}
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-[13px] font-bold tracking-tight">{model.name}</span>
-                                        <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide bg-gradient-to-r from-amber-500/25 to-yellow-500/25 text-amber-300 border border-amber-500/40 flex items-center gap-1 shadow-sm">
-                                          ★ 1 Month Unlimited Free
-                                        </span>
-                                        {model.reasoning && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25 flex items-center gap-0.5">
-                                            <Brain size={8} /> Reasoning
-                                          </span>
-                                        )}
-                                        {model.vision && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25 flex items-center gap-0.5">
-                                            <ImageIcon size={8} /> Vision
-                                          </span>
-                                        )}
-                                        {model.video && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 flex items-center gap-0.5">
-                                            <Video size={8} /> Video
-                                          </span>
-                                        )}
-                                        {model.audio && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/25 flex items-center gap-0.5">
-                                            <AudioLines size={8} /> Audio
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[11px] opacity-70 leading-snug mt-1">{model.description}</div>
-                                    </div>
-                                    {isSelected && (
-                                      <Check size={14} className="flex-shrink-0 mt-0.5 text-emerald-400" />
-                                    )}
-                                  </button>
-                                );
-                              })}
-
-                              {/* ── Section 2: TokenHarbor Free Models (Vision · Video · Audio) ─────── */}
-                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mt-3 mb-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Sparkles size={13} className="text-cyan-400" />
-                                  <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">TokenHarbor Free Models</span>
-                                  <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Vision · Video · Audio</span>
+                                  />
+                                  {modelSearchQuery && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setModelSearchQuery("")}
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 text-xs"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  )}
                                 </div>
-                                <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                                  Free
-                                </span>
-                              </div>
-                              {MODELS.filter(m => m.provider === "tokenharbor").map(model => {
-                                const isSelected = selectedModel.id === model.id;
-                                return (
-                                  <button
-                                    key={`${model.id}-tokenharbor`}
-                                    onClick={() => { setSelectedModel(model); setIsInputModelMenuOpen(false); }}
-                                    className={cn(
-                                      "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all text-left group relative border",
-                                      theme === 'dark'
-                                        ? (isSelected
-                                            ? "bg-cyan-950/30 border-cyan-500/40 text-cyan-100 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
-                                            : "border-transparent hover:bg-white/5 text-gray-300 hover:text-white")
-                                        : (isSelected
-                                            ? "bg-cyan-50 border-cyan-300 text-cyan-900"
-                                            : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900")
-                                    )}
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-[13px] font-bold tracking-tight">{model.name}</span>
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                                          Free
-                                        </span>
-                                        {model.fast && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25 flex items-center gap-0.5">
-                                            <Zap size={8} /> Fast
-                                          </span>
-                                        )}
-                                        {model.reasoning && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25 flex items-center gap-0.5">
-                                            <Brain size={8} /> Reasoning
-                                          </span>
-                                        )}
-                                        {model.vision && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25 flex items-center gap-0.5">
-                                            <ImageIcon size={8} /> Vision
-                                          </span>
-                                        )}
-                                        {model.video && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 flex items-center gap-0.5">
-                                            <Video size={8} /> Video
-                                          </span>
-                                        )}
-                                        {model.audio && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/25 flex items-center gap-0.5">
-                                            <AudioLines size={8} /> Audio
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[11px] opacity-70 leading-snug mt-1">{model.description}</div>
-                                    </div>
-                                    {isSelected && (
-                                      <Check size={14} className={cn("flex-shrink-0 mt-0.5", theme === 'dark' ? "text-cyan-400" : "text-cyan-600")} />
-                                    )}
-                                  </button>
-                                );
-                              })}
 
-                              {/* ── Section 3: Likeway Frontier Models (₹299 Plan) ──────────────────── */}
-                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mt-3 mb-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Sparkles size={13} className="text-purple-400" />
-                                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400">Likeway Frontier Models</span>
-                                  <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">8 Models</span>
+                                {/* Filter Tabs */}
+                                <div className="flex items-center gap-1 pt-0.5">
+                                  {(["all", "free", "frontier", "pro"] as const).map((tab) => (
+                                    <button
+                                      key={tab}
+                                      type="button"
+                                      onClick={() => setModelCategoryFilter(tab)}
+                                      className={cn(
+                                        "flex-1 py-1 text-[10px] font-semibold rounded-md capitalize transition-all",
+                                        modelCategoryFilter === tab
+                                          ? (theme === 'dark' ? "bg-white/15 text-white" : "bg-black/10 text-black")
+                                          : (theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/5" : "text-gray-500 hover:text-black hover:bg-black/5")
+                                      )}
+                                    >
+                                      {tab}
+                                    </button>
+                                  ))}
                                 </div>
-                                <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                                  ₹299 Likeway Plan
-                                </span>
                               </div>
-                              {MODELS.filter(m => m.provider === "freemodels" && m.id !== "gpt-6-astra").map(model => {
-                                const planConfig = PLANS[currentPlan];
-                                const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
-                                const isSelected = selectedModel.id === model.id;
-                                return (
-                                  <button
-                                    key={`${model.id}-frontier`}
-                                    onClick={() => {
-                                      if (isAllowed) {
-                                        setSelectedModel(model);
-                                        setIsInputModelMenuOpen(false);
-                                      } else {
-                                        setIsPricingOpen(true);
-                                      }
-                                    }}
-                                    className={cn(
-                                      "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all text-left group relative border",
-                                      !isAllowed ? "opacity-75 hover:opacity-100" : "",
-                                      isSelected
-                                        ? (theme === 'dark' ? "bg-white/10 border-white/20 text-white" : "bg-gray-100 border-gray-300 text-gray-900")
-                                        : (theme === 'dark' ? "border-transparent hover:bg-white/5 text-gray-300 hover:text-white" : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900")
-                                    )}
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-[13px] font-bold tracking-tight">{model.name}</span>
-                                        {!isAllowed && (
-                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                                            <Lock size={7} /> ₹299 Plan
-                                          </span>
-                                        )}
-                                        {model.fast && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25 flex items-center gap-0.5">
-                                            <Zap size={8} /> Fast
-                                          </span>
-                                        )}
-                                        {model.reasoning && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25 flex items-center gap-0.5">
-                                            <Brain size={8} /> Reasoning
-                                          </span>
-                                        )}
-                                        {model.vision && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25 flex items-center gap-0.5">
-                                            <ImageIcon size={8} /> Vision
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[11px] opacity-70 leading-snug mt-1">{model.description}</div>
-                                    </div>
-                                    {isSelected && (
-                                      <Check size={14} className={cn("flex-shrink-0 mt-0.5", theme === 'dark' ? "text-white" : "text-gray-900")} />
-                                    )}
-                                  </button>
-                                );
-                              })}
 
-                              {/* ── Section 4: Paid / Key-Pool Models ──────────────────── */}
-                              <div className="px-3 py-2 flex items-center justify-between border-b border-white/5 mt-3 mb-1">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Likeway Key-Pool Models</span>
-                                <span className="text-[8px] font-semibold text-gray-500 uppercase">Plus / Pro Tier</span>
+                              {/* Models List */}
+                              <div className="max-h-[320px] overflow-y-auto p-1.5 space-y-0.5 custom-scrollbar">
+                                {filteredModelsList.length === 0 ? (
+                                  <div className="py-6 text-center text-xs opacity-50">
+                                    No models match &quot;{modelSearchQuery}&quot;
+                                  </div>
+                                ) : (
+                                  filteredModelsList.map((model) => {
+                                    const planConfig = PLANS[currentPlan];
+                                    const isAllowed =
+                                      model.plan === "Core" ||
+                                      planConfig.limits.modelsAllowed[0] === "*" ||
+                                      planConfig.limits.modelsAllowed.includes(model.id);
+                                    const isSelected = selectedModel.id === model.id;
+
+                                    return (
+                                      <button
+                                        key={model.id}
+                                        type="button"
+                                        onClick={() => {
+                                          if (isAllowed) {
+                                            setSelectedModel(model);
+                                            setIsInputModelMenuOpen(false);
+                                            setModelSearchQuery("");
+                                          } else {
+                                            setIsPricingOpen(true);
+                                          }
+                                        }}
+                                        className={cn(
+                                          "w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-left transition-all group border",
+                                          isSelected
+                                            ? (theme === 'dark'
+                                                ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-200 shadow-sm"
+                                                : "bg-cyan-50 border-cyan-300 text-cyan-900 shadow-sm")
+                                            : (theme === 'dark'
+                                                ? "border-transparent hover:bg-white/5 text-gray-300 hover:text-white"
+                                                : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900"),
+                                          !isAllowed && "opacity-60"
+                                        )}
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-xs font-semibold tracking-tight truncate">{model.name}</span>
+                                            {model.featured && (
+                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                                Featured
+                                              </span>
+                                            )}
+                                            {model.plan === "Core" && !model.featured && (
+                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                                Free
+                                              </span>
+                                            )}
+                                            {!isAllowed && (
+                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                                {model.plan}
+                                              </span>
+                                            )}
+                                            {model.contextWindow >= 1000000 && (
+                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                                1M
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-[11px] opacity-60 truncate mt-0.5 leading-tight">
+                                            {model.description}
+                                          </div>
+                                        </div>
+
+                                        {isSelected ? (
+                                          <Check size={14} className="text-cyan-400 flex-shrink-0" />
+                                        ) : !isAllowed ? (
+                                          <Lock size={11} className="opacity-40 flex-shrink-0" />
+                                        ) : null}
+                                      </button>
+                                    );
+                                  })
+                                )}
                               </div>
-                              {MODELS.filter(m => m.provider !== "freemodels" && m.provider !== "tokenharbor").map(model => {
-                                const planConfig = PLANS[currentPlan];
-                                const isAllowed = planConfig.limits.modelsAllowed[0] === "*" || planConfig.limits.modelsAllowed.includes(model.id);
-                                const isSelected = selectedModel.id === model.id && selectedModel.provider === model.provider;
-                                return (
-                                  <button
-                                    key={`${model.id}-${model.provider}-${model.name}`}
-                                    onClick={() => {
-                                      if (isAllowed) {
-                                        setSelectedModel(model);
-                                        setIsInputModelMenuOpen(false);
-                                      } else {
-                                        setIsPricingOpen(true);
-                                      }
-                                    }}
-                                    className={cn(
-                                      "flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-left group",
-                                      !isAllowed ? "opacity-60 hover:opacity-90" : "",
-                                      isSelected
-                                        ? (theme === 'dark' ? "bg-violet-500/10 text-violet-300 border border-violet-500/30" : "bg-violet-50 text-violet-700 border border-violet-300")
-                                        : (theme === 'dark' ? "hover:bg-white/5 text-gray-400 hover:text-white" : "hover:bg-black/5 text-gray-600 hover:text-gray-900")
-                                    )}
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[13px] font-semibold truncate">{model.name}</span>
-                                        {!isAllowed && (
-                                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/12 text-amber-400 border border-amber-500/20">
-                                            <Lock size={7} />{model.plan}
-                                          </span>
-                                        )}
-                                        {model.contextWindow >= 1000000 && (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                                            1M ctx
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[11px] opacity-60 truncate mt-0.5">{model.description}</div>
-                                    </div>
-                                    {isSelected && <Check size={14} className="flex-shrink-0" />}
-                                  </button>
-                                );
-                              })}
                             </motion.div>
                           </>
                         )}
