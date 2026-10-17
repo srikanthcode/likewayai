@@ -8,7 +8,9 @@ import {
   Maximize2, ArrowRightLeft, Type, Volume2,
   Workflow, Binary, TestTube, Bug, Wrench, Gauge,
   FileCode, ClipboardList, CalendarDays, Target, Clock, StickyNote,
-  CheckCircle, Map, Heart, Sparkles, Stars
+  CheckCircle, Map, Heart, Sparkles, Stars,
+  Video, Music, Mic, Hash, Link, Share2, Download,
+  TrendingUp, Award, Star
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -141,6 +143,25 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "fact",       label: "/fact",       description: "Interesting fact",           icon: Lightbulb,       category: "utility" },
   { id: "weather",    label: "/weather",    description: "Check weather",              icon: Globe,           category: "utility", needsInput: true },
   { id: "calculate",  label: "/calculate",  description: "Math calculator",            icon: Calculator,      category: "utility", needsInput: true },
+  { id: "convert",    label: "/convert",    description: "Unit / currency converter",  icon: ArrowRightLeft,  category: "utility", needsInput: true },
+  { id: "hash",       label: "/hash",       description: "Generate hash / checksum",   icon: Hash,            category: "utility", needsInput: true },
+  { id: "url",        label: "/url",        description: "Encode / decode URL",        icon: Link,            category: "utility", needsInput: true },
+
+  // ── Media & Content ────────────────────────────────────────────────
+  { id: "video-script",  label: "/video-script",  description: "Write a video script",       icon: Video,      category: "creative", needsInput: true },
+  { id: "podcast",       label: "/podcast",       description: "Podcast outline / script",   icon: Mic,        category: "creative", needsInput: true },
+  { id: "music",         label: "/music",         description: "Music lyrics or description", icon: Music,     category: "creative", needsInput: true },
+  { id: "social",        label: "/social",        description: "Social media post",          icon: Share2,     category: "writing", needsInput: true },
+  { id: "thread",        label: "/thread",        description: "Twitter / X thread",         icon: Hash,       category: "writing", needsInput: true },
+  { id: "press",         label: "/press",         description: "Press release",              icon: Newspaper,  category: "writing", needsInput: true },
+
+  // ── Business & Strategy ────────────────────────────────────────────
+  { id: "pitch",         label: "/pitch",         description: "Startup pitch deck",         icon: Rocket,     category: "productivity", needsInput: true },
+  { id: "competitive",   label: "/competitive",   description: "Competitive analysis",       icon: TrendingUp, category: "data", needsInput: true },
+  { id: "swot",          label: "/swot",          description: "SWOT analysis",              icon: Award,      category: "data", needsInput: true },
+  { id: "cover-letter",  label: "/cover-letter",  description: "Write a cover letter",       icon: Star,       category: "writing", needsInput: true },
+  { id: "download",      label: "/download",      description: "Save / export conversation", icon: Download,   category: "utility" },
+  { id: "resume",        label: "/resume",        description: "Build / improve a resume",   icon: FileText,   category: "writing", needsInput: true },
 ];
 
 export const CATEGORY_LABELS: Record<SlashCommandCategory, string> = {
