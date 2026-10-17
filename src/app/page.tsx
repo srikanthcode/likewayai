@@ -581,22 +581,23 @@ export default function ChatPage() {
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isInputModelMenuOpen, setIsInputModelMenuOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
-  const [modelCategoryFilter, setModelCategoryFilter] = useState<"all" | "free" | "frontier" | "pro">("all");
+  const [modelCategoryFilter, setModelCategoryFilter] = useState<"all" | "Claude" | "GPT" | "Other">("all");
   const [selectedModel, setSelectedModel] = useState(MODELS.find(m => m.id === "gpt-6-astra") || MODELS[0]);
 
   const filteredModelsList = useMemo(() => {
     let list = MODELS;
-    if (modelCategoryFilter === "free") {
-      list = list.filter(m => m.plan === "Core" || m.id === "gpt-6-astra");
-    } else if (modelCategoryFilter === "frontier") {
-      list = list.filter(m => m.provider === "freemodels" && m.id !== "gpt-6-astra");
-    } else if (modelCategoryFilter === "pro") {
-      list = list.filter(m => m.plan === "Plus" || m.plan === "Pro" || (m.provider !== "freemodels" && m.provider !== "tokenharbor"));
+    if (modelCategoryFilter !== "all") {
+      list = list.filter(m => m.category === modelCategoryFilter);
     }
 
     if (modelSearchQuery.trim()) {
       const q = modelSearchQuery.trim().toLowerCase();
-      list = list.filter(m => m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+      list = list.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.company.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q)
+      );
     }
     return list;
   }, [modelCategoryFilter, modelSearchQuery]);
@@ -3776,7 +3777,7 @@ export default function ChatPage() {
                                     type="text"
                                     value={modelSearchQuery}
                                     onChange={(e) => setModelSearchQuery(e.target.value)}
-                                    placeholder="Filter models..."
+                                    placeholder="Filter models or providers..."
                                     className={cn(
                                       "w-full pl-7 pr-7 py-1 text-xs rounded-lg border focus:outline-none transition-all",
                                       theme === 'dark'
@@ -3797,102 +3798,164 @@ export default function ChatPage() {
 
                                 {/* Filter Tabs */}
                                 <div className="flex items-center gap-1 pt-0.5">
-                                  {(["all", "free", "frontier", "pro"] as const).map((tab) => (
+                                  {(["all", "Claude", "GPT", "Other"] as const).map((tab) => (
                                     <button
                                       key={tab}
                                       type="button"
                                       onClick={() => setModelCategoryFilter(tab)}
                                       className={cn(
-                                        "flex-1 py-1 text-[10px] font-semibold rounded-md capitalize transition-all",
+                                        "flex-1 py-1 text-[10px] font-semibold rounded-md transition-all",
                                         modelCategoryFilter === tab
                                           ? (theme === 'dark' ? "bg-white/15 text-white" : "bg-black/10 text-black")
                                           : (theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/5" : "text-gray-500 hover:text-black hover:bg-black/5")
                                       )}
                                     >
-                                      {tab}
+                                      {tab === "all" ? "All" : tab === "Other" ? "Other" : tab}
                                     </button>
                                   ))}
                                 </div>
                               </div>
 
                               {/* Models List */}
-                              <div className="max-h-[320px] overflow-y-auto p-1.5 space-y-0.5 custom-scrollbar">
+                              <div className="max-h-[320px] overflow-y-auto p-1.5 space-y-2 custom-scrollbar">
                                 {filteredModelsList.length === 0 ? (
                                   <div className="py-6 text-center text-xs opacity-50">
                                     No models match &quot;{modelSearchQuery}&quot;
                                   </div>
                                 ) : (
-                                  filteredModelsList.map((model) => {
-                                    const planConfig = PLANS[currentPlan];
-                                    const isAllowed =
-                                      model.plan === "Core" ||
-                                      planConfig.limits.modelsAllowed[0] === "*" ||
-                                      planConfig.limits.modelsAllowed.includes(model.id);
-                                    const isSelected = selectedModel.id === model.id;
+                                  (["Claude", "GPT", "Other"] as const).map((categoryName) => {
+                                    const groupModels = filteredModelsList.filter(m => m.category === categoryName);
+                                    if (groupModels.length === 0) return null;
 
                                     return (
-                                      <button
-                                        key={model.id}
-                                        type="button"
-                                        onClick={() => {
-                                          if (isAllowed) {
-                                            setSelectedModel(model);
-                                            setIsInputModelMenuOpen(false);
-                                            setModelSearchQuery("");
-                                          } else {
-                                            setIsPricingOpen(true);
-                                          }
-                                        }}
-                                        className={cn(
-                                          "w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-left transition-all group border",
-                                          isSelected
-                                            ? (theme === 'dark'
-                                                ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-200 shadow-sm"
-                                                : "bg-cyan-50 border-cyan-300 text-cyan-900 shadow-sm")
-                                            : (theme === 'dark'
-                                                ? "border-transparent hover:bg-white/5 text-gray-300 hover:text-white"
-                                                : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900"),
-                                          !isAllowed && "opacity-60"
-                                        )}
-                                      >
-                                        <div className="min-w-0 flex-1">
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="text-xs font-semibold tracking-tight truncate">{model.name}</span>
-                                            {model.featured && (
-                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                                Featured
-                                              </span>
-                                            )}
-                                            {model.plan === "Core" && !model.featured && (
-                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                                                Free
-                                              </span>
-                                            )}
-                                            {!isAllowed && (
-                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                                                {model.plan}
-                                              </span>
-                                            )}
-                                            {model.contextWindow >= 1000000 && (
-                                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                                                1M
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="text-[11px] opacity-60 truncate mt-0.5 leading-tight">
-                                            {model.description}
-                                          </div>
+                                      <div key={categoryName} className="space-y-0.5">
+                                        <div className="px-2 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center justify-between">
+                                          <span>{categoryName === "Other" ? "Other Models" : categoryName}</span>
+                                          <span className="text-[9px] font-normal opacity-50">{groupModels.length}</span>
                                         </div>
 
-                                        {isSelected ? (
-                                          <Check size={14} className="text-cyan-400 flex-shrink-0" />
-                                        ) : !isAllowed ? (
-                                          <Lock size={11} className="opacity-40 flex-shrink-0" />
-                                        ) : null}
-                                      </button>
+                                        {groupModels.map((model) => {
+                                          const planConfig = PLANS[currentPlan];
+                                          const isAllowed =
+                                            model.plan === "Core" ||
+                                            planConfig.limits.modelsAllowed[0] === "*" ||
+                                            planConfig.limits.modelsAllowed.includes(model.id);
+                                          const isSelected = selectedModel.id === model.id;
+
+                                          const avatarColor =
+                                            model.category === "Claude"
+                                              ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                              : model.category === "GPT"
+                                              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                              : model.avatarLetter === "G"
+                                              ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                                              : model.avatarLetter === "K"
+                                              ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
+                                              : model.avatarLetter === "D"
+                                              ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
+                                              : "bg-gray-500/15 text-gray-300 border-gray-500/30";
+
+                                          return (
+                                            <button
+                                              key={model.id}
+                                              type="button"
+                                              onClick={() => {
+                                                if (isAllowed) {
+                                                  setSelectedModel(model);
+                                                  setIsInputModelMenuOpen(false);
+                                                  setModelSearchQuery("");
+                                                } else {
+                                                  setIsPricingOpen(true);
+                                                }
+                                              }}
+                                              className={cn(
+                                                "w-full flex items-center justify-between gap-2.5 px-2.5 py-1.5 rounded-xl text-left transition-all group border",
+                                                isSelected
+                                                  ? (theme === 'dark'
+                                                      ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-200 shadow-sm"
+                                                      : "bg-cyan-50 border-cyan-300 text-cyan-900 shadow-sm")
+                                                  : (theme === 'dark'
+                                                      ? "border-transparent hover:bg-white/5 text-gray-300 hover:text-white"
+                                                      : "border-transparent hover:bg-black/5 text-gray-700 hover:text-gray-900"),
+                                                !isAllowed && "opacity-60"
+                                              )}
+                                            >
+                                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                {/* Letter Avatar */}
+                                                <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[11px] border flex-shrink-0", avatarColor)}>
+                                                  {model.avatarLetter}
+                                                </div>
+
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-semibold tracking-tight truncate">{model.name}</span>
+                                                    {model.featured && (
+                                                      <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                                        Free
+                                                      </span>
+                                                    )}
+                                                    {!isAllowed && (
+                                                      <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                                        {model.plan}
+                                                      </span>
+                                                    )}
+                                                    {model.contextWindow >= 1000000 && (
+                                                      <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                                        1M
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="text-[10px] opacity-50 truncate leading-tight mt-0.5">
+                                                    {model.company}
+                                                  </div>
+                                                </div>
+                                              </div>
+
+                                              {isSelected ? (
+                                                <Check size={14} className="text-cyan-400 flex-shrink-0" />
+                                              ) : !isAllowed ? (
+                                                <Lock size={11} className="opacity-40 flex-shrink-0" />
+                                              ) : null}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
                                     );
                                   })
                                 )}
+                              </div>
+
+                              {/* Footer: Thinking & Deep search */}
+                              <div className={cn("p-2 border-t flex items-center gap-1.5", theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-black/5 bg-black/[0.01]")}>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsExtendedThinking(!isExtendedThinking)}
+                                  className={cn(
+                                    "flex-1 py-1 px-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all border",
+                                    isExtendedThinking
+                                      ? "bg-purple-500/15 border-purple-500/40 text-purple-300"
+                                      : (theme === 'dark' ? "border-white/5 text-gray-400 hover:text-white hover:bg-white/5" : "border-black/5 text-gray-600 hover:text-black hover:bg-black/5")
+                                  )}
+                                >
+                                  <Brain size={12} className={isExtendedThinking ? "text-purple-400" : "opacity-60"} />
+                                  <span>Thinking</span>
+                                  {isExtendedThinking && <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setIsWebSearchMode(!isWebSearchMode)}
+                                  className={cn(
+                                    "flex-1 py-1 px-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all border",
+                                    isWebSearchMode
+                                      ? "bg-sky-500/15 border-sky-500/40 text-sky-300"
+                                      : (theme === 'dark' ? "border-white/5 text-gray-400 hover:text-white hover:bg-white/5" : "border-black/5 text-gray-600 hover:text-black hover:bg-black/5")
+                                  )}
+                                >
+                                  <Globe size={12} className={isWebSearchMode ? "text-sky-400" : "opacity-60"} />
+                                  <span>Deep search</span>
+                                  {isWebSearchMode && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                                </button>
                               </div>
                             </motion.div>
                           </>

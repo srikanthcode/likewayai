@@ -48,8 +48,8 @@ export const PLANS: Record<PlanType, Plan> = {
     },
     features: [
       "200 responses/day",
-      "Free models unlocked (Likeway Omni, Flash, Mimo)",
-      "Likeway Omni unlimited chat for 1 month",
+      "Free models unlocked (GPT 6 Astra, DeepSeek, Mimo)",
+      "GPT 6 Astra unlimited chat for 1 month",
       "Multimodal vision, video & audio support",
       "Smart conversation assistant",
       "Web search capabilities",
@@ -97,8 +97,8 @@ export const PLANS: Record<PlanType, Plan> = {
     },
     features: [
       "Unlimited messages",
-      "All 9 Likeway frontier models unlocked",
-      "Likeway Omni — 1 month unlimited free",
+      "All frontier models unlocked (Claude, GPT, GLM, Kimi)",
+      "GPT 6 Astra — 1 month unlimited free",
       "AI Image Generation & Editing unlocked",
       "Deep Thinking & Multi-Step Reasoning mode",
       "Live Web Search & Deep Research with citations",
