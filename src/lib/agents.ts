@@ -33,15 +33,6 @@ export const LIKEWAY_RESPONSE_ARCHITECTURE = `
   ...complete, runnable, production-quality content with zero placeholders...
   </artifact>
 - Never truncate code with "// rest of code here" or "// TODO".
-
-### V. PROACTIVE NEXT STEPS (FOLLOW-UP CHIPS)
-- End every substantive answer with a \`<suggestions>\` block containing 3 specific, high-value follow-up prompts tailored to what the user is building or learning:
-<suggestions>
-- [concrete deeper step or enhancement]
-- [practical example, test, or comparison]
-- [next workflow action the user can run]
-</suggestions>
-- Never output any text after the closing \`</suggestions>\` tag.
 `;
 
 export const SYSTEM_PROMPTS: Record<AgentMode, string> = {

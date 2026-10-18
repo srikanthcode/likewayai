@@ -1269,10 +1269,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
         `- When stating policy, compliance, restrictions, or capabilities, ALWAYS speak on behalf of ${meta.name} by ${meta.creator || "AI"}.\n` +
         `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
         `- [ADAPTIVE STRATEGY — Tier: ${modelProfile.tier}, Depth: Level ${taskClassification.desiredDepth}, Output: ${taskClassification.expectedOutputFormat}]:\n` +
-        `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.\n` +
-        `- Follow-Up Chips: End every substantive response with a \`<suggestions>\` block containing 3 specific follow-up prompts:\n` +
-        `<suggestions>\n- First specific follow-up\n- Second specific follow-up\n- Third specific follow-up\n</suggestions>\n` +
-        `Do not output any text after \`</suggestions>\`.]${webContextBlock}\n\n`;
+        `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.]${webContextBlock}\n\n`;
 
       for (const msg of messages) {
         if (msg.role === "system") continue;
@@ -1618,30 +1615,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
           fullContent += closingBlock;
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: closingBlock } }] })}\n\n`)
-          );
-        }
-
-        // Emit follow-up suggestion chips BEFORE `data: [DONE]` so `consumeChatStream` reads them!
-        let suggestions = parseSuggestionLines(sugState.raw);
-        if (suggestions.length === 0) {
-          if (taskClassification.taskType === "coding" || fullContent.includes("```")) {
-            suggestions = [
-              "Continue and complete the rest of this code",
-              "Add interactive controls and animation effects",
-              "Explain how to deploy and test this locally",
-            ];
-          } else {
-            suggestions = [
-              "Explain this in more depth",
-              "Give a practical step-by-step example",
-              "What are the best practices for this?",
-            ];
-          }
-        }
-
-        if (suggestions.length > 0) {
-          controller.enqueue(
-            encoder.encode(`event: suggestions\ndata: ${JSON.stringify({ suggestions })}\n\n`)
           );
         }
 

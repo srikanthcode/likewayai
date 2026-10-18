@@ -3493,13 +3493,6 @@ export default function ChatPage() {
         {/* ── Input Area ───────────────────────────────────── */}
         <div className="chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom">
           <div className="chat-container">
-            {/* Follow-up suggestion chips from the assistant */}
-            <SuggestionChips
-              suggestions={suggestions}
-              disabled={isStreaming}
-              onSelect={(s) => handleSend(undefined, s)}
-              theme={theme}
-            />
             <form
               onSubmit={handleSend}
               onDragOver={handleDragOver}
