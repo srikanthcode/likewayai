@@ -3477,11 +3477,12 @@ export default function ChatPage() {
                           </div>
                         )}
 
-                        {/* ChatGPT-style Sponsored Ad after latest assistant message */}
+                        {/* Real Ad Network Unit: ONLY shown on the latest assistant message if response has 10+ lines, and ONLY on Free plan (zero duplicates) */}
                         {i === lastAssistantIndex &&
                           m.role === "assistant" &&
                           (!m.status || (m.status !== "thinking" && m.status !== "typing")) &&
-                          shouldShowAds && (
+                          shouldShowAds &&
+                          (m.content || "").trim().split("\n").length >= 10 && (
                             <div className="w-full mt-4">
                               <ChatGPTStyleAd
                                 theme={theme}
