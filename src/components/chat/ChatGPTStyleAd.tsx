@@ -17,6 +17,8 @@ export interface SponsoredAd {
   brandDotColor: string;
 }
 
+const CAMPAIGN_URL = "https://cautiousfloor.com/drmNF.z-dNGBNIvdZOGVUg/deBmb9xuoZ/U/lSkoPjTMc/1UMXjkkF0yN/jKURt-NGz/Ugy/OETWQc2/OzQh";
+
 const DEFAULT_SPONSORS: SponsoredAd[] = [
   {
     id: "manageengine",
@@ -27,7 +29,7 @@ const DEFAULT_SPONSORS: SponsoredAd[] = [
     headline: "The best tool for IT Change Management",
     description: "Custom Change Workflows. Minimal Business Impact. Make better decisions",
     ctaText: "Learn more",
-    url: "https://www.manageengine.com/",
+    url: CAMPAIGN_URL,
     brandDotColor: "#FFC20E",
   },
   {
@@ -39,7 +41,7 @@ const DEFAULT_SPONSORS: SponsoredAd[] = [
     headline: "Build in a weekend. Scale to millions.",
     description: "The open source Firebase alternative with Postgres database, Authentication, and instant APIs.",
     ctaText: "Start free",
-    url: "https://supabase.com/",
+    url: CAMPAIGN_URL,
     brandDotColor: "#3ECF8E",
   },
   {
@@ -51,7 +53,7 @@ const DEFAULT_SPONSORS: SponsoredAd[] = [
     headline: "Develop. Preview. Ship. Fast.",
     description: "Frontend cloud platform providing the speed, scalability, and reliability modern teams need.",
     ctaText: "Deploy now",
-    url: "https://vercel.com/",
+    url: CAMPAIGN_URL,
     brandDotColor: "#FFFFFF",
   },
   {
@@ -63,7 +65,7 @@ const DEFAULT_SPONSORS: SponsoredAd[] = [
     headline: "Modern Cloud Monitoring & APM",
     description: "See metrics, traces, and logs from your entire application and cloud stack in one place.",
     ctaText: "Try free",
-    url: "https://www.datadoghq.com/",
+    url: CAMPAIGN_URL,
     brandDotColor: "#A768F8",
   },
 ];
