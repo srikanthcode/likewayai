@@ -1671,6 +1671,25 @@ export default function ChatPage() {
 
         let url = activeProject ? `/api/projects/${activeProject}` : "/api/chat";
         if (activeConversationId) {
+          // Check local device storage first for guest / offline chats
+          try {
+            const localSaved = localStorage.getItem(`likeway_chat_messages_${activeConversationId}`);
+            if (localSaved) {
+              const parsed = JSON.parse(localSaved);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                if (!isSendingRef.current) {
+                  setMessages(parsed);
+                }
+                setTimeout(() => {
+                  if (chatContainerRef.current) {
+                    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                  }
+                  isInitialLoad.current = false;
+                }, 50);
+                if (!user) return; // Guest mode: purely local device storage, zero DB writes!
+              }
+            }
+          } catch {}
           url = `/api/chat?conversationId=${activeConversationId}`;
         }
 
@@ -1984,6 +2003,11 @@ export default function ChatPage() {
           } else {
             copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
           }
+          if (conversationIdToUse) {
+            try {
+              localStorage.setItem(`likeway_chat_messages_${conversationIdToUse}`, JSON.stringify(copy));
+            } catch {}
+          }
           return copy;
         });
         setIsStreaming(false);
@@ -2211,6 +2235,11 @@ export default function ChatPage() {
           copy[lastIdx] = { ...copy[lastIdx], role: "assistant", content: fullContent, status: 'done', animationPlayed: true };
         } else {
           copy.push({ id: `msg_${Date.now()}_done`, role: "assistant", content: fullContent, status: 'done', animationPlayed: true });
+        }
+        if (conversationIdToUse) {
+          try {
+            localStorage.setItem(`likeway_chat_messages_${conversationIdToUse}`, JSON.stringify(copy));
+          } catch {}
         }
         return copy;
       });
@@ -2448,7 +2477,13 @@ export default function ChatPage() {
                                 method: "DELETE",
                                 headers: { "x-user-id": userId }
                               });
-                              if (res.ok) {
+                              try {
+                                localStorage.removeItem(`likeway_chat_messages_${conv._id}`);
+                                const cached = JSON.parse(localStorage.getItem("likeway_recent_chats") || "[]");
+                                const filtered = cached.filter((c: any) => c._id !== conv._id);
+                                localStorage.setItem("likeway_recent_chats", JSON.stringify(filtered));
+                              } catch {}
+                              if (res.ok || !user) {
                                 fetchRecentConversations();
                                 if (activeConversationId === conv._id) {
                                   setActiveConversationId(null);

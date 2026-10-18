@@ -37,7 +37,27 @@ export type UserPreferences = {
 // CONVERSATION MEMORY - Core CRUD
 // ═══════════════════════════════════════════════════════════════════════════
 
+export function isGuestUser(userId?: string | null): boolean {
+  if (!userId) return true;
+  const lower = userId.toLowerCase().trim();
+  return (
+    lower === "guest" ||
+    lower === "anonymous" ||
+    lower === "anonymous-user" ||
+    lower === "guest-user" ||
+    lower.startsWith("guest_") ||
+    lower.startsWith("guest-")
+  );
+}
+
 export async function saveMessage(userId: string, message: Omit<Message, "timestamp">, projectId: string = "default", conversationId?: string) {
+  // ── GUEST DATA PROTECTION ──────────────────────────────────────────────
+  // For users without signing up, we do NOT store user data in database.
+  // Guest chat data is stored purely in the user's local device/browser storage.
+  if (isGuestUser(userId)) {
+    return;
+  }
+
   try {
     const client = await clientPromise;
     const db = client.db(DB_NAME);

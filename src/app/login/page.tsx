@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, ArrowRight } from "lucide-react";
+import { Loader2, ArrowRight, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
 export default function LoginPage() {
@@ -76,6 +76,15 @@ export default function LoginPage() {
   const handleGoogleLogin = () => {
     const search = typeof window !== "undefined" ? window.location.search : "";
     window.location.href = `/api/auth/google/redirect${search}`;
+  };
+
+  const handleContinueAsGuest = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("likeway_guest_mode", "true");
+      localStorage.setItem("likeway_plan", "Core");
+      localStorage.removeItem("lw_user_cache");
+      window.location.href = "/";
+    }
   };
 
   return (
@@ -201,7 +210,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <footer className="mt-5 text-center">
+          <footer className="mt-4 text-center">
             <p className="text-[13px] text-[#c7c4d7]">
               Don&apos;t have an account?{" "}
               <a href="/signup" className="text-[#c0c1ff] hover:text-[#8083ff] font-semibold transition-colors ml-1">
@@ -209,6 +218,22 @@ export default function LoginPage() {
               </a>
             </p>
           </footer>
+
+          {/* Continue without signing up (Guest Mode) */}
+          <div className="mt-3.5 pt-3 border-t border-[#2F2F2F] text-center">
+            <button
+              type="button"
+              onClick={handleContinueAsGuest}
+              className="w-full py-2 px-3 rounded-lg border border-[#3A3A3A] hover:border-[#c0c1ff]/50 bg-white/[0.02] hover:bg-white/[0.06] text-[#e2e2e2] hover:text-white text-[12px] font-semibold transition-all duration-200 flex items-center justify-center gap-2 group active:scale-[0.98]"
+            >
+              <Sparkles size={13} className="text-[#c0c1ff] group-hover:scale-110 transition-transform" />
+              <span>Continue without signing up</span>
+              <ArrowRight size={12} className="text-[#908fa0] group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+            </button>
+            <p className="text-[10px] text-[#908fa0] mt-1.5 flex items-center justify-center gap-1">
+              <span>Free Plan • Chats stored privately on your device</span>
+            </p>
+          </div>
 
         </div>
 
