@@ -72,7 +72,6 @@ import SupportModal from "@/components/SupportModal";
 import LivePreviewWorkspace from "@/components/LivePreviewWorkspace";
 import VisibleBrowserWorkspace from "@/components/VisibleBrowserWorkspace";
 import ConnectedAppsModal from "@/components/ConnectedAppsModal";
-import SuggestionChips from "@/components/chat/SuggestionChips";
 import EmptyStateChips from "@/components/chat/EmptyStateChips";
 import ModePills from "@/components/chat/ModePills";
 import { cn } from "@/lib/utils";
@@ -580,8 +579,6 @@ export default function ChatPage() {
   
   // High-performance streaming & scroll state
   const [isStreaming, setIsStreaming] = useState(false);
-  // Follow-up "next step" chips emitted by the assistant after each answer
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const bufferRef = useRef("");
   const [userScrolling, setUserScrolling] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1776,9 +1773,6 @@ export default function ChatPage() {
     const messageToSend = overrideMessage || input.trim();
     if (!messageToSend || isLoading) return;
 
-    // A new turn starts: clear the previous follow-up chips.
-    setSuggestions([]);
-
     // Mark sending state to prevent history load from clearing messages
     isSendingRef.current = true;
 
@@ -1969,7 +1963,6 @@ export default function ChatPage() {
             return copy;
           });
         },
-        onSuggestions: (items) => setSuggestions(items),
         onReadError: (readErr: any) => {
           if (readErr?.name === "AbortError" || readErr?.message?.includes("aborted") || readErr?.message?.includes("BodyStreamBuffer")) {
             console.log("Stream reader aborted");
@@ -2200,7 +2193,6 @@ export default function ChatPage() {
             return copy;
           });
         },
-        onSuggestions: (items) => setSuggestions(items),
         onReadError: (readErr: any) => {
           if (readErr?.name === "AbortError" || readErr?.message?.includes("aborted") || readErr?.message?.includes("BodyStreamBuffer")) {
             console.log("Edit request aborted");
