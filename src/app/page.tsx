@@ -3054,9 +3054,17 @@ export default function ChatPage() {
 
             <div className="space-y-4">
             <AnimatePresence>
-              {messages.map((m, i) => {
-                const isMsgStreaming = m.status === 'streaming' || m.status === 'typing';
-                return (
+              {(() => {
+                const lastAssistantIndex = messages
+                  .map((msg, idx) => (msg.role === "assistant" ? idx : -1))
+                  .filter((idx) => idx !== -1)
+                  .pop();
+                const isPaidPlan = currentPlan === "Go" || currentPlan === "Plus" || currentPlan === "Pro";
+                const shouldShowAds = !isPaidPlan;
+
+                return messages.map((m, i) => {
+                  const isMsgStreaming = m.status === 'streaming' || m.status === 'typing';
+                  return (
                 <motion.div 
                   initial={false}
                   animate={{ opacity: 1, y: 0 }}
@@ -3470,10 +3478,10 @@ export default function ChatPage() {
                         )}
 
                         {/* ChatGPT-style Sponsored Ad after latest assistant message */}
-                        {i === messages.length - 1 &&
+                        {i === lastAssistantIndex &&
                           m.role === "assistant" &&
                           (!m.status || (m.status !== "thinking" && m.status !== "typing")) &&
-                          currentPlan === "Core" && (
+                          shouldShowAds && (
                             <div className="w-full mt-4">
                               <ChatGPTStyleAd
                                 theme={theme}
@@ -3487,7 +3495,8 @@ export default function ChatPage() {
                   </div>
                 </motion.div>
               );
-              })}
+              });
+              })()}
             </AnimatePresence>
             </div>
             {(messages.length > 0 || isStreaming) && <div ref={endRef} className="h-4" />}

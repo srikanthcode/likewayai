@@ -4,7 +4,8 @@ import {
   getUserConnectedApps,
   toggleAppConnection,
 } from "@/lib/integrations/integration-registry";
-import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { getAppCredential } from "@/lib/integrations/credentials-store";
+import { verifyAccessToken } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,7 @@ function getUserId(req: NextRequest): string {
       const payload = verifyAccessToken(cookie);
       if (payload?.sub) return payload.sub;
     }
-  } catch (e) {
-    // ignore auth error and fallback
-  }
+  } catch {}
   return req.headers.get("x-user-id") || "guest-user";
 }
 
@@ -26,16 +25,36 @@ export async function GET(req: NextRequest) {
     const userId = getUserId(req);
     const connectedAppIds = getUserConnectedApps(userId);
 
-    const catalog = INTEGRATIONS_CATALOG.map((item) => ({
-      ...item,
-      isConnected: connectedAppIds.has(item.id),
-      toolsCount: item.tools.length,
-      toolsList: item.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        requiresApproval: t.requiresApproval,
-      })),
-    }));
+    const catalog = INTEGRATIONS_CATALOG.map((item) => {
+      const isConnected = connectedAppIds.has(item.id);
+      const cred = getAppCredential(userId, item.id);
+
+      return {
+        ...item,
+        isConnected,
+        connectedAccount: isConnected && cred ? {
+          username: cred.username,
+          email: cred.email,
+          avatarUrl: cred.avatarUrl,
+          details: cred.meta?.publicRepos
+            ? `${cred.meta.publicRepos} public repos`
+            : cred.meta?.latencyMs
+            ? `Latency: ${cred.meta.latencyMs}ms`
+            : cred.meta?.serverInfo || undefined,
+        } : isConnected && item.id === "browser_automation" ? {
+          username: "Autonomous Engine",
+          details: "Ready for live web navigation & fetch",
+        } : undefined,
+        toolsCount: item.tools.length,
+        toolsList: item.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+          requiresApproval: t.requiresApproval,
+          risk: t.risk,
+        })),
+      };
+    });
 
     return NextResponse.json({
       success: true,
