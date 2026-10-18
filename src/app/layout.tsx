@@ -101,6 +101,7 @@ export const metadata: Metadata = {
   },
   other: {
     "google-site-verification": "gWhPSLMVUSzGW5XJqpbDYEIoTkH2O0RDLHmsTApMU1M",
+    "d89e7f07a2e4eeffa8ac7e4065ac9fabbe26585a": "d89e7f07a2e4eeffa8ac7e4065ac9fabbe26585a",
     "msvalidate.01": "",
     "theme-color": "#050505",
     "apple-mobile-web-app-capable": "yes",
@@ -152,6 +153,7 @@ export default function RootLayout({
     >
       <head>
         <link rel="canonical" href={SITE_URL} />
+        <meta name="d89e7f07a2e4eeffa8ac7e4065ac9fabbe26585a" content="d89e7f07a2e4eeffa8ac7e4065ac9fabbe26585a" />
         <meta name="robots" content="index, follow" />
         <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
         <meta name="bingbot" content="index, follow" />

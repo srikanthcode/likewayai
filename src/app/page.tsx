@@ -74,6 +74,7 @@ import VisibleBrowserWorkspace from "@/components/VisibleBrowserWorkspace";
 import ConnectedAppsModal from "@/components/ConnectedAppsModal";
 import EmptyStateChips from "@/components/chat/EmptyStateChips";
 import ModePills from "@/components/chat/ModePills";
+import ChatGPTStyleAd from "@/components/chat/ChatGPTStyleAd";
 import { cn } from "@/lib/utils";
 import { consumeChatStream } from "@/hooks/useSSEChatStream";
 import { cleanTextForSpeech } from "@/lib/voice-text";
@@ -3467,6 +3468,19 @@ export default function ChatPage() {
                             </div>
                           </div>
                         )}
+
+                        {/* ChatGPT-style Sponsored Ad after latest assistant message */}
+                        {i === messages.length - 1 &&
+                          m.role === "assistant" &&
+                          (!m.status || (m.status !== "thinking" && m.status !== "typing")) &&
+                          currentPlan === "Core" && (
+                            <div className="w-full mt-4">
+                              <ChatGPTStyleAd
+                                theme={theme}
+                                onUpgradeClick={() => setIsPricingOpen(true)}
+                              />
+                            </div>
+                          )}
                       </div>
                     </div>
                     {/* Metadata moved to top */}
