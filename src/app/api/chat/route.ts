@@ -1272,257 +1272,201 @@ After the closing </thought> tag, present your structured, user-friendly final a
 
     if (provider === "groq") maxTokens = Math.min(maxTokens, 4096);
 
+    // ── Model Metadata & Identity Definition ─────────────────────────────────
+    const meta = LIKEWAY_ENGINE_LABELS[resolvedModelId] || {
+      name: selectedModel.name,
+      creator: selectedModel.company || "AI",
+      intro: `advanced reasoning model by ${selectedModel.company || "AI"}`,
+    };
+
+    const targetModelName = meta.name;
+    const targetModelCompany = meta.creator || "AI";
+    const isIdentityPrompt = /\b(who are you|what model|what are you|your name|who created you|who made you|who trained you|which model|identify yourself|who developed you)\b/i.test(sanitizedPrompt);
+
+    const thinkingDirective = extendedThinking
+      ? "\n- Enclose your step-by-step reasoning inside `<thought>...</thought>` tags first, then provide the final answer outside."
+      : "";
+    const webContextBlock = searchContext
+      ? `\n\n[LIVE VERIFIED WEB CONTEXT — PRIORITIZE THIS DATA]:\n${searchContext}\n`
+      : "";
+    const customBlock = customInstructions
+      ? `\n- User Custom Instructions: ${customInstructions}`
+      : "";
+
+    const personaPrefix =
+      `[CORE IDENTITY & SYSTEM DIRECTIVE — MANDATORY & ABSOLUTE PRIORITY]:\n` +
+      `- You are strictly ${meta.name} created by ${meta.creator || "AI"} (${meta.intro}).\n` +
+      `- If asked who you are, what model you are, who created you, or your identity, you MUST ALWAYS state that you are ${meta.name} created by ${meta.creator || "AI"}.\n` +
+      `- NEVER claim to be any model or creator other than ${meta.name} by ${meta.creator || "AI"}.\n` +
+      `- When stating policy, compliance, restrictions, or capabilities, ALWAYS speak on behalf of ${meta.name} by ${meta.creator || "AI"}.\n` +
+      `- IMPORTANT: Do NOT prepend any unsolicited robotic self-introduction (such as "I am...", "You are interacting with...", or "As an AI...") to your answers. Answer the user's question directly and immediately! Only state your identity if explicitly asked who you are or what model you are.\n` +
+      `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
+      `- [ADAPTIVE STRATEGY — Tier: ${modelProfile.tier}, Depth: Level ${taskClassification.desiredDepth}, Output: ${taskClassification.expectedOutputFormat}]:\n` +
+      `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.]${webContextBlock}\n\n`;
+
+    const freeMessages: { role: string; content: string }[] = [];
+    for (const msg of messages) {
+      if (msg.role === "system") continue;
+      freeMessages.push({ ...msg });
+    }
+
+    if (freeMessages.length > 0) {
+      const lastIdx = freeMessages.length - 1;
+      freeMessages[lastIdx] = {
+        ...freeMessages[lastIdx],
+        content: `${personaPrefix}User Request:\n${freeMessages[lastIdx].content}`,
+      };
+    } else {
+      freeMessages.push({
+        role: "user",
+        content: `${personaPrefix}User Request:\n${userContent}`,
+      });
+    }
+
+    const makeFreeRequest = async (targetModel: string) => {
+      return fetch(`${FREE_MODELS_PROXY}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": "https://freemodels.pro",
+          "Referer": "https://freemodels.pro/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        },
+        body: JSON.stringify({
+          model: targetModel,
+          messages: freeMessages,
+          stream: true,
+          max_tokens: maxTokens,
+          temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+    };
+
+    const makeTokenHarborRequest = async (targetModel: string) => {
+      if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
+      return fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${TOKENHARBOR_KEY}`,
+        },
+        body: JSON.stringify({
+          model: targetModel,
+          messages: freeMessages,
+          stream: true,
+          max_tokens: maxTokens,
+          temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+    };
+
+    const WORKER_FALLBACK_MAP: Record<string, string> = {
+      // 14 Likeway models
+      "glm-5.2": "glm-5.2",
+      "kimi-k3": "kimi-k3",
+      "deepseek-v4.1-flash:free": "sol",
+      "mimo-v2.6-flash:free": "gpt-6-astra",
+      "deepseek/deepseek-r1": "claude-sonnet-5",
+      "deepseek/deepseek-chat": "claude-sonnet-5",
+      "google/gemini-2.5-flash": "gpt-6-astra",
+      "google/gemini-2.5-pro": "claude-opus-5.5",
+      "google/gemini-2.5-pro-preview": "claude-opus-5.5",
+      "mistral-medium-latest": "claude-sonnet-5",
+      "codestral-latest": "claude-sonnet-5",
+      "mistral-small-latest": "sol",
+      "llama-3.3-70b-versatile": "claude-opus-5.5",
+      "llama-3.1-8b-instant": "sol",
+
+      // Claude & GPT worker native models
+      "claude-opus-5.5": "claude-opus-5.5",
+      "claude-sonnet-5": "claude-sonnet-5",
+      "claude-fable-5": "claude-fable-5",
+      "claude-fable-5.1": "claude-fable-5.1",
+      "sol": "sol",
+      "terra": "terra",
+      "gpt-6-astra": "gpt-6-astra",
+      "openai/gpt-4o": "gpt-6-astra",
+      "openai/o3": "claude-opus-5.5",
+    };
+
     // ── Provider dispatch & fallback ─────────────────────────────────────────
     let response: Response | null = null;
-    if (provider === "freemodels" || provider === "tokenharbor") {
-      const meta = LIKEWAY_ENGINE_LABELS[resolvedModelId] || {
-        name: selectedModel.name,
-        creator: selectedModel.company || "AI",
-        intro: `advanced reasoning model by ${selectedModel.company || "AI"}`,
-      };
 
-      // CRITICAL FIX: Previously, `if (msg.role === "system") continue;` discarded
-      // the entire `systemPrompt` (including live web search data, response architecture,
-      // custom instructions, and <suggestions> instructions) for all default models!
-      // We now embed the full system instructions + web context into the directive block.
-      const freeMessages: { role: string; content: string }[] = [];
-      const thinkingDirective = extendedThinking
-        ? "\n- Enclose your step-by-step reasoning inside `<thought>...</thought>` tags first, then provide the final answer outside."
-        : "";
-      const webContextBlock = searchContext
-        ? `\n\n[LIVE VERIFIED WEB CONTEXT — PRIORITIZE THIS DATA]:\n${searchContext}\n`
-        : "";
-      const customBlock = customInstructions
-        ? `\n- User Custom Instructions: ${customInstructions}`
-        : "";
+    const isWorkerNativeModel =
+      resolvedModelId === "claude-opus-5.5" ||
+      resolvedModelId === "claude-sonnet-5" ||
+      resolvedModelId === "claude-fable-5" ||
+      resolvedModelId === "claude-fable-5.1" ||
+      resolvedModelId === "sol" ||
+      resolvedModelId === "terra" ||
+      resolvedModelId === "gpt-6-astra" ||
+      resolvedModelId === "glm-5.2" ||
+      resolvedModelId === "kimi-k3";
 
-      const personaPrefix =
-        `[CORE IDENTITY & SYSTEM DIRECTIVE — MANDATORY & ABSOLUTE PRIORITY]:\n` +
-        `- You are strictly ${meta.name} created by ${meta.creator || "AI"} (${meta.intro}).\n` +
-        `- If asked who you are, what model you are, who created you, or your identity, you MUST ALWAYS state that you are ${meta.name} created by ${meta.creator || "AI"}.\n` +
-        `- NEVER claim to be any model or creator other than ${meta.name} by ${meta.creator || "AI"}.\n` +
-        `- When stating policy, compliance, restrictions, or capabilities, ALWAYS speak on behalf of ${meta.name} by ${meta.creator || "AI"}.\n` +
-        `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
-        `- [ADAPTIVE STRATEGY — Tier: ${modelProfile.tier}, Depth: Level ${taskClassification.desiredDepth}, Output: ${taskClassification.expectedOutputFormat}]:\n` +
-        `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.]${webContextBlock}\n\n`;
-
-      for (const msg of messages) {
-        if (msg.role === "system") continue;
-        freeMessages.push({ ...msg });
-      }
-
-      if (freeMessages.length > 0) {
-        const lastIdx = freeMessages.length - 1;
-        freeMessages[lastIdx] = {
-          ...freeMessages[lastIdx],
-          content: `${personaPrefix}User Request:\n${freeMessages[lastIdx].content}`,
-        };
-      } else {
-        freeMessages.push({
-          role: "user",
-          content: `${personaPrefix}User Request:\n${userContent}`,
-        });
-      }
-
-      const freePayload = {
-        model: resolvedModelId,
-        messages: freeMessages,
-        stream: true,
-        max_tokens: maxTokens,
-        temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
-      };
-
-      const makeTokenHarborRequest = async (targetModel: string) => {
-        if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
-        return fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${TOKENHARBOR_KEY}`,
-          },
-          body: JSON.stringify({ ...freePayload, model: targetModel }),
-          signal: AbortSignal.timeout(60000),
-        });
-      };
-
-      const makeFreeRequest = async (targetModel: string) => {
-        return fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Origin": "https://freemodels.pro",
-            "Referer": "https://freemodels.pro/",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-          },
-          body: JSON.stringify({ ...freePayload, model: targetModel }),
-          signal: AbortSignal.timeout(60000),
-        });
-      };
-
+    if (provider === "freemodels" || isWorkerNativeModel) {
       try {
-        const isFreeWorkerModel =
-          resolvedModelId === "claude-opus-5.5" ||
-          resolvedModelId === "claude-sonnet-5" ||
-          resolvedModelId === "gpt-6-astra" ||
-          resolvedModelId === "sol";
-
-        if (isFreeWorkerModel) {
-          // Direct call to https://freemodels-chat.freemodels.workers.dev exclusively
+        response = await makeFreeRequest(resolvedModelId);
+        if (!response || !response.ok) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
           response = await makeFreeRequest(resolvedModelId);
-          if (!response || !response.ok) {
-            await new Promise((resolve) => setTimeout(resolve, 300));
-            response = await makeFreeRequest(resolvedModelId);
-          }
-        } else {
-          const hasOpenRouter = API_KEYS.openrouter && API_KEYS.openrouter.length > 0;
-          if (hasOpenRouter) {
-            try {
-              response = await fetchAI(
-                "openrouter",
-                "https://openrouter.ai/api/v1/chat/completions",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    model: "google/gemini-2.5-flash",
-                    messages,
-                    stream: true,
-                    max_tokens: Math.min(maxTokens, 3000),
-                    temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
-                  }),
-                }
-              );
-            } catch (orErr) {
-              console.warn("[Chat API] OpenRouter primary attempt failed, falling back to free worker:", orErr);
-            }
-          }
-
-          if (!response || !response.ok) {
-            if (provider === "tokenharbor") {
-              try {
-                response = await makeTokenHarborRequest(resolvedModelId);
-                if (!response || !response.ok) {
-                  const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
-                  response = await makeTokenHarborRequest(altModel);
-                  if (!response || !response.ok) {
-                    response = await makeFreeRequest("gpt-6-astra");
-                  }
-                }
-              } catch {
-                response = await makeFreeRequest("gpt-6-astra").catch(() => null);
-              }
-            } else {
-              response = await makeFreeRequest(resolvedModelId);
-              if (!response || !response.ok) {
-                try {
-                  const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
-                  if (mimoRes && mimoRes.ok) {
-                    response = mimoRes;
-                  } else {
-                    const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
-                    if (retryRes?.ok) response = retryRes;
-                  }
-                } catch {
-                  const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
-                  if (retryRes?.ok) response = retryRes;
-                }
-              }
-            }
-          }
         }
-      } catch {
-        try {
-          const mimoFallback = await makeTokenHarborRequest("mimo-v2.6-flash:free");
-          if (mimoFallback && mimoFallback.ok) {
-            response = mimoFallback;
-          } else {
-            response = await makeFreeRequest("gpt-6-astra").catch(() => null);
-          }
-        } catch {
-          response = await makeFreeRequest("gpt-6-astra").catch(() => null);
-        }
+      } catch (err) {
+        console.warn(`[Chat API] Worker request for ${resolvedModelId} failed:`, err);
       }
 
       if (!response || !response.ok) {
         try {
-          response = await fetchAI(
-            "openrouter",
-            "https://openrouter.ai/api/v1/chat/completions",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
-                messages,
-                stream: true,
-                max_tokens: maxTokens,
-                temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
-              }),
-            }
-          );
-        } catch (fallbackErr) {
-          console.error("[Chat API] Key-pool fallback failed:", fallbackErr);
-        }
+          const fallbackModel = resolvedModelId === "gpt-6-astra" ? "claude-sonnet-5" : "gpt-6-astra";
+          response = await makeFreeRequest(fallbackModel);
+        } catch {}
+      }
+    } else if (provider === "tokenharbor") {
+      try {
+        response = await makeTokenHarborRequest(resolvedModelId);
+      } catch (err) {
+        console.warn(`[Chat API] TokenHarbor request for ${resolvedModelId} failed:`, err);
+      }
+
+      if (!response || !response.ok) {
+        const fallbackWorkerModel = WORKER_FALLBACK_MAP[resolvedModelId] || "gpt-6-astra";
+        try {
+          response = await makeFreeRequest(fallbackWorkerModel);
+        } catch {}
       }
     } else {
+      // Primary: OpenRouter, Mistral, Groq
       try {
-        response = await fetchAI(
-          provider,
-          url,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: resolvedModelId,
-              messages,
-              stream: true,
-              max_tokens: maxTokens,
-              temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
-            }),
-          }
-        );
+        response = await fetchAI(provider, url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: resolvedModelId,
+            messages,
+            stream: true,
+            max_tokens: maxTokens,
+            temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+          }),
+        });
       } catch (err) {
-        console.warn(`[Chat API] Provider ${provider} error:`, err);
+        console.warn(`[Chat API] Primary provider ${provider} for ${resolvedModelId} threw:`, err);
       }
 
+      // Transparent fallback on rate limits (429), errors, or missing keys
       if (!response || !response.ok) {
+        const status = response?.status;
+        console.warn(`[Chat API] Primary provider ${provider} for ${resolvedModelId} returned status ${status}. Executing transparent fallback to free worker.`);
+        const fallbackWorkerModel = WORKER_FALLBACK_MAP[resolvedModelId] || "gpt-6-astra";
         try {
-          if (!TOKENHARBOR_KEY) throw new Error("TOKENHARBOR_API_KEY not configured");
-          response = await fetch(`${TOKENHARBOR_PROXY}/chat/completions`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${TOKENHARBOR_KEY}`,
-            },
-            body: JSON.stringify({
-              model: "mimo-v2.6-flash:free",
-              messages,
-              stream: true,
-              max_tokens: maxTokens,
-              temperature: 0.7,
-            }),
-            signal: AbortSignal.timeout(45000),
-          });
-        } catch {
-          try {
-            response = await fetch("https://freemodels-chat.freemodels.workers.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Origin": "https://freemodels.pro",
-                "Referer": "https://freemodels.pro/",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-              },
-              body: JSON.stringify({
-                model: "gpt-6-astra",
-                messages: messages.filter((m) => m.role !== "system"),
-                stream: true,
-                max_tokens: maxTokens,
-                temperature: 0.7,
-              }),
-              signal: AbortSignal.timeout(30000),
-            });
-          } catch {}
+          response = await makeFreeRequest(fallbackWorkerModel);
+          if (!response || !response.ok) {
+            if (fallbackWorkerModel !== "gpt-6-astra") {
+              response = await makeFreeRequest("gpt-6-astra");
+            }
+          }
+        } catch (workerFallbackErr) {
+          console.error(`[Chat API] Transparent worker fallback failed:`, workerFallbackErr);
         }
       }
     }
@@ -1536,30 +1480,98 @@ After the closing </thought> tag, present your structured, user-friendly final a
       });
     }
 
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    let fullContent = "";
-    let sseLineBuffer = "";
-    const sugState: SuggestionStreamState = { inBlock: false, carry: "", raw: "" };
-
-    const targetModelName = selectedModel.name;
-    const targetModelCompany = selectedModel.company || "AI";
-
     function sanitizeSelfIdentity(text: string): string {
       if (!text) return text;
-      // If the selected model is already in the Claude category, preserve its genuine identity
-      if (selectedModel.category === "Claude") {
-        return text;
+      let cleaned = text;
+
+      // If user did NOT ask who the model is, remove unsolicited robotic opening self-introductions
+      if (!isIdentityPrompt) {
+        cleaned = cleaned.replace(
+          /^(?:I am|I'm|You are interacting with|You're chatting with)\s+(?:GPT[- ]?(?:6 Astra|5\.6 Sol|5\.6 Terra|4o?)|Claude(?: (?:Opus|Sonnet|Fable)(?: [0-9.]+)?|[0-9.]+)?|ChatGPT|Gemini(?: [a-zA-Z0-9.]+)?|DeepSeek(?:[- ][a-zA-Z0-9.]+)?|Mistral(?: [a-zA-Z0-9.]+)?|Codestral|Llama(?:[- ][a-zA-Z0-9.]+)?|GLM(?:[- ][a-zA-Z0-9.]+)?|Kimi(?:[- ][a-zA-Z0-9.]+)?)(?:,?\s*(?:created|developed|built|trained|made)?\s*by\s*(?:OpenAI|Anthropic|Google|DeepSeek|Mistral AI|Meta|Zhipu AI|Moonshot AI))?[.!]?\s*(?:\r?\n)*/i,
+          ""
+        );
       }
-      return text
+
+      // If the selected model is Claude, preserve Claude identity but replace any fallback leaks
+      if (selectedModel.category === "Claude") {
+        cleaned = cleaned
+          .replace(/I am GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I am ${targetModelName} by Anthropic`)
+          .replace(/I'm GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I'm ${targetModelName} by Anthropic`)
+          .replace(/GPT[- ]?6 Astra by OpenAI/gi, `${targetModelName} by Anthropic`)
+          .replace(/GPT[- ]?6 Astra/gi, targetModelName)
+          .replace(/OpenAI/gi, "Anthropic");
+        return cleaned;
+      }
+
+      // If the selected model is GPT, preserve GPT/OpenAI identity but replace any fallback leaks
+      if (selectedModel.category === "GPT") {
+        cleaned = cleaned
+          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by OpenAI`)
+          .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by OpenAI`)
+          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
+          .replace(/Anthropic/gi, "OpenAI");
+        return cleaned;
+      }
+
+      // For Likeway models (and any other models):
+      // Clean all competitor identities and strictly present targetModelName by Likeway AI
+      cleaned = cleaned
+        // Claude / Anthropic
         .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
         .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I am ${targetModelName}`)
         .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
         .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I'm ${targetModelName}`)
         .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by ${targetModelCompany}`)
         .replace(/As an AI (?:created|developed) by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`)
-        .replace(/As Claude,/gi, `As ${targetModelName},`);
+        .replace(/As Claude,/gi, `As ${targetModelName},`)
+        // GPT / OpenAI
+        .replace(/I am GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I'm GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I am GPT[- ]?5\.6 Sol(?: created| developed)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I am ChatGPT(?:, a large language model)?(?: created| trained)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/GPT[- ]?6 Astra by OpenAI/gi, `${targetModelName} by ${targetModelCompany}`)
+        .replace(/GPT[- ]?5\.6 Sol by OpenAI/gi, `${targetModelName} by ${targetModelCompany}`)
+        .replace(/GPT[- ]?6 Astra/gi, targetModelName)
+        .replace(/created by OpenAI/gi, `created by ${targetModelCompany}`)
+        .replace(/developed by OpenAI/gi, `developed by ${targetModelCompany}`)
+        .replace(/trained by OpenAI/gi, `developed by ${targetModelCompany}`)
+        // Gemini / Google
+        .replace(/I am Gemini(?: [a-zA-Z0-9.]+)?(?:, a large language model)?(?: created| built)?\s*by Google/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/built by Google/gi, `developed by ${targetModelCompany}`)
+        .replace(/created by Google/gi, `created by ${targetModelCompany}`)
+        // DeepSeek
+        .replace(/I am DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I'm DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/created by DeepSeek(?: AI)?/gi, `created by ${targetModelCompany}`)
+        .replace(/developed by DeepSeek(?: AI)?/gi, `developed by ${targetModelCompany}`)
+        .replace(/\*\*DeepSeek(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
+        .replace(/DeepSeek AI/gi, targetModelCompany)
+        .replace(/DeepSeek R1/gi, targetModelName)
+        .replace(/DeepSeek Chat/gi, targetModelName)
+        .replace(/DeepSeek/gi, targetModelName)
+        // Mistral / Codestral
+        .replace(/I am Mistral(?: created)?\s*by Mistral AI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/created by Mistral AI/gi, `created by ${targetModelCompany}`)
+        .replace(/\*\*Mistral(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
+        .replace(/Mistral AI/gi, targetModelCompany)
+        .replace(/Codestral/gi, targetModelName)
+        // Meta / Llama
+        .replace(/I am Llama(?: created)?\s*by Meta/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/created by Meta/gi, `created by ${targetModelCompany}`)
+        .replace(/\*\*Llama(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
+        .replace(/Meta AI/gi, targetModelCompany)
+        // Moonshot / Kimi / Zhipu / GLM
+        .replace(/I am Kimi(?: created)?\s*by Moonshot AI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I am GLM(?: created)?\s*by Zhipu AI/gi, `I am ${targetModelName} by ${targetModelCompany}`);
+
+      return cleaned;
     }
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let fullContent = "";
+    let sseLineBuffer = "";
+    const sugState: SuggestionStreamState = { inBlock: false, carry: "", raw: "" };
 
     let openingBuffer = "";
     let openingSent = false;

@@ -3,6 +3,8 @@
  * Provides normalized capability profiles and runtime performance metrics for all supported models.
  */
 
+import { MODELS } from "@/lib/models";
+
 export type ModelTier = "TIER_1_FRONTIER" | "TIER_2_STRONG" | "TIER_3_FAST" | "TIER_4_SPECIALIZED";
 export type SpeedTier = "ultra-fast" | "fast" | "balanced" | "deep";
 export type CostTier = "free" | "low" | "medium" | "high";
@@ -492,40 +494,50 @@ export const MODEL_REGISTRY: Record<string, ModelCapabilityProfile> = {
  */
 export function getModelProfile(modelId: string): ModelCapabilityProfile {
   const normalizedId = (modelId || "").toLowerCase().trim();
-  
+  const known = MODELS.find((m) => m.id === modelId || m.id.toLowerCase() === normalizedId);
+
+  let profile: ModelCapabilityProfile;
+
   if (MODEL_REGISTRY[normalizedId]) {
-    return MODEL_REGISTRY[normalizedId];
-  }
-
-  // Substring or prefix matching
-  for (const [key, profile] of Object.entries(MODEL_REGISTRY)) {
-    if (normalizedId.includes(key) || key.includes(normalizedId)) {
-      return profile;
+    profile = { ...MODEL_REGISTRY[normalizedId] };
+  } else {
+    // Substring or prefix matching
+    let matched: ModelCapabilityProfile | null = null;
+    for (const [key, p] of Object.entries(MODEL_REGISTRY)) {
+      if (normalizedId.includes(key) || key.includes(normalizedId)) {
+        matched = { ...p };
+        break;
+      }
     }
+
+    // Default fallback profile for unknown / custom models
+    profile = matched || {
+      provider: "Unknown",
+      modelId: modelId || "unknown-model",
+      displayName: modelId || "AI Engine",
+      tier: "TIER_2_STRONG",
+      intelligenceLevel: 8.5,
+      reasoningLevel: 8.5,
+      codingLevel: 8.5,
+      instructionFollowing: 8.8,
+      contextWindow: 128000,
+      maxOutputTokens: 4096,
+      speedTier: "balanced",
+      costTier: "medium",
+      supportsVision: true,
+      supportsTools: true,
+      supportsStructuredOutput: true,
+      supportsStreaming: true,
+      supportsReasoning: true,
+      supportsWebSearch: true,
+      reliabilityScore: 0.95,
+    };
   }
 
-  // Default fallback profile for unknown / custom models
-  return {
-    provider: "Unknown",
-    modelId: modelId || "unknown-model",
-    displayName: modelId || "AI Engine",
-    tier: "TIER_2_STRONG",
-    intelligenceLevel: 8.5,
-    reasoningLevel: 8.5,
-    codingLevel: 8.5,
-    instructionFollowing: 8.8,
-    contextWindow: 128000,
-    maxOutputTokens: 4096,
-    speedTier: "balanced",
-    costTier: "medium",
-    supportsVision: true,
-    supportsTools: true,
-    supportsStructuredOutput: true,
-    supportsStreaming: true,
-    supportsReasoning: true,
-    supportsWebSearch: true,
-    reliabilityScore: 0.95,
-  };
+  if (known) {
+    profile.displayName = known.name;
+  }
+  return profile;
 }
 
 /**

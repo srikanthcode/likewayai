@@ -4040,7 +4040,7 @@ export default function ChatPage() {
             </form>
           </div>
           <p className={cn("text-center text-[10px] mt-3 pb-1", theme === 'dark' ? "text-gray-500" : "text-gray-600 font-medium")}>
-            {selectedModel?.name || "GPT 6 Astra"} (third-party model) can make mistakes. Free to use, subject to availability.
+            {selectedModel?.name || "LikeWay AI"} can make mistakes. Verify important info.
           </p>
 
           {/* Browser Automation Trial Banner */}
