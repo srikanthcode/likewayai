@@ -317,10 +317,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Daily plan limit (paying plans Go/Plus/Pro have 99,999/unlimited)
-    const isGpt6Promo = modelId === "gpt-6-astra";
+    // Claude Opus 5.5, Claude Sonnet 5.5, GPT 6 Astra, and GPT 5.6 Sol are free unlimited on the Core plan
+    const isFreeUnlimitedModel =
+      modelId === "claude-opus-5.5" ||
+      modelId === "claude-sonnet-5" ||
+      modelId === "gpt-6-astra" ||
+      modelId === "sol";
     const planConfig = PLANS[plan] || PLANS.Core;
     const dailyLimit = checkDailyLimit(userId, planConfig.limits.messagesDay, isAdmin || plan !== "Core");
-    if (!dailyLimit.allowed && !isGpt6Promo) {
+    if (!dailyLimit.allowed && !isFreeUnlimitedModel) {
       return new Response(JSON.stringify({
         error: `Daily message limit reached (${dailyLimit.limit} messages/day on Core). Upgrade to Go, Plus, or Pro for unlimited messages.`,
         limit: dailyLimit.limit,
@@ -1295,7 +1300,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
         `[CORE IDENTITY & SYSTEM DIRECTIVE — MANDATORY & ABSOLUTE PRIORITY]:\n` +
         `- You are strictly ${meta.name} created by ${meta.creator || "AI"} (${meta.intro}).\n` +
         `- If asked who you are, what model you are, who created you, or your identity, you MUST ALWAYS state that you are ${meta.name} created by ${meta.creator || "AI"}.\n` +
-        `- NEVER claim to be Claude, Anthropic, Sonnet, ChatGPT, or any other model/company.\n` +
+        `- NEVER claim to be any model or creator other than ${meta.name} by ${meta.creator || "AI"}.\n` +
         `- When stating policy, compliance, restrictions, or capabilities, ALWAYS speak on behalf of ${meta.name} by ${meta.creator || "AI"}.\n` +
         `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
         `- [ADAPTIVE STRATEGY — Tier: ${modelProfile.tier}, Depth: Level ${taskClassification.desiredDepth}, Output: ${taskClassification.expectedOutputFormat}]:\n` +
@@ -1350,62 +1355,77 @@ After the closing </thought> tag, present your structured, user-friendly final a
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
           },
           body: JSON.stringify({ ...freePayload, model: targetModel }),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(60000),
         });
       };
 
       try {
-        const hasOpenRouter = API_KEYS.openrouter && API_KEYS.openrouter.length > 0;
-        if (hasOpenRouter) {
-          try {
-            response = await fetchAI(
-              "openrouter",
-              "https://openrouter.ai/api/v1/chat/completions",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  model: "google/gemini-2.5-flash",
-                  messages,
-                  stream: true,
-                  max_tokens: Math.min(maxTokens, 3000),
-                  temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
-                }),
-              }
-            );
-          } catch (orErr) {
-            console.warn("[Chat API] OpenRouter primary attempt failed, falling back to free worker:", orErr);
-          }
-        }
+        const isFreeWorkerModel =
+          resolvedModelId === "claude-opus-5.5" ||
+          resolvedModelId === "claude-sonnet-5" ||
+          resolvedModelId === "gpt-6-astra" ||
+          resolvedModelId === "sol";
 
-        if (!response || !response.ok) {
-          if (provider === "tokenharbor") {
-            try {
-              response = await makeTokenHarborRequest(resolvedModelId);
-              if (!response || !response.ok) {
-                const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
-                response = await makeTokenHarborRequest(altModel);
-                if (!response || !response.ok) {
-                  response = await makeFreeRequest("gpt-6-astra");
-                }
-              }
-            } catch {
-              response = await makeFreeRequest("gpt-6-astra").catch(() => null);
-            }
-          } else {
+        if (isFreeWorkerModel) {
+          // Direct call to https://freemodels-chat.freemodels.workers.dev exclusively
+          response = await makeFreeRequest(resolvedModelId);
+          if (!response || !response.ok) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
             response = await makeFreeRequest(resolvedModelId);
-            if (!response || !response.ok) {
+          }
+        } else {
+          const hasOpenRouter = API_KEYS.openrouter && API_KEYS.openrouter.length > 0;
+          if (hasOpenRouter) {
+            try {
+              response = await fetchAI(
+                "openrouter",
+                "https://openrouter.ai/api/v1/chat/completions",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash",
+                    messages,
+                    stream: true,
+                    max_tokens: Math.min(maxTokens, 3000),
+                    temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+                  }),
+                }
+              );
+            } catch (orErr) {
+              console.warn("[Chat API] OpenRouter primary attempt failed, falling back to free worker:", orErr);
+            }
+          }
+
+          if (!response || !response.ok) {
+            if (provider === "tokenharbor") {
               try {
-                const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
-                if (mimoRes && mimoRes.ok) {
-                  response = mimoRes;
-                } else {
+                response = await makeTokenHarborRequest(resolvedModelId);
+                if (!response || !response.ok) {
+                  const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
+                  response = await makeTokenHarborRequest(altModel);
+                  if (!response || !response.ok) {
+                    response = await makeFreeRequest("gpt-6-astra");
+                  }
+                }
+              } catch {
+                response = await makeFreeRequest("gpt-6-astra").catch(() => null);
+              }
+            } else {
+              response = await makeFreeRequest(resolvedModelId);
+              if (!response || !response.ok) {
+                try {
+                  const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
+                  if (mimoRes && mimoRes.ok) {
+                    response = mimoRes;
+                  } else {
+                    const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
+                    if (retryRes?.ok) response = retryRes;
+                  }
+                } catch {
                   const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
                   if (retryRes?.ok) response = retryRes;
                 }
-              } catch {
-                const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
-                if (retryRes?.ok) response = retryRes;
               }
             }
           }

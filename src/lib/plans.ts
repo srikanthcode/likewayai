@@ -32,6 +32,9 @@ export const PLANS: Record<PlanType, Plan> = {
       messagesDay: 200,
       modelsAllowed: [
         "gpt-6-astra",
+        "claude-opus-5.5",
+        "claude-sonnet-5",
+        "sol",
         "deepseek-v4.1-flash:free",
         "mimo-v2.6-flash:free",
         "free-llama3-70b",
@@ -47,9 +50,9 @@ export const PLANS: Record<PlanType, Plan> = {
       computerControl: 3,
     },
     features: [
-      "200 responses/day",
-      "Free models unlocked (GPT 6 Astra, DeepSeek, Mimo)",
-      "GPT 6 Astra unlimited chat for 1 month",
+      "200 responses/day on standard models",
+      "Free unlimited chat with Claude Opus 5.5, Claude Sonnet 5.5, GPT 6 Astra & GPT 5.6 Sol",
+      "Free models unlocked (Claude, GPT, DeepSeek, Mimo)",
       "Multimodal vision, video & audio support",
       "Smart conversation assistant",
       "Web search capabilities",
@@ -58,7 +61,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "2-day free browser automation trial",
       "Autonomous Computer Control preview (3 actions)",
     ],
-    modelCount: 7,
+    modelCount: 10,
   },
   Go: {
     id: "Go",
