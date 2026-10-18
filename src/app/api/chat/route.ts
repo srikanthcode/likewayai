@@ -30,6 +30,7 @@ import { getModelProfile, recordModelTelemetry } from "@/lib/intelligence/model-
 import { classifyTask } from "@/lib/intelligence/task-classifier";
 import { synthesizeAdaptivePrompt } from "@/lib/intelligence/prompt-adapter";
 import { evaluateResponseQuality } from "@/lib/intelligence/quality-evaluator";
+import { extractUrls, reachAll } from "@/lib/agent-reach";
 
 // ── Free proxy URL — SERVER-SIDE ONLY. Never imported by client bundle.
 const FREE_MODELS_PROXY = "https://freemodels-chat.freemodels.workers.dev";
@@ -1120,6 +1121,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Agent Reach: Automatic URL Content Extraction (Web, YouTube, GitHub, Reddit, X, RSS) ──
+    let agentReachContext = "";
+    const promptUrls = extractUrls(sanitizedPrompt);
+    if (promptUrls.length > 0) {
+      try {
+        reqLogger.info("Agent Reach extracting URLs from user prompt", { urls: promptUrls });
+        const reachResults = await reachAll(promptUrls.slice(0, 3));
+        const successfulReaches = reachResults.filter((r) => r.success && r.content);
+        if (successfulReaches.length > 0) {
+          agentReachContext =
+            "\n\n[AGENT REACH — LIVE INTERNET EXTRACTION]\n" +
+            successfulReaches
+              .map(
+                (r) =>
+                  `--- Source: ${r.url} (Channel: ${r.channel}, Backend: ${r.backendUsed}) ---\n` +
+                  (r.title ? `Title: ${r.title}\n` : "") +
+                  `Content:\n${r.content.slice(0, 15000)}\n`
+              )
+              .join("\n") +
+            "\n[END AGENT REACH CONTEXT]\n";
+        }
+      } catch (reachErr: any) {
+        console.warn("[Chat API] Agent Reach extraction failed:", reachErr?.message);
+      }
+    }
+
     // ── Standard Text Conversation ───────────────────────────────────────
     const selectedModel = MODELS.find((m) => m.id === modelId) || MODELS[0];
     const routedModelId = modelId || selectedModel.id;
@@ -1174,6 +1201,9 @@ export async function POST(req: NextRequest) {
     }
     if (searchContext) {
       systemPrompt += `\n\n## LIVE WEB DATA\nUse the following verified web data to answer accurately. Cite sources using [source:Name](url) when available:\n${searchContext}`;
+    }
+    if (agentReachContext) {
+      systemPrompt += `\n\n## AGENT REACH LIVE INTERNET CONTENT\nThe user provided URLs or links. Agent Reach has fetched and extracted the live content directly from the sources (GitHub/YouTube/Reddit/X/Web/RSS) below. Use this extracted content to provide an exact, comprehensive, and up-to-date answer:\n${agentReachContext}`;
     }
 
     const now = new Date();
