@@ -92,13 +92,30 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
     smartQuery = safeQueryLength(query);
   }
 
-  const [brave, jina] = await Promise.all([
-    withTimeout(braveSearch(smartQuery).catch(() => ""), 2000, ""),
-    withTimeout(searxngSearch(smartQuery).catch(() => ""), 2000, "")
-  ]);
+  // ── Retrieval strategy ──────────────────────────────────────────────
+  // 1. PRIMARY: Tavily — a key is configured, it is reliable, and it returns
+  //    real titles + URLs we can cite. Previously it sat at the BOTTOM of the
+  //    searxngSearch fallback chain behind a 2000ms cap, so it almost never
+  //    ran — causing confident but fabricated, uncited "web" answers.
+  // 2. FALLBACK: free multi-engine combo (DuckDuckGo / Google News / Brave /
+  //    Jina / Wikipedia) when Tavily is unavailable or returns nothing.
+  // The old 2000ms budget was far too aggressive for real network round-trips.
+  let tavily = "";
+  if (process.env.TAVILY_API_KEY) {
+    tavily = await withTimeout(tavilySearch(smartQuery).catch(() => ""), 8000, "");
+  }
+
+  let freeCombo = "";
+  if (!tavily) {
+    const [brave, jina] = await Promise.all([
+      withTimeout(braveSearch(smartQuery).catch(() => ""), 6000, ""),
+      withTimeout(searxngSearch(smartQuery).catch(() => ""), 6000, "")
+    ]);
+    freeCombo = [brave, jina].join("\n\n");
+  }
 
   // Limit total context to prevent overloaded errors
-  const rawResults = [brave, jina].join("\n\n").slice(0, 8000);
+  const rawResults = (tavily || freeCombo).slice(0, 8000);
 
   // 2. Fact Extraction & Authority Ranking
   const facts: string[] = [];

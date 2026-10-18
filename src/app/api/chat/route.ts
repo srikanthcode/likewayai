@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
+import { API_KEYS } from "@/config/keys";
 import { MODELS, getProviderForModel } from "@/lib/models";
 import { SYSTEM_PROMPTS, AgentMode, LIKEWAY_RESPONSE_ARCHITECTURE } from "@/lib/agents";
 import { getVerifiedLatestInfo } from "@/lib/browsing";
@@ -428,51 +429,35 @@ export async function POST(req: NextRequest) {
         spec = generate3DRacingGameSpec();
       }
 
-      if (!spec) {
+      if (spec) {
+        const devResult = await executeAutonomousProject(spec);
+
         const encoder = new TextEncoder();
-        const guidance =
-          "⚠️ I couldn't generate a runnable project plan for that request. " +
-          "Try naming the kind of app (e.g. \"build a Pomodoro timer web app\") and I'll scaffold it.";
-        const planStream = new ReadableStream({
+        const stream = new ReadableStream({
           start(controller) {
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: guidance } }] })}\n\n`)
+              encoder.encode(
+                `data: ${JSON.stringify({ choices: [{ delta: { content: devResult.summaryMarkdown } }] })}\n\n`
+              )
             );
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           },
         });
-        return new Response(planStream, {
-          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+
+        if (userId !== "anonymous") {
+          saveMessage(userId, { role: "assistant", content: devResult.summaryMarkdown }, projectId, conversationId).catch(() => {});
+        }
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
         });
       }
-
-      const devResult = await executeAutonomousProject(spec);
-
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ choices: [{ delta: { content: devResult.summaryMarkdown } }] })}\n\n`
-            )
-          );
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        },
-      });
-
-      if (userId !== "anonymous") {
-        saveMessage(userId, { role: "assistant", content: devResult.summaryMarkdown }, projectId, conversationId).catch(() => {});
-      }
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
+      // If spec is null, fall through to normal conversational response
     }
 
     // ── Orchestrator: understand the task BEFORE routing ──────────────
@@ -1343,33 +1328,58 @@ After the closing </thought> tag, present your structured, user-friendly final a
       };
 
       try {
-        if (provider === "tokenharbor") {
+        const hasOpenRouter = API_KEYS.openrouter && API_KEYS.openrouter.length > 0;
+        if (hasOpenRouter) {
           try {
-            response = await makeTokenHarborRequest(resolvedModelId);
-            if (!response || !response.ok) {
-              const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
-              response = await makeTokenHarborRequest(altModel);
-              if (!response || !response.ok) {
-                response = await makeFreeRequest("gpt-6-astra");
+            response = await fetchAI(
+              "openrouter",
+              "https://openrouter.ai/api/v1/chat/completions",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash",
+                  messages,
+                  stream: true,
+                  max_tokens: Math.min(maxTokens, 3000),
+                  temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+                }),
               }
-            }
-          } catch {
-            response = await makeFreeRequest("gpt-6-astra").catch(() => null);
+            );
+          } catch (orErr) {
+            console.warn("[Chat API] OpenRouter primary attempt failed, falling back to free worker:", orErr);
           }
-        } else {
-          response = await makeFreeRequest(resolvedModelId);
-          if (!response || !response.ok) {
+        }
+
+        if (!response || !response.ok) {
+          if (provider === "tokenharbor") {
             try {
-              const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
-              if (mimoRes && mimoRes.ok) {
-                response = mimoRes;
-              } else {
+              response = await makeTokenHarborRequest(resolvedModelId);
+              if (!response || !response.ok) {
+                const altModel = resolvedModelId === "mimo-v2.6-flash:free" ? "deepseek-v4.1-flash:free" : "mimo-v2.6-flash:free";
+                response = await makeTokenHarborRequest(altModel);
+                if (!response || !response.ok) {
+                  response = await makeFreeRequest("gpt-6-astra");
+                }
+              }
+            } catch {
+              response = await makeFreeRequest("gpt-6-astra").catch(() => null);
+            }
+          } else {
+            response = await makeFreeRequest(resolvedModelId);
+            if (!response || !response.ok) {
+              try {
+                const mimoRes = await makeTokenHarborRequest("mimo-v2.6-flash:free");
+                if (mimoRes && mimoRes.ok) {
+                  response = mimoRes;
+                } else {
+                  const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
+                  if (retryRes?.ok) response = retryRes;
+                }
+              } catch {
                 const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
                 if (retryRes?.ok) response = retryRes;
               }
-            } catch {
-              const retryRes = await makeFreeRequest("gpt-6-astra").catch(() => null);
-              if (retryRes?.ok) response = retryRes;
             }
           }
         }
@@ -1489,21 +1499,19 @@ After the closing </thought> tag, present your structured, user-friendly final a
     const targetModelCompany = selectedModel.company || "AI";
 
     function sanitizeSelfIdentity(text: string): string {
-      if (targetModelName === "Claude Sonnet 5.5" || targetModelName === "Claude Sonnet") return text;
+      if (!text) return text;
+      // If the selected model is already in the Claude category, preserve its genuine identity
+      if (selectedModel.category === "Claude") {
+        return text;
+      }
       return text
-        .replace(/I am Claude Sonnet (?:5\.5|3\.5|3\.7|4)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I am Claude Sonnet (?:5\.5|3\.5|3\.7|4)?/gi, `I am ${targetModelName}`)
-        .replace(/I am Claude,?\s*(?:an AI)?\s*(?:created|developed)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I am Claude/gi, `I am ${targetModelName}`)
-        .replace(/I'm Claude Sonnet (?:5\.5|3\.5|3\.7|4)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I'm Claude Sonnet (?:5\.5|3\.5|3\.7|4)?/gi, `I'm ${targetModelName}`)
-        .replace(/I'm Claude/gi, `I'm ${targetModelName}`)
-        .replace(/Claude Sonnet (?:5\.5|3\.5|3\.7|4)?\s*by Anthropic/gi, `${targetModelName} by ${targetModelCompany}`)
-        .replace(/Claude Sonnet/gi, targetModelName)
-        .replace(/As Claude Sonnet (?:5\.5|3\.5|3\.7|4)?/gi, `As ${targetModelName}`)
-        .replace(/As Claude,/gi, `As ${targetModelName},`)
-        .replace(/As an AI created by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`)
-        .replace(/As an AI developed by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`);
+        .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I am ${targetModelName}`)
+        .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I'm ${targetModelName}`)
+        .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by ${targetModelCompany}`)
+        .replace(/As an AI (?:created|developed) by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`)
+        .replace(/As Claude,/gi, `As ${targetModelName},`);
     }
 
     let openingBuffer = "";
@@ -1603,8 +1611,34 @@ After the closing </thought> tag, present your structured, user-friendly final a
           }
         }
 
+        // Auto-close any dangling code blocks left open by an abruptly terminated upstream stream
+        const codeBlockMatches = fullContent.match(/```/g) || [];
+        if (codeBlockMatches.length % 2 !== 0) {
+          const closingBlock = "\n```\n";
+          fullContent += closingBlock;
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: closingBlock } }] })}\n\n`)
+          );
+        }
+
         // Emit follow-up suggestion chips BEFORE `data: [DONE]` so `consumeChatStream` reads them!
-        const suggestions = parseSuggestionLines(sugState.raw);
+        let suggestions = parseSuggestionLines(sugState.raw);
+        if (suggestions.length === 0) {
+          if (taskClassification.taskType === "coding" || fullContent.includes("```")) {
+            suggestions = [
+              "Continue and complete the rest of this code",
+              "Add interactive controls and animation effects",
+              "Explain how to deploy and test this locally",
+            ];
+          } else {
+            suggestions = [
+              "Explain this in more depth",
+              "Give a practical step-by-step example",
+              "What are the best practices for this?",
+            ];
+          }
+        }
+
         if (suggestions.length > 0) {
           controller.enqueue(
             encoder.encode(`event: suggestions\ndata: ${JSON.stringify({ suggestions })}\n\n`)

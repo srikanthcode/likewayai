@@ -76,6 +76,10 @@ export function evaluateResponseQuality(
     if (!hasCodeBlock && complexity >= 2) {
       missingDimensions.push("Working code block");
     }
+    const codeBlockCount = (content.match(/```/g) || []).length;
+    if (codeBlockCount % 2 !== 0) {
+      missingDimensions.push("Complete unclosed code block");
+    }
   }
 
   if (expectedOutputFormat === "prompt") {

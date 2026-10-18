@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { keyPool } from "@/lib/api-manager";
+import { getTokenFromCookies, verifyAccessToken, isAdminUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +30,15 @@ async function testKey(provider: string, key: string, url: string, model: string
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // SECURITY: This endpoint probes live provider keys and infrastructure.
+  // It must never be public. Require an authenticated admin session.
+  const tokens = getTokenFromCookies(req);
+  const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+  if (!payload || !isAdminUser({ role: payload.role })) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const results: Record<string, any> = {};
 
   const configs: Record<string, { url: string; model: string; envVar: string }> = {
@@ -55,7 +65,6 @@ export async function GET() {
     results[name] = {
       status: test.ok ? "working" : "broken",
       keyCount: count,
-      firstKeyHint: `${key.slice(0, 8)}...${key.slice(-4)}`,
       testStatus: test.status,
       error: test.error,
     };

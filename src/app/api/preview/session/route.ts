@@ -4,6 +4,7 @@ import {
   getSession,
   stopSession,
   addSessionLog,
+  buildExecutableBundle,
 } from "@/lib/preview/preview-manager";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +31,13 @@ export async function POST(req: NextRequest) {
       files,
     });
 
+    const html = buildExecutableBundle(session);
+
     return NextResponse.json({
       success: true,
       session,
       previewUrl: session.previewUrl,
+      html,
     });
   } catch (error: any) {
     return NextResponse.json(

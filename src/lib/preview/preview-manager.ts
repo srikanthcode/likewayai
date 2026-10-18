@@ -6,6 +6,9 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { repairHtmlDocument } from "./html-repair";
+
+export { repairHtmlDocument };
 
 export type PreviewStatus =
   | "idle"
@@ -381,12 +384,16 @@ export function buildExecutableBundle(session: PreviewSession): string {
 </html>`;
   }
 
-  // If HTML document, inject bridge script and Tailwind CDN if needed
-  if (mainContent.includes("<html") || mainContent.includes("<!DOCTYPE html>")) {
-    return mainContent.replace("<head>", `<head>\n${bridgeScript}\n<script src="https://cdn.tailwindcss.com"></script>`);
+  // HTML document or raw snippet: sanitize & repair first
+  const repairedHtml = repairHtmlDocument(mainContent, session.title);
+
+  // Inject bridge script and Tailwind CDN into <head>
+  if (repairedHtml.includes("<head>")) {
+    return repairedHtml.replace("<head>", `<head>\n${bridgeScript}\n<script src="https://cdn.tailwindcss.com"></script>`);
+  } else if (repairedHtml.includes("<head ")) {
+    return repairedHtml.replace(/<head[^>]*>/i, `$&\n${bridgeScript}\n<script src="https://cdn.tailwindcss.com"></script>`);
   }
 
-  // Fallback wrapper for raw snippets
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -395,12 +402,9 @@ export function buildExecutableBundle(session: PreviewSession): string {
   <title>${session.title}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   ${bridgeScript}
-  <style>
-    body { margin: 0; padding: 1.5rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #090d16; color: #f1f5f9; }
-  </style>
 </head>
 <body>
-  ${mainContent}
+  ${repairedHtml}
 </body>
 </html>`;
 }

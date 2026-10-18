@@ -135,6 +135,11 @@ function formatAIResponse(content: string) {
     return `\n\n\`\`\`plan:${cleanTitle}\n${planBody.trim()}\n\`\`\`\n\n`;
   });
 
+  // Unwrap markdown tables wrapped inside ```markdown code fences so they render as interactive tables
+  formatted = formatted.replace(/```(?:markdown|md)?\s*(\|[^\n]+\|\s*\n\|[-: |]+\|\s*\n[\s\S]*?)\s*```/gi, (_match, table) => {
+    return `\n\n${table.trim()}\n\n`;
+  });
+
   // Format <artifact ...> blocks with attributes in ANY order (id, type, language, title)
   formatted = formatted.replace(/<artifact([^>]*)>([\s\S]*?)<\/artifact>/gi, (_match, attrs, artifactContent) => {
     const typeMatch = /type="([^"]+)"/i.exec(attrs || "");

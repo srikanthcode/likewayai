@@ -82,6 +82,14 @@ export function isAutonomousDevIntent(prompt: string): {
  */
 export function isBuildIntent(prompt: string): boolean {
   const p = prompt.toLowerCase();
+
+  // If asking for a plan, roadmap, prompt, architecture, explanation, comparison, tutorial -> NOT autonomous code scaffolding
+  const isMetaOrPlanning =
+    /\b(plan|roadmap|timeline|strategy|prompt|architecture|diagram|explain|explanation|how to|guide|tutorial|steps|comparison|compare|vs|versus|difference)\b/.test(p);
+  if (isMetaOrPlanning) {
+    return false;
+  }
+
   const verb = /\b(build|create|make|scaffold|generate|code)\b/.test(p);
   const noun =
     /\b(app|application|website|web ?page|web app|game|dashboard|landing page|portfolio|calculator|todo|timer|quiz|form|tool|simulator|visuali[sz]er)\b/.test(p);

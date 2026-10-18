@@ -37,6 +37,8 @@ export async function GET(
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Content-Security-Policy": "frame-ancestors 'self' *",
       "Cache-Control": "no-cache, no-store, must-revalidate",
     },
   });

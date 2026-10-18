@@ -18,6 +18,7 @@ import LivePreviewWorkspace from "./LivePreviewWorkspace";
 import DiagramBlock from "./response/DiagramBlock";
 import PromptBlock from "./response/PromptBlock";
 import PlanBlock from "./response/PlanBlock";
+import { repairHtmlDocument } from "@/lib/preview/html-repair";
 
 interface CodeBlockProps {
   language: string;
@@ -195,6 +196,18 @@ export default function CodeBlock({
   const [showStudio, setShowStudio] = useState(false);
 
   const lines = (value || "").split("\n");
+  const isTruncated =
+    !isGenerating &&
+    ((resolvedLang === "html" && (
+      (value.includes("<style") && !value.includes("</style>")) ||
+      (value.includes("<script") && !value.includes("</script>")) ||
+      (value.includes("<body") && !value.includes("</body>"))
+    )) ||
+    value.trim().endsWith("...") ||
+    value.trim().endsWith("'") ||
+    value.trim().endsWith(":") ||
+    value.trim().endsWith("="));
+
   const isPreviewable =
     (resolvedLang === "html" ||
       resolvedLang === "svg" ||
@@ -274,6 +287,11 @@ export default function CodeBlock({
               <span>Streaming code…</span>
               <span className="neon-phase-dot" />
             </div>
+          ) : isTruncated ? (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 font-mono text-[10px] font-semibold border border-amber-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>Incomplete · Partial</span>
+            </div>
           ) : (
             <div className="neon-complete-badge">
               <Check size={11} />
@@ -345,7 +363,7 @@ export default function CodeBlock({
         <div className="w-full bg-white rounded-b-xl overflow-hidden border-t border-white/10">
           <iframe
             title="Live HTML Preview"
-            srcDoc={value}
+            srcDoc={repairHtmlDocument(value, resolvedFilename || "Quick Preview")}
             sandbox="allow-scripts"
             className="w-full h-80 border-0"
           />

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CodeBlock from "@/components/CodeBlock";
+import { repairHtmlDocument } from "@/lib/preview/html-repair";
 
 export type ViewportMode = "desktop" | "tablet" | "mobile";
 
@@ -64,6 +65,8 @@ export default function LivePreviewWorkspace({
   const [isLoading, setIsLoading] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [compiledHtml, setCompiledHtml] = useState<string | null>(null);
+  const [isAutoRepaired, setIsAutoRepaired] = useState(false);
   const [logs, setLogs] = useState<LivePreviewLog[]>([]);
   const [logFilter, setLogFilter] = useState<"all" | "error" | "warn" | "info">("all");
   const [activeTab, setActiveTab] = useState<"preview" | "code" | "console">("preview");
@@ -85,6 +88,11 @@ export default function LivePreviewWorkspace({
       setIsLoading(true);
       setRuntimeError(null);
 
+      // Detect if code is partial or cut off (e.g. unclosed style/script tags)
+      const hasUnclosedStyle = codeToRun.includes("<style") && !codeToRun.includes("</style>");
+      const hasUnclosedScript = codeToRun.includes("<script") && !codeToRun.includes("</script>");
+      setIsAutoRepaired(hasUnclosedStyle || hasUnclosedScript);
+
       const res = await fetch("/api/preview/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,8 +106,13 @@ export default function LivePreviewWorkspace({
       if (!res.ok) throw new Error("Failed to start preview session");
 
       const data = await res.json();
-      setSessionId(data.session.id);
-      setPreviewUrl(data.previewUrl);
+      setSessionId(data.session?.id || null);
+      setPreviewUrl(data.previewUrl || null);
+      if (data.html) {
+        setCompiledHtml(data.html);
+      } else {
+        setCompiledHtml(repairHtmlDocument(codeToRun, title));
+      }
       setIsRunning(true);
 
       setLogs((prev) => [
@@ -107,19 +120,21 @@ export default function LivePreviewWorkspace({
         {
           id: `log_${Date.now()}`,
           level: "info",
-          message: `Build complete · Runtime: ${data.session.runtime.toUpperCase()}`,
+          message: `Build complete · Runtime: ${(data.session?.runtime || "HTML").toUpperCase()}`,
           source: "compiler",
           timestamp: new Date().toLocaleTimeString(),
         },
       ]);
     } catch (err: any) {
-      setRuntimeError({ message: err.message });
+      // Robust client-side fallback: compile and run directly via srcDoc
+      setCompiledHtml(repairHtmlDocument(codeToRun, title));
+      setIsRunning(true);
       setLogs((prev) => [
         ...prev,
         {
           id: `log_${Date.now()}`,
-          level: "error",
-          message: `Compilation error: ${err.message}`,
+          level: "info",
+          message: "Loaded in local client sandbox",
           source: "compiler",
           timestamp: new Date().toLocaleTimeString(),
         },
@@ -579,11 +594,20 @@ export default function LivePreviewWorkspace({
                 </div>
               )}
 
-              {/* Executable Sandboxed Iframe */}
-              {previewUrl && (
+              {/* Notice for Incomplete/Auto-repaired code */}
+              {isAutoRepaired && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 rounded-full border border-amber-500/30 bg-amber-950/90 px-3 py-1 text-[11px] font-medium text-amber-200 backdrop-blur-md shadow-lg flex items-center gap-1.5 pointer-events-none">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Preview rendered with auto-repaired tags</span>
+                </div>
+              )}
+
+              {/* Executable Sandboxed Iframe with srcDoc (bypasses X-Frame-Options & eliminates network latency) */}
+              {isRunning && (compiledHtml || previewUrl) && (
                 <iframe
                   ref={iframeRef}
-                  src={previewUrl}
+                  srcDoc={compiledHtml || undefined}
+                  src={!compiledHtml && previewUrl ? previewUrl : undefined}
                   title={title || "Live Preview"}
                   sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
                   className="w-full h-full border-0 bg-white"
