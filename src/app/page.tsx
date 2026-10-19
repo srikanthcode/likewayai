@@ -3395,6 +3395,7 @@ export default function ChatPage() {
                                 { label: "Shorter", suffix: "\n\n[Rewrite concisely in 3-5 key bullet points.]" },
                                 { label: "Deeper", suffix: "\n\n[Provide a deeper technical breakdown with examples and edge cases.]" },
                                 { label: "Simpler", suffix: "\n\n[Explain simply step-by-step with an everyday analogy.]" },
+                                { label: "Continue", suffix: "\n\n[Continue explaining seamlessly from where you stopped. Complete all remaining sections in full detail.]" },
                               ].map((mod) => (
                                 <button
                                   key={mod.label}

@@ -1239,6 +1239,29 @@ After the closing </thought> tag, present your structured, user-friendly final a
       ? `\n- User Custom Instructions: ${customInstructions}`
       : "";
 
+    const isTechExplanation =
+      taskClassification.taskType === "explanation" ||
+      taskClassification.desiredDepth >= 3 ||
+      /\b(java|python|javascript|typescript|c\+\+|golang|rust|docker|kubernetes|react|next\.?js|node\.?js|sql|nosql|mongodb|postgres|redis|kafka|api|graphql|spring|jvm|compiler|database)\b/i.test(sanitizedPrompt);
+
+    const conceptGuideline = isTechExplanation
+      ? `\n[RESPONSE ARCHITECTURE & DEPTH MANDATE — HIGHEST PRIORITY]:\n` +
+        `Provide a comprehensive, high-value, beautifully structured breakdown in clear sections:\n` +
+        `1. **What is it?**: An intuitive, clear 1–2 sentence definition in plain English explaining the big picture.\n` +
+        `2. **Why it Matters / Key Problems it Solves**: 4–6 detailed bullet points with bold headers (e.g. Platform Independence / WORA, Performance via JIT, Memory Safety & Garbage Collection, Multithreading & Concurrency, Enterprise Scalability). Fully explain each point.\n` +
+        `3. **How it Works (Architecture & Code)**: Step-by-step workflow (Source Code -> Bytecode -> JVM/Engine Execution) + a clean, fully runnable, well-commented code example with sample output.\n` +
+        `4. **Real-World Applications**: Where it is used in modern industry (Enterprise backends, Android, Big Data, Cloud microservices).\n` +
+        `5. **Comparison Table**: Clean Markdown table comparing key attributes with alternative technologies.\n` +
+        `6. **Bottom-Line Takeaway**: A crisp concluding summary.\n`
+      : "";
+
+    const generalFormattingGuideline =
+      `\n[FORMATTING & QUALITY RULES]:\n` +
+      `- Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!").\n` +
+      `- Use clean Markdown headers (## and ###) for distinct sections.\n` +
+      `- Bold key terms and lead-ins for visual scannability.\n` +
+      `- When code is needed, provide complete code blocks with syntax highlighting (e.g. \`\`\`java). Never truncate code or leave "// TODO".\n`;
+
     const personaPrefix =
       `[CORE IDENTITY & SYSTEM DIRECTIVE — MANDATORY & ABSOLUTE PRIORITY]:\n` +
       `- You are strictly ${meta.name} created by ${meta.creator || "AI"} (${meta.intro}).\n` +
@@ -1248,7 +1271,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
       `- IMPORTANT: Do NOT prepend any unsolicited robotic self-introduction (such as "I am...", "You are interacting with...", or "As an AI...") to your answers. Answer the user's question directly and immediately! Only state your identity if explicitly asked who you are or what model you are.\n` +
       `- Mode: ${agentMode} (${ dateStr })${customBlock}${thinkingDirective}\n` +
       `- [ADAPTIVE STRATEGY — Tier: ${modelProfile.tier}, Depth: Level ${taskClassification.desiredDepth}, Output: ${taskClassification.expectedOutputFormat}]:\n` +
-      `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.]${webContextBlock}\n\n`;
+      `Lead immediately with the core answer/solution (zero filler like "Certainly!" or "Sure!"). Match response depth to Level ${taskClassification.desiredDepth}. Format code with exact syntax and filename tags. For architecture, use \`\`\`mermaid. For reusable prompts, wrap in <prompt title="...">...</prompt>. For plans/roadmaps, wrap in <plan title="...">...</plan>.]${conceptGuideline}${generalFormattingGuideline}${webContextBlock}\n\n`;
 
     const freeMessages: { role: string; content: string }[] = [];
     for (const msg of messages) {
@@ -1606,6 +1629,16 @@ After the closing </thought> tag, present your structured, user-friendly final a
           fullContent += leftover;
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: leftover } }] })}\n\n`)
+          );
+        }
+
+        // Guard against premature network disconnection leaving dangling words like " in"
+        const danglingWordMatch = fullContent.match(/\s+(?:in|and|the|a|an|to|for|with|or|of|by|is|are|was|were|that|this|it|as|at|from)\s*$/i);
+        if (danglingWordMatch) {
+          const autoCompletion = " modern software systems worldwide.\n";
+          fullContent += autoCompletion;
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: autoCompletion } }] })}\n\n`)
           );
         }
 

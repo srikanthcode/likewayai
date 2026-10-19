@@ -62,6 +62,24 @@ export async function consumeChatStream(
 
       if (sawDone) break;
     }
+
+    if (!sawDone) {
+      for (const msg of parser.flush()) {
+        const data = msg.data;
+        if (data === "[DONE]") {
+          sawDone = true;
+          break;
+        }
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content || "";
+          if (delta) {
+            fullContent += delta;
+            handlers.onDelta(fullContent);
+          }
+        } catch {}
+      }
+    }
   } catch (readErr) {
     handlers.onReadError?.(readErr);
   }
