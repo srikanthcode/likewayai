@@ -453,12 +453,14 @@ function MarkdownImage({ src, alt, ...props }: any) {
   );
 }
 
-function buildMarkdownComponents() {
+function buildMarkdownComponents(theme: 'dark' | 'light' = 'light') {
   const getYoutubeId = (url: string): string | null => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
   };
+
+  const isDark = theme === 'dark';
 
   return {
     ol: ({ children, ...props }: any) => (
@@ -527,34 +529,66 @@ function buildMarkdownComponents() {
     },
     img: (props: any) => <MarkdownImage {...props} />,
     table: ({ children, ...props }: any) => (
-      <TableBlock>
+      <TableBlock theme={theme}>
         <table className="w-full min-w-full text-left text-sm border-collapse" {...props}>
           {children}
         </table>
       </TableBlock>
     ),
     thead: ({ children, ...props }: any) => (
-      <thead className="bg-black/5 dark:bg-white/5 border-b border-black/10 dark:border-white/10 text-xs uppercase tracking-wider font-semibold text-gray-700 dark:text-gray-200" {...props}>
+      <thead
+        className={cn(
+          "border-b text-xs uppercase tracking-wider font-extrabold",
+          isDark
+            ? "bg-white/[0.04] border-white/10 text-gray-200"
+            : "bg-gray-100 border-gray-200 text-gray-900"
+        )}
+        {...props}
+      >
         {children}
       </thead>
     ),
     tbody: ({ children, ...props }: any) => (
-      <tbody className="divide-y divide-black/5 dark:divide-white/5" {...props}>
+      <tbody
+        className={cn(
+          "divide-y",
+          isDark ? "divide-white/5" : "divide-gray-100"
+        )}
+        {...props}
+      >
         {children}
       </tbody>
     ),
     tr: ({ children, ...props }: any) => (
-      <tr className="hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors" {...props}>
+      <tr
+        className={cn(
+          "transition-colors",
+          isDark ? "hover:bg-white/[0.03]" : "hover:bg-gray-50/80"
+        )}
+        {...props}
+      >
         {children}
       </tr>
     ),
     th: ({ children, ...props }: any) => (
-      <th className="px-4 py-2.5 font-bold text-gray-900 dark:text-white whitespace-nowrap" {...props}>
+      <th
+        className={cn(
+          "px-4 py-3 font-extrabold whitespace-nowrap text-left",
+          isDark ? "text-white" : "text-gray-900"
+        )}
+        {...props}
+      >
         {children}
       </th>
     ),
     td: ({ children, ...props }: any) => (
-      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 align-top" {...props}>
+      <td
+        className={cn(
+          "px-4 py-2.5 text-sm align-top leading-relaxed",
+          isDark ? "text-gray-200" : "text-gray-900 font-medium"
+        )}
+        {...props}
+      >
         {children}
       </td>
     ),
@@ -754,7 +788,7 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  const markdownComponents = useMemo(() => buildMarkdownComponents(), []);
+  const markdownComponents = useMemo(() => buildMarkdownComponents(theme), [theme]);
 
   const findVoiceForChar = (charId: string, textSample: string = '') => {
     const voices = window.speechSynthesis.getVoices();
