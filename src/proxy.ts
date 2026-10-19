@@ -24,8 +24,15 @@ export function proxy(req: NextRequest) {
     req.cookies.get("lw_rt")?.value ||
     req.cookies.get("likeway_refresh_token")?.value;
 
-  // A session exists if EITHER token is present
-  const hasSession = Boolean(accessToken || refreshToken);
+  // Guest mode cookie set when user clicks "Continue without signing up"
+  const isGuest =
+    req.cookies.get("lw_guest")?.value === "true" ||
+    req.cookies.get("likeway_guest_mode")?.value === "true";
+
+  // Authenticated user has real tokens
+  const isAuthUser = Boolean(accessToken || refreshToken);
+  // A session for root "/" exists if authenticated OR continuing as guest
+  const hasSession = Boolean(isAuthUser || isGuest);
 
   // ── 0. Public pages — always accessible (no auth needed) ───────────────
   if (PUBLIC.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
@@ -33,7 +40,9 @@ export function proxy(req: NextRequest) {
   }
 
   // ── 1. Redirect logged-in users away from login / signup ────────────────
-  if (hasSession && AUTH_ONLY.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+  // Only redirect authenticated users away from login/signup.
+  // Guests must still be allowed to visit /login and /signup if they decide to create an account.
+  if (isAuthUser && AUTH_ONLY.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
@@ -47,7 +56,8 @@ export function proxy(req: NextRequest) {
   }
 
   // ── 3. Protect other app routes ─────────────────────────────────────────
-  if (!hasSession && PROTECTED.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+  // Protected pages like /account and /settings require true authentication
+  if (!isAuthUser && PROTECTED.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
     req.nextUrl.searchParams.forEach((val, key) => {

@@ -5,14 +5,23 @@ import { Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
 export default function SignupPage() {
-  const { register } = useAuth();
+  const { register, guestLogin } = useAuth();
 
-  const handleContinueAsGuest = () => {
+  const handleContinueAsGuest = async () => {
+    setIsLoading(true);
+    if (typeof document !== "undefined") {
+      const oneYear = 365 * 24 * 60 * 60;
+      document.cookie = `lw_guest=true; path=/; max-age=${oneYear}; SameSite=Lax`;
+      document.cookie = `likeway_guest_mode=true; path=/; max-age=${oneYear}; SameSite=Lax`;
+    }
     if (typeof window !== "undefined") {
       localStorage.setItem("likeway_guest_mode", "true");
       localStorage.setItem("likeway_plan", "Core");
-      localStorage.removeItem("lw_user_cache");
-      window.location.href = "/";
+    }
+    const res = await guestLogin();
+    if (res?.error) {
+      setError(res.error);
+      setIsLoading(false);
     }
   };
 

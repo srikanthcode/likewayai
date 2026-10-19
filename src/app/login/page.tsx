@@ -5,7 +5,7 @@ import { Loader2, ArrowRight, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, guestLogin } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -78,12 +78,21 @@ export default function LoginPage() {
     window.location.href = `/api/auth/google/redirect${search}`;
   };
 
-  const handleContinueAsGuest = () => {
+  const handleContinueAsGuest = async () => {
+    setIsLoading(true);
+    if (typeof document !== "undefined") {
+      const oneYear = 365 * 24 * 60 * 60;
+      document.cookie = `lw_guest=true; path=/; max-age=${oneYear}; SameSite=Lax`;
+      document.cookie = `likeway_guest_mode=true; path=/; max-age=${oneYear}; SameSite=Lax`;
+    }
     if (typeof window !== "undefined") {
       localStorage.setItem("likeway_guest_mode", "true");
       localStorage.setItem("likeway_plan", "Core");
-      localStorage.removeItem("lw_user_cache");
-      window.location.href = "/";
+    }
+    const res = await guestLogin();
+    if (res?.error) {
+      setError(res.error);
+      setIsLoading(false);
     }
   };
 

@@ -305,12 +305,16 @@ export function setAuthCookies(
 
 export function clearAuthCookies(): { name: string; value: string; options: Record<string, any> }[] {
   const opts = { httpOnly: true, path: "/", maxAge: 0 };
+  const clientOpts = { httpOnly: false, path: "/", maxAge: 0 };
   return [
     { name: "lw_at", value: "", options: opts },
     { name: "lw_rt", value: "", options: opts },
     // Also clear old cookie names for backward compat
     { name: "likeway_access_token", value: "", options: opts },
     { name: "likeway_refresh_token", value: "", options: opts },
+    // Clear guest mode cookies
+    { name: "lw_guest", value: "", options: clientOpts },
+    { name: "likeway_guest_mode", value: "", options: clientOpts },
   ];
 }
 

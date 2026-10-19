@@ -2689,6 +2689,23 @@ export default function ChatPage() {
               )} />
             </button>
 
+            {/* Guest Sign-in Prompt */}
+            {(!user || user.role === "guest") && (
+              <a
+                href="/login"
+                className={cn(
+                  "h-7 px-3 rounded-full flex items-center gap-1.5 text-[11px] font-semibold border transition-all duration-200",
+                  theme === 'dark'
+                    ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/30 shadow-sm"
+                    : "bg-blue-600 text-white border-transparent hover:bg-blue-700 shadow-sm"
+                )}
+                title="Sign in to save and sync your chats"
+              >
+                <User size={12} />
+                <span>Sign In</span>
+              </a>
+            )}
+
             {/* Theme Toggle */}
             <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className={cn("p-1.5 rounded-lg transition-colors", theme === 'dark' ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-black hover:bg-black/5")} title="Toggle Theme">
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -4379,8 +4396,12 @@ export default function ChatPage() {
                     {user?.name?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={cn("text-sm font-bold truncate", theme === 'dark' ? "text-white" : "text-gray-900")}>{user?.name || "User"}</p>
-                    <p className={cn("text-xs truncate mt-0.5", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>{user?.email || "user@email.com"}</p>
+                    <p className={cn("text-sm font-bold truncate", theme === 'dark' ? "text-white" : "text-gray-900")}>
+                      {user?.role === "guest" ? "Guest User" : (user?.name || "User")}
+                    </p>
+                    <p className={cn("text-xs truncate mt-0.5", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
+                      {user?.role === "guest" ? "Guest Mode (Local Storage)" : (user?.email || "user@email.com")}
+                    </p>
                   </div>
                   <div className="flex flex-col items-end gap-1.5">
                     <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/20">{currentPlan}</span>
@@ -4580,12 +4601,29 @@ export default function ChatPage() {
 
               {/* Footer */}
               <div className={cn("px-6 py-4 border-t shrink-0", theme === 'dark' ? "border-white/8" : "border-black/5")}>
-                <button
-                  onClick={() => { logout(); setIsSettingsOpen(false); }}
-                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all"
-                >
-                  Sign Out
-                </button>
+                {user?.role === "guest" ? (
+                  <div className="flex gap-2">
+                    <a
+                      href="/login"
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-bold text-center hover:opacity-90 transition-all shadow-md"
+                    >
+                      Sign In / Register
+                    </a>
+                    <button
+                      onClick={() => { logout(); setIsSettingsOpen(false); }}
+                      className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all"
+                    >
+                      Exit Guest
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { logout(); setIsSettingsOpen(false); }}
+                    className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-all"
+                  >
+                    Sign Out
+                  </button>
+                )}
                 <p className="text-center text-[10px] text-gray-600 mt-2">LikeWay AI v2.4.0</p>
               </div>
             </motion.div>

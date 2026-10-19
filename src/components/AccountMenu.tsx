@@ -251,10 +251,10 @@ export default function AccountMenu() {
         </div>
         <div className="flex flex-col min-w-0 flex-1 text-left">
           <span className="text-sm font-bold truncate text-[var(--likeway-text-primary)]">
-            {isAuthenticated ? (user?.name || user?.email) : "Sign in"}
+            {isAuthenticated ? (user?.name || user?.email) : user ? (user.name || "Guest User") : "Sign in"}
           </span>
           <span className="text-[10px] font-semibold text-[var(--likeway-text-secondary)] truncate">
-            {isAuthenticated ? planDisplay.label : "to continue"}
+            {isAuthenticated ? planDisplay.label : user ? "Guest Mode • Sign in" : "to continue"}
           </span>
         </div>
         <ChevronRight size={14} className={cn(
