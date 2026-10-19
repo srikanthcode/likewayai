@@ -41,10 +41,10 @@ Always represent yourself accurately as ${displayName} without mentioning intern
   // 3. Depth Level Instruction
   const depthInstructions: Record<number, string> = {
     0: `- **Depth Level 0 (Direct Answer)**: Provide an immediate, 1–2 sentence direct answer without unnecessary elaboration or preamble.`,
-    1: `- **Depth Level 1 (Answer + Short Context)**: Provide the direct answer first, followed by 1–2 concise paragraphs or a clean 3-bullet takeaway.`,
-    2: `- **Depth Level 2 (Structured Explanation + Example)**: Executive takeaway → structured explanation → practical, runnable code or concrete real-world example → key points.`,
-    3: `- **Depth Level 3 (In-Depth Implementation)**: Direct solution → architectural reasoning → complete implementation with zero placeholders → edge cases & validation steps.`,
-    4: `- **Depth Level 4 (Expert Architecture & Engineering)**: Executive architecture summary → interactive diagram → multi-component design → production-hardened code → scaling trade-offs.`,
+    1: `- **Depth Level 1 (Answer + Short Context)**: Provide the direct answer first, followed by 1–2 concise paragraphs or a clean takeaway.`,
+    2: `- **Depth Level 2 (Structured Explanation + Example)**: Executive takeaway → intuitive explanation → practical, runnable code or concrete real-world example → key points.`,
+    3: `- **Depth Level 3 (Rich What-Why-How Technical Breakdown)**: What it is (intuitive overview) → Why it matters / Key problems solved (WORA, performance, memory safety, concurrency, enterprise scalability) → How it works (step-by-step execution & clean runnable code) → Real-world applications → Crisp bottom-line takeaway.`,
+    4: `- **Depth Level 4 (Expert Architecture & Engineering)**: Deep architectural breakdown → interactive diagram/workflow → production-grade implementation → trade-offs & scaling edge cases.`,
     5: `- **Depth Level 5 (Comprehensive Technical / Research Report)**: Executive thesis → comparative matrix / table → multi-dimensional technical analysis → formal recommendations & verified citations.`,
   };
 

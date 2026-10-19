@@ -132,6 +132,15 @@ export default function LoginPage() {
               </svg>
               <span className="text-[13px] text-[#e2e2e2]">Continue with Apple</span>
             </button>
+            <button
+              type="button"
+              onClick={handleContinueAsGuest}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[#3A3A3A] hover:border-[#c0c1ff]/50 bg-white/[0.02] hover:bg-white/[0.06] text-[#e2e2e2] hover:text-white transition-all duration-200 group active:scale-[0.98]"
+            >
+              <Sparkles size={14} className="text-[#c0c1ff] group-hover:scale-110 transition-transform" />
+              <span className="text-[13px] font-medium">Continue without signing up</span>
+              <ArrowRight size={13} className="text-[#908fa0] group-hover:text-white group-hover:translate-x-0.5 transition-all ml-0.5" />
+            </button>
           </div>
 
           {/* Divider */}
@@ -218,22 +227,6 @@ export default function LoginPage() {
               </a>
             </p>
           </footer>
-
-          {/* Continue without signing up (Guest Mode) */}
-          <div className="mt-3.5 pt-3 border-t border-[#2F2F2F] text-center">
-            <button
-              type="button"
-              onClick={handleContinueAsGuest}
-              className="w-full py-2 px-3 rounded-lg border border-[#3A3A3A] hover:border-[#c0c1ff]/50 bg-white/[0.02] hover:bg-white/[0.06] text-[#e2e2e2] hover:text-white text-[12px] font-semibold transition-all duration-200 flex items-center justify-center gap-2 group active:scale-[0.98]"
-            >
-              <Sparkles size={13} className="text-[#c0c1ff] group-hover:scale-110 transition-transform" />
-              <span>Continue without signing up</span>
-              <ArrowRight size={12} className="text-[#908fa0] group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-            </button>
-            <p className="text-[10px] text-[#908fa0] mt-1.5 flex items-center justify-center gap-1">
-              <span>Free Plan • Chats stored privately on your device</span>
-            </p>
-          </div>
 
         </div>
 

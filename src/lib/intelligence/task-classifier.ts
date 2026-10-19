@@ -84,6 +84,52 @@ export function classifyTask(
   const p = (prompt || "").trim().toLowerCase();
   const lang = detectLanguage(prompt);
 
+  // 0. Quick Modifiers & Deeper / Simpler / Shorter Replays
+  if (
+    p.includes("[provide a deeper technical breakdown") ||
+    p.includes("deeper") ||
+    p.includes("in-depth") ||
+    p.includes("in depth") ||
+    p.includes("detailed breakdown")
+  ) {
+    return {
+      taskType: "explanation",
+      complexity: 4,
+      urgency: "medium",
+      desiredDepth: 4,
+      expectedOutputFormat: "text",
+      detectedLanguage: lang,
+      requiresArtifact: false,
+      requiredCoverageKeys: ["What is it", "Why it Matters / Problems Solved", "How it Works (Architecture & Code)", "Key Features Explained", "Real-World Applications"],
+    };
+  }
+
+  if (p.includes("[explain simply") || p.includes("simpler") || p.includes("simple explanation")) {
+    return {
+      taskType: "explanation",
+      complexity: 2,
+      urgency: "medium",
+      desiredDepth: 2,
+      expectedOutputFormat: "text",
+      detectedLanguage: lang,
+      requiresArtifact: false,
+      requiredCoverageKeys: ["Simple Explanation", "Everyday Analogy", "Intuitive Steps"],
+    };
+  }
+
+  if (p.includes("[rewrite concisely") || p.includes("shorter") || p.includes("bullet summary")) {
+    return {
+      taskType: "summarization",
+      complexity: 1,
+      urgency: "medium",
+      desiredDepth: 1,
+      expectedOutputFormat: "text",
+      detectedLanguage: lang,
+      requiresArtifact: false,
+      requiredCoverageKeys: ["Concise Takeaways"],
+    };
+  }
+
   // 1. Check for prompt creation requests
   if (
     p.includes("give me a prompt") ||
@@ -292,7 +338,27 @@ export function classifyTask(
     };
   }
 
-  // 10. Simple Factual Questions (e.g. "What is HTTP?", "Capital of France")
+  // 10. Technology / Framework / Conceptual Explanations (What, Why, How)
+  const isTechConcept = /\b(java|python|javascript|typescript|c\+\+|golang|rust|docker|kubernetes|react|next\.?js|node\.?js|sql|nosql|mongodb|postgres|redis|kafka|api|graphql|oauth|jwt|http|git|linux|aws|azure|gcp|spring|jvm|compiler|database|microservices|css|html|machine learning|ai|deep learning)\b/i.test(p);
+  if (
+    isTechConcept ||
+    p.includes("how does") ||
+    p.includes("why use") ||
+    p.includes("explain ")
+  ) {
+    return {
+      taskType: "explanation",
+      complexity: 3,
+      urgency: "medium",
+      desiredDepth: 3,
+      expectedOutputFormat: "text",
+      detectedLanguage: lang,
+      requiresArtifact: false,
+      requiredCoverageKeys: ["What is it", "Why it Matters / Problems Solved", "How it Works (Workflow & Code)", "Key Features (User-Friendly)", "Real-world Applications"],
+    };
+  }
+
+  // 11. Simple Factual Trivia (e.g. "Capital of France", "When was Google founded")
   if (
     (p.startsWith("what is") || p.startsWith("what are") || p.startsWith("who is") || p.startsWith("when was")) &&
     p.length < 50

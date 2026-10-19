@@ -33,6 +33,15 @@ export const LIKEWAY_RESPONSE_ARCHITECTURE = `
   ...complete, runnable, production-quality content with zero placeholders...
   </artifact>
 - Never truncate code with "// rest of code here" or "// TODO".
+
+### V. CONCEPTUAL & TECHNOLOGY EXPLANATIONS (THE "WHAT, WHY, HOW" STANDARD)
+When explaining any technology, programming language, framework, or tool (e.g., Java, Python, Docker, Kubernetes, etc.) or whenever the user asks for a deeper/clearer breakdown:
+- Always provide a rich, highly user-friendly explanation structured into clear, readable sections:
+  1. **What is it?**: An intuitive, clear 1–2 sentence definition in plain English explaining the big picture before introducing technical jargon.
+  2. **Why it Matters / Key Problems it Solves**: 4–6 well-developed bullet points with **bold headers** explaining *why* it was built and *why* it dominates (e.g., Portability / WORA, Performance via JIT Compilation, Memory Safety / Garbage Collection, Multithreading & Concurrency, Robust Security & Enterprise Scalability). Fully explain each point with clear context.
+  3. **How it Works (Architecture & Workflow)**: A step-by-step breakdown of how code executes (e.g., Source Code → Bytecode → JVM/JIT → Native CPU) paired with a clean, working, and well-commented code example.
+  4. **Real-World Applications**: Where it is used in modern industry (e.g., Enterprise Spring Boot microservices, Android development, Big Data with Spark/Hadoop, High-frequency trading).
+  5. **Bottom-Line Takeaway**: A crisp 1–2 sentence concluding summary.
 `;
 
 export const SYSTEM_PROMPTS: Record<AgentMode, string> = {

@@ -72,72 +72,18 @@ const CLOSE_SUG_TAG = "</suggestions>";
  * boundaries and never leaks into the visible chat text.
  */
 function stripSuggestions(delta: string, st: SuggestionStreamState): string {
-  let text = st.carry + delta;
-  st.carry = "";
-  let out = "";
-
-  while (text.length > 0) {
-    if (!st.inBlock) {
-      const openIdx = text.indexOf(OPEN_SUG_TAG);
-      if (openIdx !== -1) {
-        out += text.slice(0, openIdx);
-        st.inBlock = true;
-        text = text.slice(openIdx + OPEN_SUG_TAG.length);
-        continue;
-      }
-      // Check if the end of `text` is a partial prefix of `<suggestions>`
-      let matchedPrefixLen = 0;
-      const maxCheck = Math.min(text.length, OPEN_SUG_TAG.length - 1);
-      for (let len = maxCheck; len >= 1; len--) {
-        if (OPEN_SUG_TAG.startsWith(text.slice(-len))) {
-          matchedPrefixLen = len;
-          break;
-        }
-      }
-      if (matchedPrefixLen > 0) {
-        out += text.slice(0, text.length - matchedPrefixLen);
-        st.carry = text.slice(text.length - matchedPrefixLen);
-      } else {
-        out += text;
-      }
-      break;
-    } else {
-      const closeIdx = text.indexOf(CLOSE_SUG_TAG);
-      if (closeIdx !== -1) {
-        st.raw += text.slice(0, closeIdx);
-        st.inBlock = false;
-        text = text.slice(closeIdx + CLOSE_SUG_TAG.length);
-        continue;
-      }
-      let matchedPrefixLen = 0;
-      const maxCheck = Math.min(text.length, CLOSE_SUG_TAG.length - 1);
-      for (let len = maxCheck; len >= 1; len--) {
-        if (CLOSE_SUG_TAG.startsWith(text.slice(-len))) {
-          matchedPrefixLen = len;
-          break;
-        }
-      }
-      if (matchedPrefixLen > 0) {
-        st.raw += text.slice(0, text.length - matchedPrefixLen);
-        st.carry = text.slice(text.length - matchedPrefixLen);
-      } else {
-        st.raw += text;
-      }
-      break;
-    }
+  if (!delta) return "";
+  // Safe streaming filter: only strip explicit suggestions tags, never swallow code or normal tokens
+  if (delta.includes(OPEN_SUG_TAG) || delta.includes(CLOSE_SUG_TAG)) {
+    return delta.replace(/<suggestions>[\s\S]*?(?:<\/suggestions>|$)/gi, "");
   }
-
-  return out;
+  return delta;
 }
 
 function flushSuggestionsCarry(st: SuggestionStreamState): string {
-  if (!st.carry) return "";
-  const leftover = st.carry;
+  const leftover = st.carry || "";
   st.carry = "";
-  if (st.inBlock) {
-    st.raw += leftover;
-    return "";
-  }
+  st.inBlock = false;
   return leftover;
 }
 
@@ -1420,6 +1366,22 @@ After the closing </thought> tag, present your structured, user-friendly final a
         try {
           const fallbackModel = resolvedModelId === "gpt-6-astra" ? "claude-sonnet-5" : "gpt-6-astra";
           response = await makeFreeRequest(fallbackModel);
+        } catch {}
+      }
+
+      if (!response || !response.ok) {
+        try {
+          response = await fetchAI("openrouter", "https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "meta-llama/llama-3.3-70b-instruct:free",
+              messages,
+              stream: true,
+              max_tokens: maxTokens,
+              temperature: 0.7,
+            }),
+          });
         } catch {}
       }
     } else if (provider === "tokenharbor") {

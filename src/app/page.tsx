@@ -3095,7 +3095,7 @@ export default function ChatPage() {
                   .filter((idx) => idx !== -1)
                   .pop();
                 const isPaidPlan = currentPlan === "Go" || currentPlan === "Plus" || currentPlan === "Pro";
-                const shouldShowAds = !isPaidPlan;
+                const shouldShowAds = false; // Ads stopped by request
 
                 return messages.map((m, i) => {
                   const isMsgStreaming = m.status === 'streaming' || m.status === 'typing';
