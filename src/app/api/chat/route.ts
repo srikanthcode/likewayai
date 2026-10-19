@@ -1245,14 +1245,18 @@ After the closing </thought> tag, present your structured, user-friendly final a
       /\b(java|python|javascript|typescript|c\+\+|golang|rust|docker|kubernetes|react|next\.?js|node\.?js|sql|nosql|mongodb|postgres|redis|kafka|api|graphql|spring|jvm|compiler|database)\b/i.test(sanitizedPrompt);
 
     const conceptGuideline = isTechExplanation
-      ? `\n[RESPONSE ARCHITECTURE & DEPTH MANDATE — HIGHEST PRIORITY]:\n` +
-        `Provide a comprehensive, high-value, beautifully structured breakdown in clear sections:\n` +
-        `1. **What is it?**: An intuitive, clear 1–2 sentence definition in plain English explaining the big picture.\n` +
-        `2. **Why it Matters / Key Problems it Solves**: 4–6 detailed bullet points with bold headers (e.g. Platform Independence / WORA, Performance via JIT, Memory Safety & Garbage Collection, Multithreading & Concurrency, Enterprise Scalability). Fully explain each point.\n` +
-        `3. **How it Works (Architecture & Code)**: Step-by-step workflow (Source Code -> Bytecode -> JVM/Engine Execution) + a clean, fully runnable, well-commented code example with sample output.\n` +
-        `4. **Real-World Applications**: Where it is used in modern industry (Enterprise backends, Android, Big Data, Cloud microservices).\n` +
-        `5. **Comparison Table**: Clean Markdown table comparing key attributes with alternative technologies.\n` +
-        `6. **Bottom-Line Takeaway**: A crisp concluding summary.\n`
+      ? `\n[RESPONSE ARCHITECTURE & DEPTH MANDATE — USER-FRIENDLY & INTUITIVE]:\n` +
+        `Make your explanation EXTREMELY USER-FRIENDLY, practical, and intuitive (like top ChatGPT / educational explanations), NOT dry academic jargon:\n` +
+        `1. **Big Picture & Everyday Analogy**: Start with what it builds (apps, websites, backend systems) and an everyday analogy ("Think of it as giving instructions to a computer... For example, creating a calculator, banking app, or backend server").\n` +
+        `2. **What Can You Build With It?**: 4 concrete use cases with bullet points (Web backends with Spring Boot, Android mobile apps, Enterprise banking software, Coding interviews/DSA).\n` +
+        `3. **Your First Program (Simple & Clear)**: A minimal 5-line working code snippet with exact Output and a simple bulleted breakdown of what each line does (e.g. class Main, main(), System.out.println()).\n` +
+        `4. **The "What, Why, How" Framework**:\n` +
+        `   - **WHAT**: Plain English definition with a relatable example.\n` +
+        `   - **WHY**: Why companies choose it (WORA runs anywhere, fast via JIT, automatic memory management, massive job market).\n` +
+        `   - **HOW It Works**: The 4 simple steps (Step 1: Write code -> Step 2: Compiler creates Bytecode -> Step 3: JVM executes -> Step 4: Screen output) paired with a simple calculation example (e.g., adding two numbers).\n` +
+        `5. **Important Concepts / Roadmap**: Ordered list of what to learn next (Variables -> Conditions -> Loops -> OOP -> DSA -> SQL -> Spring Boot).\n` +
+        `6. **Summary Table**: "Remember These Three Questions" (What / Why / How table).\n` +
+        `7. **Career Takeaway**: Practical advice on entry-level jobs and the difference from JavaScript.\n`
       : "";
 
     const generalFormattingGuideline =

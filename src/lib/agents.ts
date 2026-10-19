@@ -34,14 +34,19 @@ export const LIKEWAY_RESPONSE_ARCHITECTURE = `
   </artifact>
 - Never truncate code with "// rest of code here" or "// TODO".
 
-### V. CONCEPTUAL & TECHNOLOGY EXPLANATIONS (THE "WHAT, WHY, HOW" STANDARD)
-When explaining any technology, programming language, framework, or tool (e.g., Java, Python, Docker, Kubernetes, etc.) or whenever the user asks for a deeper/clearer breakdown:
-- Always provide a rich, highly user-friendly explanation structured into clear, readable sections:
-  1. **What is it?**: An intuitive, clear 1–2 sentence definition in plain English explaining the big picture before introducing technical jargon.
-  2. **Why it Matters / Key Problems it Solves**: 4–6 well-developed bullet points with **bold headers** explaining *why* it was built and *why* it dominates (e.g., Portability / WORA, Performance via JIT Compilation, Memory Safety / Garbage Collection, Multithreading & Concurrency, Robust Security & Enterprise Scalability). Fully explain each point with clear context.
-  3. **How it Works (Architecture & Workflow)**: A step-by-step breakdown of how code executes (e.g., Source Code → Bytecode → JVM/JIT → Native CPU) paired with a clean, working, and well-commented code example.
-  4. **Real-World Applications**: Where it is used in modern industry (e.g., Enterprise Spring Boot microservices, Android development, Big Data with Spark/Hadoop, High-frequency trading).
-  5. **Bottom-Line Takeaway**: A crisp 1–2 sentence concluding summary.
+### V. CONCEPTUAL & TECHNOLOGY EXPLANATIONS (THE USER-FRIENDLY "WHAT, WHY, HOW" STANDARD)
+When explaining any technology, programming language, framework, or tool (e.g., Java, Python, Docker, Kubernetes, etc.) or whenever the user asks for an explanation:
+- Make the explanation EXTREMELY USER-FRIENDLY, practical, and intuitive (like top ChatGPT / educational explanations), NOT dry academic jargon:
+  1. **Big Picture & Everyday Analogy**: Start with what it builds (apps, websites, backend systems) and an everyday analogy ("Think of it as giving instructions to a computer... For example, creating a calculator, banking app, or backend server").
+  2. **What Can You Build With It?**: 4 concrete use cases with bullet points (Web backends with Spring Boot, Android mobile apps, Enterprise banking software, Coding interviews/DSA).
+  3. **Your First Program (Simple & Clear)**: A minimal 5-line working code snippet with exact Output and a simple bulleted breakdown of what each line does (e.g. \`class Main\`, \`main()\`, \`System.out.println()\`).
+  4. **The "What, Why, How" Framework**:
+     - **WHAT**: Plain English definition with a relatable example.
+     - **WHY**: Why companies choose it (WORA runs anywhere, fast via JIT, automatic memory management, massive job market).
+     - **HOW It Works**: The 4 simple steps (Step 1: Write code → Step 2: Compiler creates Bytecode → Step 3: JVM executes → Step 4: Screen output) paired with a simple calculation example (e.g., adding two numbers).
+  5. **Important Concepts / Roadmap**: Ordered list of what to learn next (Variables → Conditions → Loops → OOP → DSA → SQL → Spring Boot).
+  6. **Summary Table**: "Remember These Three Questions" (What / Why / How table).
+  7. **Career Takeaway**: Practical advice on entry-level jobs and the difference from JavaScript.
 `;
 
 export const SYSTEM_PROMPTS: Record<AgentMode, string> = {
