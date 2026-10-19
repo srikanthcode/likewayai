@@ -163,7 +163,7 @@ export default function RootLayout({
         <meta name="referrer" content="strict-origin-when-cross-origin" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
         <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
-        <meta httpEquiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://*.vercel-scripts.com https://accounts.google.com https://www.googletagmanager.com https://checkout.razorpay.com https://*.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; frame-src 'self' https://accounts.google.com https://*.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
+        <meta httpEquiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://*.vercel-scripts.com https://accounts.google.com https://www.googletagmanager.com https://checkout.razorpay.com https://*.razorpay.com https://*.juvenilechoice.com https://juvenilechoice.com https://*.crookedagreement.com https://crookedagreement.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss: https://*.juvenilechoice.com https://juvenilechoice.com https://*.crookedagreement.com https://crookedagreement.com; frame-src 'self' https://accounts.google.com https://*.razorpay.com https://*.juvenilechoice.com https://juvenilechoice.com https://*.crookedagreement.com https://crookedagreement.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
         <meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)" />
         <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -171,10 +171,19 @@ export default function RootLayout({
         <link rel="preconnect" href="https://checkout.razorpay.com" />
         <link rel="dns-prefetch" href="https://checkout.razorpay.com" />
         <script src="https://checkout.razorpay.com/v1/checkout.js" async />
-        {/* Unregister any rogue service workers from past ad network scripts */}
+        {/* Sponsored Network Script */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `if(typeof window!=='undefined'&&'serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){for(var r of regs){r.unregister();}});}`,
+            __html: `(function(tccmu){
+var d = document,
+    s = d.createElement('script'),
+    l = d.currentScript || d.scripts[d.scripts.length - 1];
+s.settings = tccmu || {};
+s.src = "//juvenilechoice.com/blX.V/s/dsGVlZ0UYcWVcJ/Kexmz9nuJZXU/lEkRPATlcR1dMrjTkw0/NpD/k/tCNazvUSyMOETrQl1tMzwW";
+s.async = true;
+s.referrerPolicy = 'no-referrer-when-downgrade';
+l.parentNode.insertBefore(s, l);
+})({});`,
           }}
         />
         <script

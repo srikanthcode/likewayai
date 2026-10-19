@@ -74,6 +74,7 @@ import VisibleBrowserWorkspace from "@/components/VisibleBrowserWorkspace";
 import ConnectedAppsModal from "@/components/ConnectedAppsModal";
 import EmptyStateChips from "@/components/chat/EmptyStateChips";
 import ModePills from "@/components/chat/ModePills";
+import ChatGPTStyleAd from "@/components/chat/ChatGPTStyleAd";
 import { cn } from "@/lib/utils";
 import { consumeChatStream } from "@/hooks/useSSEChatStream";
 import { cleanTextForSpeech } from "@/lib/voice-text";
@@ -3094,7 +3095,7 @@ export default function ChatPage() {
                   .filter((idx) => idx !== -1)
                   .pop();
                 const isPaidPlan = currentPlan === "Go" || currentPlan === "Plus" || currentPlan === "Pro";
-                const shouldShowAds = false; // Ads stopped by request
+                const shouldShowAds = !isPaidPlan;
 
                 return messages.map((m, i) => {
                   const isMsgStreaming = m.status === 'streaming' || m.status === 'typing';
@@ -3510,7 +3511,19 @@ export default function ChatPage() {
                             </div>
                           </div>
                         )}
-
+                        {/* ChatGPT-style Sponsored Ad: Only on latest assistant response if 10+ lines on Free plan */}
+                        {i === lastAssistantIndex &&
+                          m.role === "assistant" &&
+                          (!m.status || (m.status !== "thinking" && m.status !== "typing")) &&
+                          shouldShowAds &&
+                          (m.content || "").trim().split("\n").length >= 10 && (
+                            <div className="w-full mt-4">
+                              <ChatGPTStyleAd
+                                theme={theme}
+                                onUpgradeClick={() => setIsPricingOpen(true)}
+                              />
+                            </div>
+                          )}
                       </div>
                     </div>
                     {/* Metadata moved to top */}
