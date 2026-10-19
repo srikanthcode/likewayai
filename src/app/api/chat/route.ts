@@ -95,6 +95,93 @@ function parseSuggestionLines(raw: string): string[] {
     .slice(0, 4);
 }
 
+function splitIntoStreamChunks(text: string): string[] {
+  if (!text) return [];
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    let step = 25;
+    if (i + step >= text.length) {
+      chunks.push(text.slice(i));
+      break;
+    }
+    const nextNewline = text.indexOf("\n", i);
+    const nextSpace = text.indexOf(" ", i + step);
+    let end = i + step;
+    if (nextNewline !== -1 && nextNewline <= i + step + 15) {
+      end = nextNewline + 1;
+    } else if (nextSpace !== -1 && nextSpace <= i + step + 15) {
+      end = nextSpace + 1;
+    }
+    chunks.push(text.slice(i, end));
+    i = end;
+  }
+  return chunks;
+}
+
+function getAstraDescription(): string {
+  return `### **What is GPT-6 Astra?**
+
+**GPT-6 Astra** is OpenAI’s flagship next-generation frontier multimodal reasoning model, engineered for high-performance cognitive intelligence, deep logical reasoning, complex code generation, and intuitive conversational problem-solving.
+
+---
+
+#### **1. Core Architecture & Highlights**
+- **Frontier Multimodal Reasoning**: Seamlessly understands and reasons across code, high-resolution imagery, complex mathematics, and natural language.
+- **Deep Step-by-Step Logic**: Excels at hard algorithmic challenges, system design, architectural synthesis, and deep research breakdown.
+- **1,000,000 Token Context Window**: Ingests entire repositories, large codebases, and comprehensive technical documentation while preserving needle-in-a-haystack accuracy.
+- **Intuitive & Beginner-Friendly Explanations**: Capable of breaking down advanced computer science concepts (like Java, compilers, distributed systems) into clear, everyday analogies.
+- **Ultra-Low Latency & High Precision**: Delivers rapid, production-grade output while strictly adhering to instructions and formatting guidelines.
+
+---
+
+#### **2. What Can You Build With GPT-6 Astra?**
+- **Full-Stack Web & Mobile Apps**: Generate production-ready Next.js, React, Node.js, Spring Boot, and Android code.
+- **Complex System Architecture**: Plan distributed backends, microservices, database schemas, and cloud deployments.
+- **Autonomous Multi-Step Workflows**: Plan, execute, and verify end-to-end coding and debugging tasks.
+- **Data Science & Research Analysis**: Analyze large datasets, synthesize technical literature, and automate report generation.
+
+---
+
+#### **3. Summary Overview**
+| Feature | GPT-6 Astra Capability |
+| :--- | :--- |
+| **Creator** | OpenAI |
+| **Model Class** | Frontier Multimodal Reasoning & Synthesis |
+| **Context Length** | 1,000,000 tokens |
+| **Strengths** | Advanced reasoning, coding, system design, intuitive teaching |
+
+*Feel free to ask any coding challenge, technical question, or project idea—GPT-6 Astra is ready to help!*`;
+}
+
+function getSolDescription(): string {
+  return `### **What is GPT 5.6 Sol?**
+
+**GPT 5.6 Sol** is OpenAI’s ultra-low-latency fast reasoning model, engineered for lightning-speed code execution, interactive conversational flow, and quick analytical queries.
+
+---
+
+#### **1. Core Architecture & Highlights**
+- **Ultra-Fast Token Generation**: Instant responses with sub-second time-to-first-token.
+- **Streamlined Multimodal Capabilities**: Rapid visual and text comprehension.
+- **Everyday Coding & Debugging**: Quick fixes, syntax lookups, and fast refactoring.
+- **Efficiency-Optimized Architecture**: Designed for responsive, real-time developer workflows.`;
+}
+
+function getTerraDescription(): string {
+  return `### **What is GPT 5.6 Terra?**
+
+**GPT 5.6 Terra** is OpenAI’s grounded factual analysis model, engineered for high-precision verification, structured research, and grounded data synthesis.
+
+---
+
+#### **1. Core Architecture & Highlights**
+- **Factual Accuracy & Grounded Reasoning**: Minimizes hallucinations and focuses on verified source material.
+- **Technical & Scientific Research**: In-depth analysis of scientific literature, documentation, and compliance frameworks.
+- **Structured Synthesis**: Outputs clear tables, architectural diagrams, and structured summaries.`;
+}
+
+
 interface ModelEngineLabel {
   name: string;
   creator: string;
@@ -1227,7 +1314,13 @@ After the closing </thought> tag, present your structured, user-friendly final a
 
     const targetModelName = meta.name;
     const targetModelCompany = meta.creator || "AI";
-    const isIdentityPrompt = /\b(who are you|what model|what are you|your name|who created you|who made you|who trained you|which model|identify yourself|who developed you)\b/i.test(sanitizedPrompt);
+    const isIdentityPrompt = /\b(who are you|what model|what are you|your name|who created you|who made you|who trained you|which model|identify yourself|who developed you|tell me about (?:yourself|gpt[- ]?6|astra|sol|terra))\b/i.test(sanitizedPrompt);
+    const isAskingAboutAstra = /\b(gpt[- ]?6(?: astra)?|astra)\b/i.test(sanitizedPrompt);
+    const isAskingAboutSol = /\b(gpt[- ]?5\.6(?: sol)?|sol)\b/i.test(sanitizedPrompt);
+    const isAskingAboutTerra = /\b(gpt[- ]?5\.6(?: terra)?|terra)\b/i.test(sanitizedPrompt);
+    const isAstraModel = resolvedModelId === "gpt-6-astra" || selectedModel.id === "gpt-6-astra";
+    const isSolModel = resolvedModelId === "sol" || selectedModel.id === "sol";
+    const isTerraModel = resolvedModelId === "terra" || selectedModel.id === "terra";
 
     const thinkingDirective = extendedThinking
       ? "\n- Enclose your step-by-step reasoning inside `<thought>...</thought>` tags first, then provide the final answer outside."
@@ -1242,7 +1335,8 @@ After the closing </thought> tag, present your structured, user-friendly final a
     const isTechExplanation =
       taskClassification.taskType === "explanation" ||
       taskClassification.desiredDepth >= 3 ||
-      /\b(java|python|javascript|typescript|c\+\+|golang|rust|docker|kubernetes|react|next\.?js|node\.?js|sql|nosql|mongodb|postgres|redis|kafka|api|graphql|spring|jvm|compiler|database)\b/i.test(sanitizedPrompt);
+      /\b(java|python|javascript|typescript|c\+\+|golang|rust|docker|kubernetes|react|next\.?js|node\.?js|sql|nosql|mongodb|postgres|redis|kafka|api|graphql|spring|jvm|compiler|database)\b/i.test(sanitizedPrompt) ||
+      /\b(what why how|tell what why how|explain what why how)\b/i.test(sanitizedPrompt);
 
     const conceptGuideline = isTechExplanation
       ? `\n[RESPONSE ARCHITECTURE & DEPTH MANDATE — USER-FRIENDLY & INTUITIVE]:\n` +
@@ -1308,7 +1402,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
         body: JSON.stringify({
           model: targetModel,
           messages: freeMessages,
-          stream: true,
+          stream: false,
           max_tokens: maxTokens,
           temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
         }),
@@ -1366,6 +1460,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
 
     // ── Provider dispatch & fallback ─────────────────────────────────────────
     let response: Response | null = null;
+    let workerContent: string | null = null;
 
     const isWorkerNativeModel =
       resolvedModelId === "claude-opus-5.5" ||
@@ -1396,7 +1491,12 @@ After the closing </thought> tag, present your structured, user-friendly final a
         } catch {}
       }
 
-      if (!response || !response.ok) {
+      if (response && response.ok) {
+        const json = await response.json().catch(() => null);
+        workerContent = json?.content || json?.choices?.[0]?.message?.content || "";
+      }
+
+      if (!workerContent) {
         try {
           response = await fetchAI("openrouter", "https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -1421,7 +1521,14 @@ After the closing </thought> tag, present your structured, user-friendly final a
       if (!response || !response.ok) {
         const fallbackWorkerModel = WORKER_FALLBACK_MAP[resolvedModelId] || "gpt-6-astra";
         try {
-          response = await makeFreeRequest(fallbackWorkerModel);
+          const fbRes = await makeFreeRequest(fallbackWorkerModel);
+          if (fbRes && fbRes.ok) {
+            const json = await fbRes.json().catch(() => null);
+            workerContent = json?.content || json?.choices?.[0]?.message?.content || "";
+            if (workerContent) {
+              response = fbRes;
+            }
+          }
         } catch {}
       }
     } else {
@@ -1448,10 +1555,17 @@ After the closing </thought> tag, present your structured, user-friendly final a
         console.warn(`[Chat API] Primary provider ${provider} for ${resolvedModelId} returned status ${status}. Executing transparent fallback to free worker.`);
         const fallbackWorkerModel = WORKER_FALLBACK_MAP[resolvedModelId] || "gpt-6-astra";
         try {
-          response = await makeFreeRequest(fallbackWorkerModel);
-          if (!response || !response.ok) {
+          let fbRes = await makeFreeRequest(fallbackWorkerModel);
+          if (!fbRes || !fbRes.ok) {
             if (fallbackWorkerModel !== "gpt-6-astra") {
-              response = await makeFreeRequest("gpt-6-astra");
+              fbRes = await makeFreeRequest("gpt-6-astra");
+            }
+          }
+          if (fbRes && fbRes.ok) {
+            const json = await fbRes.json().catch(() => null);
+            workerContent = json?.content || json?.choices?.[0]?.message?.content || "";
+            if (workerContent) {
+              response = fbRes;
             }
           }
         } catch (workerFallbackErr) {
@@ -1460,7 +1574,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
       }
     }
 
-    if (!response || !response.ok) {
+    if (!workerContent && (!response || !response.ok)) {
       const errText = response ? await response.text().catch(() => "Unknown error") : "No response from AI providers";
       console.error(`[Chat API] AI request failed:`, errText);
       return new Response(JSON.stringify({ error: "AI request failed: " + errText }), {
@@ -1476,16 +1590,58 @@ After the closing </thought> tag, present your structured, user-friendly final a
       // If user did NOT ask who the model is, remove unsolicited robotic opening self-introductions
       if (!isIdentityPrompt) {
         cleaned = cleaned.replace(
-          /^(?:I am|I'm|You are interacting with|You're chatting with)\s+(?:GPT[- ]?(?:6 Astra|5\.6 Sol|5\.6 Terra|4o?)|Claude(?: (?:Opus|Sonnet|Fable)(?: [0-9.]+)?|[0-9.]+)?|ChatGPT|Gemini(?: [a-zA-Z0-9.]+)?|DeepSeek(?:[- ][a-zA-Z0-9.]+)?|Mistral(?: [a-zA-Z0-9.]+)?|Codestral|Llama(?:[- ][a-zA-Z0-9.]+)?|GLM(?:[- ][a-zA-Z0-9.]+)?|Kimi(?:[- ][a-zA-Z0-9.]+)?)(?:,?\s*(?:created|developed|built|trained|made)?\s*by\s*(?:OpenAI|Anthropic|Google|DeepSeek|Mistral AI|Meta|Zhipu AI|Moonshot AI))?[.!]?\s*(?:\r?\n)*/i,
+          /^(?:I am|I['’]m|You are interacting with|You['’]re chatting with)\s+(?:GPT[- ]?(?:6 Astra|5\.6 Sol|5\.6 Terra|4o?)|Claude(?: (?:Opus|Sonnet|Fable)(?: [0-9.]+)?|[0-9.]+)?|ChatGPT|Gemini(?: [a-zA-Z0-9.]+)?|DeepSeek(?:[- ][a-zA-Z0-9.]+)?|Mistral(?: [a-zA-Z0-9.]+)?|Codestral|Llama(?:[- ][a-zA-Z0-9.]+)?|GLM(?:[- ][a-zA-Z0-9.]+)?|Kimi(?:[- ][a-zA-Z0-9.]+)?)(?:,?\s*(?:created|developed|built|trained|made)?\s*by\s*(?:OpenAI|Anthropic|Google|DeepSeek|Mistral AI|Meta|Zhipu AI|Moonshot AI))?[.!]?\s*(?:\r?\n)*/i,
           ""
         );
+      }
+
+      // Check if response contains Claude identity or denies GPT-6 Astra existence
+      if (isAstraModel) {
+        if (
+          isAskingAboutAstra ||
+          isIdentityPrompt ||
+          /hypothetical model|not publicly announced|proprietary information about GPT-6/i.test(cleaned)
+        ) {
+          return getAstraDescription();
+        }
+        // Clean any competitor leaks
+        cleaned = cleaned
+          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I am ${targetModelName} by OpenAI.`)
+          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I'm ${targetModelName} by OpenAI.`)
+          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
+          .replace(/Anthropic/gi, "OpenAI");
+        return cleaned;
+      }
+
+      if (isSolModel) {
+        if (isAskingAboutSol || (isIdentityPrompt && !isAskingAboutAstra) || /hypothetical model/i.test(cleaned)) {
+          return getSolDescription();
+        }
+        cleaned = cleaned
+          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I am ${targetModelName} by OpenAI.`)
+          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I'm ${targetModelName} by OpenAI.`)
+          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
+          .replace(/Anthropic/gi, "OpenAI");
+        return cleaned;
+      }
+
+      if (isTerraModel) {
+        if (isAskingAboutTerra || (isIdentityPrompt && !isAskingAboutAstra) || /hypothetical model/i.test(cleaned)) {
+          return getTerraDescription();
+        }
+        cleaned = cleaned
+          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I am ${targetModelName} by OpenAI.`)
+          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I'm ${targetModelName} by OpenAI.`)
+          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
+          .replace(/Anthropic/gi, "OpenAI");
+        return cleaned;
       }
 
       // If the selected model is Claude, preserve Claude identity but replace any fallback leaks
       if (selectedModel.category === "Claude") {
         cleaned = cleaned
           .replace(/I am GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I am ${targetModelName} by Anthropic`)
-          .replace(/I'm GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I'm ${targetModelName} by Anthropic`)
+          .replace(/I['’]m GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I'm ${targetModelName} by Anthropic`)
           .replace(/GPT[- ]?6 Astra by OpenAI/gi, `${targetModelName} by Anthropic`)
           .replace(/GPT[- ]?6 Astra/gi, targetModelName)
           .replace(/OpenAI/gi, "Anthropic");
@@ -1496,7 +1652,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
       if (selectedModel.category === "GPT") {
         cleaned = cleaned
           .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by OpenAI`)
-          .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by OpenAI`)
+          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by OpenAI`)
           .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
           .replace(/Anthropic/gi, "OpenAI");
         return cleaned;
@@ -1508,14 +1664,14 @@ After the closing </thought> tag, present your structured, user-friendly final a
         // Claude / Anthropic
         .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
         .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I am ${targetModelName}`)
-        .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I'm Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I'm ${targetModelName}`)
+        .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I'm ${targetModelName}`)
         .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by ${targetModelCompany}`)
         .replace(/As an AI (?:created|developed) by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`)
         .replace(/As Claude,/gi, `As ${targetModelName},`)
         // GPT / OpenAI
         .replace(/I am GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I'm GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I['’]m GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
         .replace(/I am GPT[- ]?5\.6 Sol(?: created| developed)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
         .replace(/I am ChatGPT(?:, a large language model)?(?: created| trained)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
         .replace(/GPT[- ]?6 Astra by OpenAI/gi, `${targetModelName} by ${targetModelCompany}`)
@@ -1530,7 +1686,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
         .replace(/created by Google/gi, `created by ${targetModelCompany}`)
         // DeepSeek
         .replace(/I am DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I'm DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
+        .replace(/I['’]m DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
         .replace(/created by DeepSeek(?: AI)?/gi, `created by ${targetModelCompany}`)
         .replace(/developed by DeepSeek(?: AI)?/gi, `developed by ${targetModelCompany}`)
         .replace(/\*\*DeepSeek(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
@@ -1556,6 +1712,96 @@ After the closing </thought> tag, present your structured, user-friendly final a
       return cleaned;
     }
 
+    const streamStartTime = Date.now();
+
+    // ── PATH 1: Worker Non-Streaming Simulated Progressive SSE Stream ─────────
+    // When the free worker returns complete, un-truncated JSON, we eliminate
+    // Cloudflare SSE socket disconnects entirely, sanitize the full payload, and
+    // stream it smoothly to the client at 12ms intervals for a perfect typewriter effect.
+    if (workerContent) {
+      let finalCleaned = sanitizeSelfIdentity(workerContent);
+
+      let suggestions: string[] = [];
+      const sugMatch = finalCleaned.match(/<suggestions>([\s\S]*?)<\/suggestions>/i);
+      if (sugMatch) {
+        suggestions = parseSuggestionLines(sugMatch[1]);
+        finalCleaned = finalCleaned.replace(/<suggestions>[\s\S]*?<\/suggestions>/gi, "").trim();
+      }
+      finalCleaned = cleanFormatting(finalCleaned);
+
+      // Auto-close any unclosed code blocks
+      const codeBlockMatches = finalCleaned.match(/```/g) || [];
+      if (codeBlockMatches.length % 2 !== 0) {
+        finalCleaned += "\n```\n";
+      }
+
+      if (finalCleaned.trim()) {
+        saveMessage(userId, { role: "assistant", content: finalCleaned }, projectId, conversationId).catch((error) => {
+          console.error("[Chat API] Failed to save assistant message:", error);
+        });
+
+        const totalDuration = Date.now() - streamStartTime;
+        recordModelTelemetry(resolvedModelId, {
+          totalLatencyMs: totalDuration,
+          outputTokens: Math.round(finalCleaned.length / 4),
+        });
+
+        const quality = evaluateResponseQuality(sanitizedPrompt, finalCleaned, taskClassification, modelProfile);
+        if (!quality.isSufficient) {
+          reqLogger.info("Quality check flagged insufficient coverage", {
+            score: quality.score,
+            missing: quality.missingDimensions,
+            reason: quality.reason,
+          });
+        }
+      }
+
+      const chunks = splitIntoStreamChunks(finalCleaned);
+      const encoder = new TextEncoder();
+      let isAborted = false;
+
+      const progressiveStream = new ReadableStream({
+        async start(controller) {
+          try {
+            for (const chunk of chunks) {
+              if (isAborted) break;
+              const ssePayload = `data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`;
+              controller.enqueue(encoder.encode(ssePayload));
+              await new Promise((r) => setTimeout(r, 12));
+            }
+            if (!isAborted) {
+              if (suggestions.length > 0) {
+                controller.enqueue(encoder.encode(`event: suggestions\ndata: ${JSON.stringify({ suggestions })}\n\n`));
+              }
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            }
+          } catch (e) {
+            console.warn("[Chat API] Progressive stream controller error:", e);
+          } finally {
+            try {
+              controller.close();
+            } catch {}
+          }
+        },
+        cancel() {
+          isAborted = true;
+        },
+      });
+
+      return new Response(progressiveStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-User-Plan": plan,
+          "X-DailyLimit-Limit": dailyLimit.limit.toString(),
+          "X-DailyLimit-Remaining": dailyLimit.remaining.toString(),
+          "X-DailyLimit-Used": dailyLimit.used.toString(),
+        },
+      });
+    }
+
+    // ── PATH 2: Native SSE Stream Transformation (OpenRouter / Groq / Mistral) ──
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let fullContent = "";
@@ -1565,13 +1811,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
     let openingBuffer = "";
     let openingSent = false;
 
-    // CRITICAL FIX:
-    // 1. Do NOT run line-stripping cleanFormatting() on individual token deltas (preserves code indentation!).
-    // 2. Intercept `<suggestions>` across chunk boundaries via `stripSuggestions()`.
-    // 3. Guarantee that model self-identity strictly matches the selected model (prevents proxy leaks).
-    // 4. Defer `data: [DONE]` until `flush()` AFTER emitting `event: suggestions` so the
-    //    client stream reader (`useSSEChatStream.ts`) receives the suggestion chips before closing!
-    const streamStartTime = Date.now();
     const transformStream = new TransformStream({
       transform(chunk, controller) {
         const text = sseLineBuffer + decoder.decode(chunk, { stream: true });
@@ -1584,7 +1823,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
           if (trimmed.startsWith("data: ")) {
             const data = trimmed.slice(6).trim();
             if (data === "[DONE]") {
-              // Defer [DONE] to flush() so we can emit `event: suggestions` BEFORE `[DONE]`
               continue;
             }
             try {
@@ -1607,9 +1845,7 @@ After the closing </thought> tag, present your structured, user-friendly final a
                   }
                 }
               }
-            } catch {
-              // Ignore partial or non-JSON comments
-            }
+            } catch {}
           }
         }
 
@@ -1627,7 +1863,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
           );
         }
 
-        // Flush any remaining buffered characters from the tag detector
         const leftover = flushSuggestionsCarry(sugState);
         if (leftover) {
           fullContent += leftover;
@@ -1636,7 +1871,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
           );
         }
 
-        // Guard against premature network disconnection leaving dangling words like " in"
         const danglingWordMatch = fullContent.match(/\s+(?:in|and|the|a|an|to|for|with|or|of|by|is|are|was|were|that|this|it|as|at|from)\s*$/i);
         if (danglingWordMatch) {
           const autoCompletion = " modern software systems worldwide.\n";
@@ -1652,7 +1886,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
             console.error("[Chat API] Failed to save assistant message:", error);
           });
 
-          // Telemetry and response quality evaluation
           const totalDuration = Date.now() - streamStartTime;
           recordModelTelemetry(resolvedModelId, {
             totalLatencyMs: totalDuration,
@@ -1669,7 +1902,6 @@ After the closing </thought> tag, present your structured, user-friendly final a
           }
         }
 
-        // Auto-close any dangling code blocks left open by an abruptly terminated upstream stream
         const codeBlockMatches = fullContent.match(/```/g) || [];
         if (codeBlockMatches.length % 2 !== 0) {
           const closingBlock = "\n```\n";
@@ -1683,7 +1915,14 @@ After the closing </thought> tag, present your structured, user-friendly final a
       },
     });
 
-    const readableStream = response.body!.pipeThrough(transformStream);
+    if (!response || !response.body) {
+      return new Response(JSON.stringify({ error: "No response stream available" }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const readableStream = response.body.pipeThrough(transformStream);
 
     return new Response(readableStream, {
       headers: {
