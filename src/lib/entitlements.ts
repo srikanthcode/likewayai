@@ -264,8 +264,17 @@ export async function consumeEntitlement(
     };
   } catch (err) {
     console.error("[Entitlements] Metering failed:", err);
-    // Fail open for infrastructure errors to avoid blocking paying users
-    return { allowed: true, remaining: 1, limit: 1, used: 0, plan };
+    // Fail CLOSED. An unmetered expensive operation is an unbounded cost and a
+    // quota bypass; a transient error must not grant free unlimited usage.
+    // Callers receive a retryable 503 rather than silent success.
+    return {
+      allowed: false,
+      remaining: 0,
+      limit,
+      used: 0,
+      plan,
+      reason: "Usage metering is temporarily unavailable. Please retry in a moment.",
+    };
   }
 }
 
@@ -287,7 +296,9 @@ export async function getEntitlementUsage(
     const used = (doc as any)?.counts?.[feature] ?? 0;
     return { allowed: used < limit, remaining: Math.max(0, limit - used), limit, used, plan };
   } catch {
-    return { allowed: true, remaining: limit, limit, used: 0, plan };
+    // Read-only display path: report unknown usage as zero remaining and let
+    // the UI show "usage unavailable" instead of implying free capacity.
+    return { allowed: true, remaining: 0, limit, used: 0, plan };
   }
 }
 

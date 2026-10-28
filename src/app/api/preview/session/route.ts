@@ -3,16 +3,21 @@ import {
   createOrUpdateSession,
   getSession,
   stopSession,
-  addSessionLog,
   buildExecutableBundle,
 } from "@/lib/preview/preview-manager";
+import { requireIdentity, unauthorizedResponse, canAccessResource } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // Previews execute generated code; they always belong to an account.
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
+
     const body = await req.json();
     const { sessionId, projectId, title, content, code, language, files } = body;
+
     const resolvedContent = content || code || "";
 
     if (!resolvedContent && (!files || Object.keys(files).length === 0)) {
@@ -22,6 +27,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Updating an existing session requires ownership of that session.
+    if (sessionId) {
+      const existing = getSession(sessionId);
+      if (existing && !canAccessResource(identity, existing.userId)) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+    }
+
     const session = await createOrUpdateSession({
       sessionId,
       projectId,
@@ -29,6 +42,7 @@ export async function POST(req: NextRequest) {
       content: resolvedContent,
       language,
       files,
+      userId: identity.userId!,
     });
 
     const html = buildExecutableBundle(session);
@@ -48,6 +62,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const identity = requireIdentity(req);
+  if (!identity) return unauthorizedResponse();
+
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId");
 
@@ -56,7 +73,7 @@ export async function GET(req: NextRequest) {
   }
 
   const session = getSession(sessionId);
-  if (!session) {
+  if (!session || !canAccessResource(identity, session.userId)) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
@@ -67,11 +84,19 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const identity = requireIdentity(req);
+  if (!identity) return unauthorizedResponse();
+
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId");
 
   if (!sessionId) {
     return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+  }
+
+  const existing = getSession(sessionId);
+  if (!existing || !canAccessResource(identity, existing.userId)) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
   const stopped = stopSession(sessionId);

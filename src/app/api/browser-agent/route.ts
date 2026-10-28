@@ -10,13 +10,23 @@ import crypto from "crypto";
 
 export const maxDuration = 180;
 
-// CORS headers for cross-origin requests (Vercel → Render)
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
-  "Access-Control-Max-Age": "86400",
-};
+// CORS for the Vercel → Render hop only. A wildcard would let any website drive
+// an authenticated user's browser session.
+const corsHeaders = (() => {
+  const allowed = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.FRONTEND_URL,
+    process.env.RENDER_EXTERNAL_URL,
+  ].filter((v): v is string => Boolean(v));
+  return {
+    "Access-Control-Allow-Origin": allowed[0] || "",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-internal-secret, x-internal-user-id, x-likeway-internal",
+    "Access-Control-Allow-Credentials": "true",
+    Vary: "Origin",
+    "Access-Control-Max-Age": "86400",
+  };
+})();
 
 // Use headless=false locally so user can see the browser
 // Use headless=true on Vercel/Render (no display)
@@ -42,8 +52,12 @@ export async function POST(req: NextRequest) {
     // secret instead of a user cookie. The browser `x-user-id` header is NEVER
     // trusted for identity.
     const internalSecret = process.env.INTERNAL_API_SECRET || "";
+    const providedInternal =
+      req.headers.get("x-likeway-internal") || req.headers.get("x-internal-secret") || "";
     const isInternal =
-      internalSecret.length > 0 && req.headers.get("x-likeway-internal") === internalSecret;
+      internalSecret.length > 0 &&
+      providedInternal.length === internalSecret.length &&
+      crypto.timingSafeEqual(Buffer.from(providedInternal), Buffer.from(internalSecret));
 
     if (!payload && !isInternal) {
       return NextResponse.json(
@@ -52,7 +66,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = payload?.sub || "anonymous";
+    // A verified session wins. An internal call may assert the user it is
+    // acting for; it never runs as the shared "anonymous" principal.
+    const assertedInternalUser = isInternal
+      ? (req.headers.get("x-internal-user-id") || "").trim()
+      : "";
+    const userId =
+      payload?.sub ||
+      (/^[A-Za-z0-9_-]{1,64}$/.test(assertedInternalUser) ? assertedInternalUser : "");
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "A user context is required for browser automation." },
+        { status: 401, headers: corsHeaders }
+      );
+    }
 
     const body = await req.json();
     const { task, modelId: requestedModel, startUrl, headless = isProduction, async: isAsync } = body;

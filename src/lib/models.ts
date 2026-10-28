@@ -1,5 +1,21 @@
-export type ModelProvider = "openrouter" | "groq" | "mistral" | "freemodels" | "tokenharbor";
+export type ModelProvider =
+  | "openrouter"
+  | "groq"
+  | "mistral"
+  | "freemodels"
+  | "tokenharbor"
+  | "llm7"
+  | "qwen";
 
+/**
+ * Catalog labels are display names, not vendor attribution.
+ *
+ * Several ids here (`claude-*`, `gpt-6-astra`, `sol`, `terra`) are routed to the
+ * free proxy, which serves them under those names but is not OpenAI or
+ * Anthropic. `company` is therefore "Likeway AI" for every alias; only models
+ * requested from a real vendor endpoint (OpenRouter/Mistral/Groq) may name that
+ * vendor. Never render a vendor name for an id we do not actually call there.
+ */
 export interface Model {
   id: string;
   name: string;
@@ -31,12 +47,13 @@ export type ModelConfig = Model;
 
 export const MODELS: Model[] = [
   // ══════════════════════════════════════════════════════════════
-  //  CLAUDE (Anthropic)
+  //  "Claude" aliases served by the free proxy — NOT Anthropic models.
+  //  The ids are proxy selectors; there is no Anthropic credential here.
   // ══════════════════════════════════════════════════════════════
   {
     id: "claude-opus-5.5",
     name: "Claude Opus 5.5",
-    company: "Anthropic",
+    company: "Likeway AI",
     avatarLetter: "C",
     category: "Claude",
     provider: "freemodels",
@@ -50,7 +67,7 @@ export const MODELS: Model[] = [
   {
     id: "claude-sonnet-5",
     name: "Claude Sonnet 5.5",
-    company: "Anthropic",
+    company: "Likeway AI",
     avatarLetter: "C",
     category: "Claude",
     provider: "freemodels",
@@ -65,7 +82,7 @@ export const MODELS: Model[] = [
   {
     id: "claude-fable-5",
     name: "Claude Fable 5",
-    company: "Anthropic",
+    company: "Likeway AI",
     avatarLetter: "C",
     category: "Claude",
     provider: "freemodels",
@@ -78,7 +95,7 @@ export const MODELS: Model[] = [
   {
     id: "claude-fable-5.1",
     name: "Claude Fable 5.1",
-    company: "Anthropic",
+    company: "Likeway AI",
     avatarLetter: "C",
     category: "Claude",
     provider: "freemodels",
@@ -90,12 +107,13 @@ export const MODELS: Model[] = [
   },
 
   // ══════════════════════════════════════════════════════════════
-  //  GPT (OpenAI)
+  //  "GPT" aliases: sol/terra/gpt-6-astra are proxy selectors served by the
+  //  free proxy. openai/gpt-4o and openai/o3 below are real OpenRouter ids.
   // ══════════════════════════════════════════════════════════════
   {
     id: "sol",
     name: "GPT 5.6 Sol",
-    company: "OpenAI",
+    company: "Likeway AI",
     avatarLetter: "O",
     category: "GPT",
     provider: "freemodels",
@@ -110,7 +128,7 @@ export const MODELS: Model[] = [
   {
     id: "terra",
     name: "GPT 5.6 Terra",
-    company: "OpenAI",
+    company: "Likeway AI",
     avatarLetter: "O",
     category: "GPT",
     provider: "freemodels",
@@ -123,7 +141,7 @@ export const MODELS: Model[] = [
   {
     id: "gpt-6-astra",
     name: "GPT 6 Astra",
-    company: "OpenAI",
+    company: "Likeway AI",
     avatarLetter: "O",
     category: "GPT",
     provider: "freemodels",
@@ -342,6 +360,23 @@ export const MODELS: Model[] = [
     description: "Lightning-fast responses for quick questions and editing.",
     fast: true,
   },
+  // ══════════════════════════════════════════════════════════════
+  //  QWEN — self-hosted OpenAI-compatible endpoint
+  //  Base URL: QWEN_BASE_URL (default https://qwen.ai.unturf.com/v1)
+  // ══════════════════════════════════════════════════════════════
+  {
+    id: "qwen3.8-27b",
+    name: "Qwen 3.8 27B",
+    company: "Qwen",
+    avatarLetter: "Q",
+    category: "Other",
+    provider: "qwen",
+    contextWindow: 32768,
+    vision: false,
+    plan: "Core",
+    description: "Qwen 3.8 27B — a capable open-weights reasoning model served in-house.",
+    reasoning: true,
+  },
 ];
 
 export function getModelById(id: string): Model | undefined {
@@ -350,7 +385,11 @@ export function getModelById(id: string): Model | undefined {
 
 export function getProviderForModel(modelId: string): ModelProvider {
   const model = getModelById(modelId);
-  return model?.provider ?? "openrouter";
+  if (model) return model.provider;
+  // Unknown ids previously defaulted to OpenRouter, which silently sent
+  // arbitrary model strings to a provider that may not serve them. Fail to
+  // the configured in-house model instead.
+  return "qwen";
 }
 
 /** Returns only models available on the free proxy (no API key needed) */

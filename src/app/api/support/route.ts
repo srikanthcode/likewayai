@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
+import { getRequestIdentity } from "@/lib/request-auth";
+import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 
 
 export const maxDuration = 60;
@@ -138,15 +140,28 @@ async function sendSupportEmail(request: SupportRequest, ticketId: string): Prom
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { subject, message, category, userId, userEmail } = body as SupportRequest;
+    const { subject, message, category, userId: _bodyUserId, userEmail: _bodyEmail } = body as SupportRequest;
 
     // Validate
-    if (!subject || !message) {
+    if (typeof subject !== "string" || typeof message !== "string" || !subject.trim() || !message.trim()) {
       return NextResponse.json(
         { error: "Subject and message are required" },
         { status: 400 }
       );
     }
+    if (message.length > 8000 || subject.length > 200) {
+      return NextResponse.json({ error: "Support request is too long" }, { status: 413 });
+    }
+
+    // The ticket is attributed to the signed-in account when there is one.
+    // A body-supplied userId is never trusted for attribution.
+    const identity = getRequestIdentity(req);
+    const userId = identity.userId || undefined;
+    const userEmail = identity.userId
+      ? (getTokenFromCookies(req).access
+          ? (verifyAccessToken(getTokenFromCookies(req).access!)?.email as string | undefined)
+          : undefined)
+      : undefined;
 
     // Generate ticket ID
     const ticketId = `LW-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;

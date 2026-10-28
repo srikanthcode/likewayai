@@ -1,14 +1,14 @@
-# 🚀 Deploy Razorpay to Live Server
+﻿# ðŸš€ Deploy Razorpay to Live Server
 
 ## Deployment Options
 
 | Platform | Difficulty | Free Tier | Best For |
 |----------|------------|-----------|----------|
-| **Railway** | Easy | ✅ $5 free | Quick deploy |
-| **Render** | Easy | ✅ Free tier | Production apps |
-| **Vercel + Railway** | Medium | ✅ Free | Frontend + Backend |
-| **DigitalOcean** | Medium | ❌ $200 credit | Full control |
-| **AWS** | Advanced | ✅ 12 months free | Enterprise |
+| **Railway** | Easy | âœ… $5 free | Quick deploy |
+| **Render** | Easy | âœ… Free tier | Production apps |
+| **Vercel + Railway** | Medium | âœ… Free | Frontend + Backend |
+| **DigitalOcean** | Medium | âŒ $200 credit | Full control |
+| **AWS** | Advanced | âœ… 12 months free | Enterprise |
 
 ---
 
@@ -29,12 +29,12 @@ git push -u origin main
 ```
 
 ### Step 3: Deploy on Railway
-1. Click "New Project" → "Deploy from GitHub"
+1. Click "New Project" â†’ "Deploy from GitHub"
 2. Select your repository
 3. Add Environment Variables:
    ```
-   RAZORPAY_KEY_ID=rzp_live_TDeiRBQhY6iUKf
-   RAZORPAY_KEY_SECRET=XLTK8K2oxZrRT1laa2PsckhP
+   RAZORPAY_KEY_ID=<YOUR_RAZORPAY_LIVE_KEY_ID>
+   RAZORPAY_KEY_SECRET=<YOUR_RAZORPAY_LIVE_KEY_SECRET>
    NODE_ENV=production
    PORT=3000
    ```
@@ -50,7 +50,7 @@ git push -u origin main
 2. Sign up with GitHub
 
 ### Step 2: Create Web Service
-1. Click "New" → "Web Service"
+1. Click "New" â†’ "Web Service"
 2. Connect your GitHub repo
 3. Settings:
    - **Name:** razorpay-payment
@@ -60,8 +60,8 @@ git push -u origin main
 
 ### Step 3: Add Environment Variables
 ```
-RAZORPAY_KEY_ID=rzp_live_TDeiRBQhY6iUKf
-RAZORPAY_KEY_SECRET=XLTK8K2oxZrRT1laa2PsckhP
+RAZORPAY_KEY_ID=<YOUR_RAZORPAY_LIVE_KEY_ID>
+RAZORPAY_KEY_SECRET=<YOUR_RAZORPAY_LIVE_KEY_SECRET>
 NODE_ENV=production
 ```
 
@@ -85,7 +85,7 @@ Click "Create Web Service" - Done!
 
 ---
 
-## ⚠️ Important: Update Frontend API URL
+## âš ï¸ Important: Update Frontend API URL
 
 After deployment, update `client/script.js`:
 
@@ -93,7 +93,7 @@ After deployment, update `client/script.js`:
 const CONFIG = {
   // Change localhost to your deployed backend URL
   API_URL: 'https://your-backend.up.railway.app/api',
-  RAZORPAY_KEY_ID: 'rzp_live_TDeiRBQhY6iUKf',
+  RAZORPAY_KEY_ID: '<YOUR_RAZORPAY_LIVE_KEY_ID>',
   CURRENCY: 'INR',
   COMPANY_NAME: 'Your Business Name'
 };
@@ -101,7 +101,7 @@ const CONFIG = {
 
 ---
 
-## 🔒 Security Checklist
+## ðŸ”’ Security Checklist
 
 Before going live:
 
@@ -114,16 +114,16 @@ Before going live:
 
 ---
 
-## 🧪 Test After Deployment
+## ðŸ§ª Test After Deployment
 
 1. Open your deployed URL
-2. Make a small test payment (₹1)
+2. Make a small test payment (â‚¹1)
 3. Check Razorpay dashboard for transaction
 4. Verify payment shows in your app
 
 ---
 
-## 📊 Monitor Your App
+## ðŸ“Š Monitor Your App
 
 ### Railway Dashboard
 - View logs: Real-time logs
@@ -137,7 +137,7 @@ Before going live:
 
 ---
 
-## 🔄 Auto-Deploy Setup
+## ðŸ”„ Auto-Deploy Setup
 
 All platforms auto-deploy when you push to GitHub:
 
@@ -152,7 +152,7 @@ git push
 
 ---
 
-## 💰 Cost Estimates
+## ðŸ’° Cost Estimates
 
 | Platform | Free Tier | Paid Plans |
 |----------|-----------|------------|
@@ -163,7 +163,7 @@ git push
 
 ---
 
-## 🆘 Troubleshooting
+## ðŸ†˜ Troubleshooting
 
 ### "Application failed to respond"
 - Check logs on platform
@@ -181,7 +181,7 @@ git push
 
 ---
 
-## 📞 Support
+## ðŸ“ž Support
 
 - Railway: https://railway.app/docs
 - Render: https://render.com/docs

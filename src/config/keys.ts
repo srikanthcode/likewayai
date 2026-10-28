@@ -23,6 +23,10 @@ export const API_KEYS = {
   stability: getKeys("STABILITY_API_KEY"),
   huggingface: process.env.HF_TOKEN || "",
   gemini: process.env.GEMINI_API_KEY || "",
+  llm7: process.env.LLM7_API_KEY || "unused",
+  // No hardcoded fallback: a key in source is a leaked key. When unset the
+  // provider is simply reported as unconfigured.
+  pollinations: process.env.POLLINATIONS_API_KEY || "",
 };
 
 // Helper function to get user-specific API keys

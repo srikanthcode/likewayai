@@ -31,11 +31,17 @@ function detectPolitical(raw: string): boolean {
 function optimizeSearchQuery(q: string): string {
   let cleaned = q.toLowerCase();
 
-  // Fix Tamil Nadu spelling variations
+  // Fix common typos
+  cleaned = cleaned.replace(/\b(vindo|vindwo|windo)\b/g, "window");
+  cleaned = cleaned.replace(/\b(contxt|contex)\b/g, "context");
+  cleaned = cleaned.replace(/\b(paramters|paramter|parms)\b/g, "parameters");
   cleaned = cleaned.replace(/\b(tmailnadu|tamilnadu|tamillnadu|tamilnad)\b/g, "tamil nadu");
 
   // Expand CM abbreviation
   cleaned = cleaned.replace(/\bcm\b/g, "chief minister");
+
+  // Clean conversational filler for cleaner web search
+  cleaned = cleaned.replace(/\b(this models?|show me|tell me|what is the|what's the|can you show|please show)\b/g, "");
 
   // Remove excess whitespace
   cleaned = cleaned.replace(/\s+/g, " ").trim();
@@ -60,8 +66,8 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
   const temporalKeywords = ["latest", "new", "current", "recent", "update", "release", "today", "now", "2026", "box office"];
   const isTemporalQuery = temporalKeywords.some(kw => query.includes(kw));
   const isMovieKeyword = /movie|film|cinema|actor|director|starring|release|cast|imdb|tmdb|box office/i.test(query);
-  // A query is a movie query ONLY if it has movie keywords AND is NOT political
   const isMovieQuery = isMovieKeyword && !isPolitical;
+  const isTechQuery = /glm[- ]?[0-9.]+|gpt[- ]?[0-9.]+|claude|gemini|deepseek|llama|qwen|mistral|kimi|minimax|context window|tokens|parameters|specs|specifications/i.test(query);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -79,11 +85,11 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
     const dateSuffix = (query.includes("today") || query.includes("now"))
       ? currentDateStr
       : isTemporalQuery ? `${currentYear}` : "";
-    // Keep site: scoped but cap total length
     smartQuery = safeQueryLength(`${query}${dateSuffix ? ` ${dateSuffix}` : ""} movie site:imdb.com OR wikipedia.org`);
   } else if (isPolitical) {
-    // For political queries: clean direct search with year context
     smartQuery = safeQueryLength(`${query} ${currentYear} site:wikipedia.org OR site:thehindu.com OR site:ndtv.com OR site:timesofindia.com`);
+  } else if (isTechQuery) {
+    smartQuery = safeQueryLength(`${query}`);
   } else if (query.includes("today") || query.includes("now")) {
     smartQuery = safeQueryLength(`${query} ${currentDateStr}`);
   } else if (isTemporalQuery) {
@@ -93,20 +99,13 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
   }
 
   // ── Retrieval strategy ──────────────────────────────────────────────
-  // 1. PRIMARY: Tavily — a key is configured, it is reliable, and it returns
-  //    real titles + URLs we can cite. Previously it sat at the BOTTOM of the
-  //    searxngSearch fallback chain behind a 2000ms cap, so it almost never
-  //    ran — causing confident but fabricated, uncited "web" answers.
-  // 2. FALLBACK: free multi-engine combo (DuckDuckGo / Google News / Brave /
-  //    Jina / Wikipedia) when Tavily is unavailable or returns nothing.
-  // The old 2000ms budget was far too aggressive for real network round-trips.
   let tavily = "";
   if (process.env.TAVILY_API_KEY) {
     tavily = await withTimeout(tavilySearch(smartQuery).catch(() => ""), 8000, "");
   }
 
   let freeCombo = "";
-  if (!tavily) {
+  if (!tavily || tavily.startsWith("Error performing search:")) {
     const [brave, jina] = await Promise.all([
       withTimeout(braveSearch(smartQuery).catch(() => ""), 6000, ""),
       withTimeout(searxngSearch(smartQuery).catch(() => ""), 6000, "")
@@ -114,20 +113,31 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
     freeCombo = [brave, jina].join("\n\n");
   }
 
-  // Limit total context to prevent overloaded errors
-  const rawResults = (tavily || freeCombo).slice(0, 8000);
+  const effectiveResults = (!tavily || tavily.startsWith("Error performing search:")) ? freeCombo : tavily;
+  const rawResults = effectiveResults.slice(0, 8000);
+
+  if (!rawResults.trim() || rawResults.startsWith("Error performing search:")) {
+    return { context: "", confidence: 0, verifiedFacts: [] };
+  }
 
   // 2. Fact Extraction & Authority Ranking
   const facts: string[] = [];
   const confidenceTriggers = [
-    { pattern: /wikipedia\.org|thehindu\.com|ndtv\.com|timesofindia\.com|imdb\.com/i, weight: 40, label: "Global Authority" },
-    { pattern: /2026|release|theatre|cinema|election|chief minister/i, weight: 20, label: "Temporal/Status Match" },
-    { pattern: /official|confirmed|announced|sworn|oath/i, weight: 15, label: "Official Status" },
-    { pattern: /behindwoods|indiaglitz|timesofindia|thehindu|pinkvilla|variety|deadline|ndtv|hindustan/i, weight: 30, label: "Verified News Portal" },
+    // Tech & Developer Authorities
+    { pattern: /unsloth\.ai|huggingface\.co|github\.com|nvidia\.com|openai\.com|anthropic\.com|google\.com|zhipu\.ai|z\.ai|openrouter\.ai|artificialanalysis\.ai|arxiv\.org|docs\.|documentation/i, weight: 45, label: "Tech Authority" },
+    // Global & Regional News / Reference Authorities
+    { pattern: /wikipedia\.org|reuters\.com|bloomberg\.com|thehindu\.com|ndtv\.com|timesofindia\.com|imdb\.com|techcrunch\.com|theverge\.com/i, weight: 40, label: "Global Authority" },
+    // Status & Technical Fact markers
+    { pattern: /official|confirmed|announced|specification|specs|context window|tokens|parameters|benchmark/i, weight: 25, label: "Technical Fact Match" },
+    { pattern: /202[4-9]|release|theatre|cinema|election|chief minister/i, weight: 20, label: "Temporal/Status Match" },
+    { pattern: /behindwoods|indiaglitz|timesofindia|thehindu|pinkvilla|variety|deadline|ndtv|hindustan/i, weight: 20, label: "Verified News Portal" },
     { pattern: /vijay|suriya|trisha|rj balaji|thalapathy|tvk|dmk|cmk/i, weight: 20, label: "Entity Match" }
   ];
 
   let totalConfidence = 0;
+  if (rawResults.length > 100) {
+    totalConfidence += 35;
+  }
   const lowerResults = rawResults.toLowerCase();
 
   confidenceTriggers.forEach(trigger => {
@@ -157,7 +167,7 @@ export async function getVerifiedLatestInfo(rawQuery: string): Promise<{ context
     ? `⚠️ IMPORTANT: Use ONLY the verified context below to answer. Do NOT invent political facts. If the exact information is not in context, say so clearly and naturally.\n\n`
     : isMovieQuery
     ? `⚠️ IMPORTANT: If the verified context below does NOT contain this specific movie, explicitly say so. Do NOT invent movie names, cast, or release dates from prior training data.\n\n`
-    : `⚠️ IMPORTANT: Answer based ONLY on the verified context below. If information is missing, say so briefly.\n\n`;
+    : `⚠️ IMPORTANT: Answer based strictly on the verified context below. When technical specifications or facts are present in context, you MUST use them.\n\n`;
 
   const contextWithGuard = `${guardHeader}\n${guardNote}${cleanedContext}`;
 

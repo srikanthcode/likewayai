@@ -48,6 +48,8 @@ export interface AutomationJob {
   updatedAt: number;
   startedAt?: number;
   completedAt?: number;
+  /** Epoch ms after which an unrefreshed "processing" claim may be reclaimed. */
+  leaseUntil?: number | null;
   metadata?: Record<string, any>;
 }
 
@@ -61,6 +63,9 @@ export interface EnqueueJobOptions {
 
 const DB_NAME = process.env.MONGODB_DB_NAME || process.env.MONGODB_DB || "likeway_ai";
 const COLLECTION_NAME = "automation_jobs";
+
+/** How long a claim stays valid without a heartbeat before it can be reclaimed. */
+const CLAIM_LEASE_MS = 2 * 60 * 1000;
 
 class BrowserJobQueue extends EventEmitter {
   private static instance: BrowserJobQueue;
@@ -126,12 +131,15 @@ class BrowserJobQueue extends EventEmitter {
       if (oldestKey) this.inMemoryJobs.delete(oldestKey);
     }
 
-    // Persist to MongoDB asynchronously
+    // Persist before announcing the job. Claiming reads the database, so the
+    // document must exist by the time a worker can see the "job:created" event.
     const col = await this.getCollection();
     if (col) {
-      col.insertOne({ ...job }).catch((err) => {
+      try {
+        await col.insertOne({ ...job });
+      } catch (err: any) {
         console.warn(`[JobQueue] Failed to persist job ${id} to MongoDB:`, err.message);
-      });
+      }
     }
 
     this.emit("job:created", job);
@@ -167,34 +175,29 @@ class BrowserJobQueue extends EventEmitter {
    * Claim next pending queued job for worker execution
    */
   public async claimNextJob(): Promise<AutomationJob | null> {
-    // 1. Check in-memory pending jobs
-    for (const job of this.inMemoryJobs.values()) {
-      if (job.status === "queued") {
-        job.status = "processing";
-        job.startedAt = Date.now();
-        job.updatedAt = Date.now();
-        this.emit("job:started", job);
-        this.emit(`job:${job.id}:update`, job);
-
-        const col = await this.getCollection();
-        if (col) {
-          col.updateOne(
-            { id: job.id },
-            { $set: { status: "processing", startedAt: job.startedAt, updatedAt: job.updatedAt } }
-          ).catch(() => {});
-        }
-
-        return job;
-      }
-    }
-
-    // 2. Check MongoDB for queued jobs if none found in memory
+    // When MongoDB is configured, the database is the single source of truth for
+    // claiming. Claiming from the in-memory copy first let two worker instances
+    // (or two concurrent claims in one process) both take the same queued job,
+    // because the memory check had no atomicity. The database path uses a
+    // conditional findOneAndUpdate, which is atomic per document.
     const col = await this.getCollection();
+
     if (col) {
+      const now = Date.now();
+      const leaseUntil = now + CLAIM_LEASE_MS;
+
       try {
+        // A job whose claim lease lapsed (worker crashed mid-run) is reclaimable.
+        // The query is still a single conditional update, so two workers racing
+        // for the same document cannot both win it.
+        await col.updateMany(
+          { status: "processing", leaseUntil: { $lt: now } },
+          { $set: { status: "queued", leaseUntil: null } }
+        ).catch(() => {});
+
         const doc = await col.findOneAndUpdate(
           { status: "queued" },
-          { $set: { status: "processing", startedAt: Date.now(), updatedAt: Date.now() } },
+          { $set: { status: "processing", startedAt: now, updatedAt: now, leaseUntil } },
           { sort: { createdAt: 1 }, returnDocument: "after" }
         );
         if (doc) {
@@ -205,6 +208,21 @@ class BrowserJobQueue extends EventEmitter {
         }
       } catch (err: any) {
         console.warn("[JobQueue] Error claiming job from DB:", err.message);
+      }
+      // A queued job absent from the DB is not claimable: memory may hold a copy
+      // of a job another instance already took.
+      return null;
+    }
+
+    // No database configured (single-process / development): claim from memory.
+    for (const job of this.inMemoryJobs.values()) {
+      if (job.status === "queued") {
+        job.status = "processing";
+        job.startedAt = Date.now();
+        job.updatedAt = Date.now();
+        this.emit("job:started", job);
+        this.emit(`job:${job.id}:update`, job);
+        return job;
       }
     }
 
@@ -248,6 +266,12 @@ class BrowserJobQueue extends EventEmitter {
       job.progress = Math.min(90, Math.round((job.stepsTaken / estimatedSteps) * 100));
     }
 
+    // Every step doubles as a heartbeat: an actively progressing job must not
+    // look stale to another worker's reclaim pass.
+    if (job.status === "processing" && isMongoConfigured()) {
+      job.leaseUntil = job.updatedAt + CLAIM_LEASE_MS;
+    }
+
     this.emit("job:step", { jobId: id, step: fullStep });
     this.emit(`job:${id}:step`, fullStep);
     this.emit(`job:${id}:update`, job);
@@ -265,6 +289,7 @@ class BrowserJobQueue extends EventEmitter {
             subGoals: job.subGoals,
             progress: job.progress,
             updatedAt: job.updatedAt,
+            leaseUntil: job.leaseUntil,
           },
         }
       ).catch(() => {});
@@ -318,6 +343,7 @@ class BrowserJobQueue extends EventEmitter {
             duration: job.duration,
             completedAt: job.completedAt,
             updatedAt: job.updatedAt,
+            leaseUntil: null,
           },
         }
       ).catch(() => {});
@@ -355,6 +381,7 @@ class BrowserJobQueue extends EventEmitter {
             duration: job.duration,
             completedAt: job.completedAt,
             updatedAt: job.updatedAt,
+            leaseUntil: null,
           },
         }
       ).catch(() => {});
@@ -392,6 +419,7 @@ class BrowserJobQueue extends EventEmitter {
             error: reason,
             completedAt: job.completedAt,
             updatedAt: job.updatedAt,
+            leaseUntil: null,
           },
         }
       ).catch(() => {});

@@ -2,18 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
 import { getProviderForModel } from "@/lib/models";
 import { planAutomation, AutomationStep } from "@/lib/automation/tasks";
-import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
+import { getRequestIdentity } from "@/lib/request-auth";
+import { consumeEntitlement, entitlementDenied, resolveEffectivePlan } from "@/lib/entitlements";
 import { browserJobQueue } from "@/lib/automation/job-queue";
 
 export const maxDuration = 120;
 
 // CORS headers for cross-origin requests (e.g. Vercel frontend calling Render backend)
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
-  "Access-Control-Max-Age": "86400",
-};
+const corsHeaders = (() => {
+  const allowed = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.FRONTEND_URL,
+    process.env.RENDER_EXTERNAL_URL,
+  ].filter((v): v is string => Boolean(v));
+  return {
+    "Access-Control-Allow-Origin": allowed[0] || "",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true",
+    "Vary": "Origin",
+    "Access-Control-Max-Age": "86400",
+  };
+})();
 
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
@@ -172,15 +182,31 @@ export async function POST(req: NextRequest) {
     const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
     const isRender = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
 
-    const tokens = getTokenFromCookies(req);
-    const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    const userId = payload?.sub || req.headers.get("x-user-id") || "anonymous";
+    // Identity comes only from the verified session (or our own backend).
+    const identity = getRequestIdentity(req);
+    if (!identity.userId) {
+      return NextResponse.json(
+        { error: "Sign in to use browser automation." },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+    const userId = identity.userId;
 
     const body = await req.json();
     const { task, modelId: requestedModel, async: isAsync, startUrl } = body;
 
     if (!task || typeof task !== "string" || task.trim().length === 0) {
       return NextResponse.json({ error: "Task description is required" }, { status: 400, headers: corsHeaders });
+    }
+    if (task.length > 4000) {
+      return NextResponse.json({ error: "Task description is too long." }, { status: 400, headers: corsHeaders });
+    }
+
+    // Browser automation is metered and expensive — reserve quota before work.
+    const effectivePlan = await resolveEffectivePlan(userId, identity.plan, identity.role);
+    const entitlement = await consumeEntitlement(userId, effectivePlan, "browser_automation", identity.role);
+    if (!entitlement.allowed) {
+      return NextResponse.json(entitlementDenied(entitlement), { status: 402, headers: corsHeaders });
     }
 
     // If requested async mode, enqueue to Job Queue immediately
@@ -206,17 +232,27 @@ export async function POST(req: NextRequest) {
 
     // If running on Vercel without local Chromium, proxy to Render worker backend
     if (isOnVercel && !isRender) {
-      const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+      const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const selfUrl = req.nextUrl.origin;
 
+      if (!renderUrl) {
+        return NextResponse.json(
+          { error: "Automation backend is not configured." },
+          { status: 503, headers: corsHeaders }
+        );
+      }
+
       if (renderUrl !== selfUrl && !renderUrl.startsWith(selfUrl + "/")) {
+        // Forward the verified identity with our shared secret; the browser's
+        // own headers are not trusted downstream.
         const res = await fetch(`${renderUrl}/api/automation`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(req.headers.get("authorization") ? { Authorization: req.headers.get("authorization")! } : {}),
+            "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+            "x-internal-user-id": userId,
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ ...body, userId }),
         });
 
         const data = await res.json();

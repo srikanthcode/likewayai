@@ -5,24 +5,16 @@ import {
   toggleAppConnection,
 } from "@/lib/integrations/integration-registry";
 import { getAppCredential } from "@/lib/integrations/credentials-store";
-import { verifyAccessToken } from "@/lib/auth";
+import { requireIdentity, unauthorizedResponse } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 
-function getUserId(req: NextRequest): string {
-  try {
-    const cookie = req.cookies.get("lw_at")?.value || req.cookies.get("likeway_access_token")?.value;
-    if (cookie) {
-      const payload = verifyAccessToken(cookie);
-      if (payload?.sub) return payload.sub;
-    }
-  } catch {}
-  return req.headers.get("x-user-id") || "guest-user";
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const userId = getUserId(req);
+    // Integration state and credential metadata belong to one account only.
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
+    const userId = identity.userId!;
     const connectedAppIds = getUserConnectedApps(userId);
 
     const catalog = INTEGRATIONS_CATALOG.map((item) => {
@@ -72,7 +64,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = getUserId(req);
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
+    const userId = identity.userId!;
     const { appId, action } = await req.json();
 
     if (!appId) {

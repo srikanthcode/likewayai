@@ -42,25 +42,24 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Preview documents execute generated code. They must never be
+        // readable cross-origin, and only the app origin may frame them.
         source: "/api/preview/render/:path*",
         headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET, OPTIONS" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'self' *" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
           { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
         ],
       },
       {
+        // No wildcard CORS on the API surface. Routes that legitimately need
+        // cross-origin access (the Render worker) set their own origin
+        // allowlist from configuration.
         source: "/api/:path*",
         headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS, PUT, DELETE" },
-          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, x-user-id, x-likeway-internal, X-CSRF-Token" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-XSS-Protection", value: "1; mode=block" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
         ],
@@ -68,9 +67,7 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization" },
+          { key: "X-DNS-Prefetch-Control", value: "on" },
           { key: "X-DNS-Prefetch-Control", value: "on" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -78,6 +75,9 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
           {
             key: "Content-Security-Policy",
+            // The app shell must be able to embed preview documents, which are
+            // same-origin but sandboxed. `frame-src 'self'` keeps that possible
+            // without allowing arbitrary third-party frames.
             value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://*.vercel-scripts.com https://accounts.google.com https://www.googletagmanager.com https://checkout.razorpay.com https://*.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.razorpay.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; frame-src 'self' https://accounts.google.com https://*.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self';"
           },
         ],

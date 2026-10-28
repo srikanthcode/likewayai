@@ -154,6 +154,39 @@ const INDEXES: IndexDefinition[] = [
     },
   },
 
+  // ── Automation Job Queue Indexes ────────────────────────────────────
+  // claimNextJob() does a conditional findOneAndUpdate on status=queued sorted
+  // by createdAt; this index keeps that claim O(log n) and lets the claim stay
+  // atomic across worker instances.
+  {
+    collection: "automation_jobs",
+    index: { status: 1, createdAt: 1 },
+    options: { name: "automation_jobs_status_created" },
+  },
+  {
+    collection: "automation_jobs",
+    index: { userId: 1, createdAt: -1 },
+    options: { name: "automation_jobs_user_created" },
+  },
+  // TTL - automation jobs are a working log, not a permanent record (90 days).
+  {
+    collection: "automation_jobs",
+    index: { updatedAt: 1 },
+    options: { name: "automation_jobs_updated_ttl", expireAfterSeconds: 90 * 24 * 60 * 60 },
+  },
+
+  // ── Webhook Idempotency Indexes ─────────────────────────────────────
+  {
+    collection: "webhook_events",
+    index: { eventId: 1 },
+    options: { name: "webhook_event_id", unique: true },
+  },
+  {
+    collection: "webhook_events",
+    index: { receivedAt: 1 },
+    options: { name: "webhook_events_received_ttl", expireAfterSeconds: 30 * 24 * 60 * 60 },
+  },
+
   // ── Users Collection Indexes ────────────────────────────────────────
   {
     collection: "users",

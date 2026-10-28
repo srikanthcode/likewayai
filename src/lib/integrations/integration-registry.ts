@@ -629,6 +629,20 @@ export function createPendingApproval(params: {
   return approval;
 }
 
+/**
+ * Read a pending approval without consuming it, so callers can check ownership
+ * before deciding. Returns null when the request is unknown or expired.
+ */
+export function getPendingApproval(id: string): PendingApproval | null {
+  const approval = pendingApprovals.get(id);
+  if (!approval) return null;
+  if (new Date(approval.expiresAt).getTime() < Date.now()) {
+    pendingApprovals.delete(id);
+    return null;
+  }
+  return approval;
+}
+
 export function resolvePendingApproval(id: string, approved: boolean): PendingApproval | null {
   const approval = pendingApprovals.get(id);
   if (!approval) return null;

@@ -338,12 +338,14 @@ function cleanImagePrompt(p: string): string {
 
 /**
  * Generates an image using the Image Router.
- * Route: ComfyUI (self-hosted, free) → Pollinations FLUX.1 High Definition
+ * Route: ComfyUI (self-hosted, free) → Authenticated Gen API (100% watermark-free, unlisted)
  */
-export async function generateImage(rawPrompt: string): Promise<string> {
+export async function generateImage(
+  rawPrompt: string,
+  options?: { model?: string; width?: number; height?: number }
+): Promise<string> {
   const prompt = cleanImagePrompt(rawPrompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const encodedPrompt = encodeURIComponent(prompt);
 
   // 0th Route: ComfyUI (self-hosted, free, no API cost)
   try {
@@ -364,12 +366,25 @@ export async function generateImage(rawPrompt: string): Promise<string> {
     }
   } catch { /* fall through to cloud */ }
 
-  // 1st Route: High-Definition FLUX (1024x1024, fast, instant delivery)
-  const fluxUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+  // 1st Route: Authenticated Gen API (Exact dimensions, private=true, nologo=true)
+  const { buildPollinationsImageUrl, resolveImageModel, getImageModelDisplayName } = await import("@/lib/image-models");
+  const selectedModel = resolveImageModel(options?.model);
+  const width = options?.width || 1024;
+  const height = options?.height || 1024;
+  const imageUrl = buildPollinationsImageUrl({
+    prompt,
+    model: selectedModel,
+    width,
+    height,
+    seed,
+  });
+
+  const displayName = getImageModelDisplayName(selectedModel);
+
   return "<artifact type=\"doc\" title=\"Generated Image\">\n" +
-    `![Generated Image](${fluxUrl})\n\n` +
+    `![Generated Image](${imageUrl})\n\n` +
     `**Prompt:** ${prompt}\n\n` +
-    `*Model: FLUX.1 High Definition (1024x1024)*\n` +
+    `*Model: ${displayName} (${width}x${height})*\n` +
     "</artifact>";
 }
 

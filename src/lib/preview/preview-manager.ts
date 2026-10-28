@@ -33,6 +33,8 @@ export interface PreviewLog {
 
 export interface PreviewSession {
   id: string;
+  /** Owner of the session. Every read/write of a session must be scoped to it. */
+  userId: string;
   projectId: string;
   title: string;
   runtime: PreviewRuntime;
@@ -49,6 +51,31 @@ export interface PreviewSession {
 }
 
 const PREVIEW_DIR = path.join(process.cwd(), ".previews");
+
+/** Escape text that is interpolated into an HTML document. */
+function escapeHtml(value: string): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Resolve a session-relative path inside the session's own directory.
+ *
+ * Generated file names come from an AI model, so they are untrusted input:
+ * `../../src/app/...` would otherwise let a preview overwrite application
+ * source. Returns null when the path escapes the sandbox.
+ */
+function resolveInsideSession(sessionId: string, relPath: string): string | null {
+  const base = path.resolve(PREVIEW_DIR, sessionId);
+  const target = path.resolve(base, relPath);
+  const rel = path.relative(base, target);
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  return target;
+}
 
 // In-memory sessions store (LRU / active cache)
 declare global {
@@ -117,12 +144,17 @@ export function detectRuntime(
  */
 export async function createOrUpdateSession(params: {
   sessionId?: string;
+  /** Owner. A session cannot be created or taken over anonymously. */
+  userId: string;
   projectId?: string;
   title?: string;
   content: string;
   language?: string;
   files?: Record<string, string>;
 }): Promise<PreviewSession> {
+  if (!params.userId) {
+    throw new Error("A preview session requires an owning user.");
+  }
   const sessionId = params.sessionId || crypto.randomBytes(8).toString("hex");
   const projectId = params.projectId || `proj_${crypto.randomBytes(6).toString("hex")}`;
   const title = params.title || "Interactive Application";
@@ -139,6 +171,7 @@ export async function createOrUpdateSession(params: {
   if (!session) {
     session = {
       id: sessionId,
+      userId: params.userId,
       projectId,
       title,
       runtime,
@@ -166,16 +199,28 @@ export async function createOrUpdateSession(params: {
     message: `Initialized ${runtime.toUpperCase()} preview session [${sessionId}]`,
   });
 
-  // Prepare workspace directory
+  // Prepare workspace directory. Every write is confined to the session folder.
   try {
-    const dir = ensurePreviewDir(sessionId);
+    ensurePreviewDir(sessionId);
+    const rejected: string[] = [];
     for (const [relPath, content] of Object.entries(session.files)) {
-      const fullPath = path.join(dir, relPath);
+      const fullPath = resolveInsideSession(sessionId, relPath);
+      if (!fullPath) {
+        rejected.push(relPath);
+        continue;
+      }
       const parentDir = path.dirname(fullPath);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
       }
       fs.writeFileSync(fullPath, content, "utf-8");
+    }
+    if (rejected.length > 0) {
+      addSessionLog(sessionId, {
+        level: "warn",
+        source: "system",
+        message: `Ignored ${rejected.length} file path(s) outside the preview sandbox.`,
+      });
     }
 
     session.status = "ready";
@@ -331,7 +376,7 @@ export function buildExecutableBundle(session: PreviewSession): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${session.title}</title>
+  <title>${escapeHtml(session.title)}</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -399,7 +444,7 @@ export function buildExecutableBundle(session: PreviewSession): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${session.title}</title>
+  <title>${escapeHtml(session.title)}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   ${bridgeScript}
 </head>

@@ -1,15 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { getMetrics } from "@/lib/performance";
 import { getCollectionStats } from "@/lib/indexes";
 
 export const dynamic = "force-dynamic";
 
+/** Constant-time bearer comparison. */
+function bearerMatches(header: string | null, expected: string): boolean {
+  const provided = header?.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!provided || provided.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+}
+
 export async function GET(req: NextRequest) {
-  // Basic auth check
-  const authHeader = req.headers.get("authorization");
   const metricsKey = process.env.METRICS_API_KEY;
-  
-  if (metricsKey && authHeader !== `Bearer ${metricsKey}`) {
+
+  // Fail CLOSED: with no key configured the endpoint is disabled rather than
+  // public. Metrics disclose traffic, error and cost information.
+  if (!metricsKey) {
+    return NextResponse.json(
+      { error: "Metrics endpoint is not configured" },
+      { status: 503 }
+    );
+  }
+
+  if (!bearerMatches(req.headers.get("authorization"), metricsKey)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,0 +1,23 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/app/globals.css"
+        ],
+        "createdAt": "2026-10-20T22:17:28.579Z",
+        "reason": "blockquote left rule at L118 is the standard markdown quotation convention, not a card accent; pre-existing style"
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-10-20T22:19:02.502Z",
+        "reason": "pre-existing product typeface, deliberately imported with 6 weights and applied to body/prose; typeface change is a branding decision, not part of this engineering pass"
+      }
+    ]
+  }
+}

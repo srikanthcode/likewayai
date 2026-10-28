@@ -67,13 +67,25 @@ export async function POST(req: NextRequest) {
       console.warn("[Image Gen] ComfyUI failed, falling back to cloud:", result.error);
     }
 
-    // Cloud fallback: Pollinations / OpenRouter / HuggingFace / Stability
-    const cloudResult = await generateImage(prompt);
+    // Cloud generation: Authenticated Gen API (100% watermark-free, exact dimensions)
+    const { buildPollinationsImageUrl, resolveImageModel, getImageModelDisplayName, IMAGE_MODELS_CATALOG, DEFAULT_IMAGE_MODEL } = await import("@/lib/image-models");
+    const resolvedModel = resolveImageModel(model);
+    const imageUrl = buildPollinationsImageUrl({
+      prompt,
+      model: resolvedModel,
+      width,
+      height,
+    });
+    const displayName = getImageModelDisplayName(resolvedModel);
+
     return NextResponse.json({
       success: true,
-      imageUrl: cloudResult,
-      model: "Cloud Fallback (Pollinations)",
-      prompt: prompt,
+      imageUrl,
+      model: displayName,
+      modelId: resolvedModel,
+      prompt,
+      width,
+      height,
       source: "cloud",
     });
   } catch (error: any) {
@@ -85,19 +97,17 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET — health check and model info
+// GET — health check and 17 image models catalog info
 export async function GET(req: NextRequest) {
   const comfyAvailable = await checkComfyUIHealth();
+  const { IMAGE_MODELS_CATALOG, DEFAULT_IMAGE_MODEL } = await import("@/lib/image-models");
 
   return NextResponse.json({
     comfyui: comfyAvailable ? "connected" : "disconnected",
     comfyuiUrl: process.env.COMFYUI_URL || "http://localhost:8188",
-    models: {
-      flux: "FLUX Schnell (fast, Apache 2.0)",
-      sdxl: "SDXL (quality, open)",
-      hidream: "HiDream (photorealistic)",
-      pony: "Pony XL (anime/illustration)",
-    },
-    cloudFallback: "Pollinations / OpenRouter / HuggingFace / Stability AI",
+    models: IMAGE_MODELS_CATALOG,
+    defaultModel: DEFAULT_IMAGE_MODEL,
+    totalModels: IMAGE_MODELS_CATALOG.length,
+    endpoint: "https://gen.pollinations.ai/image/{prompt}",
   });
 }

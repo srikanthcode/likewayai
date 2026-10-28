@@ -65,6 +65,7 @@ import PremiumVoiceInput from "@/components/PremiumVoiceInput";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import AgentSelector from "@/components/AgentSelector";
 import PricingModal from "@/components/PricingModal";
+import FreeTierAdSlot from "@/components/FreeTierAdSlot";
 import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
 import AccountMenu from "@/components/AccountMenu";
 import SlashCommandMenu from "@/components/SlashCommandMenu";
@@ -1914,11 +1915,10 @@ export default function ChatPage() {
       return res;
     };
 
-    const FALLBACK_MODELS = [
-      { id: selectedModel.id, trim: false },
-      { id: "mistral-small-latest", trim: true },
-      { id: "mistral-medium-latest", trim: true },
-    ];
+    // The server owns failover. If it reports a provider failure it has already
+    // tried its own capability-compatible chain, and swapping to a different
+    // model here would silently answer as the wrong model.
+    const FALLBACK_MODELS = [{ id: selectedModel.id, trim: false }];
 
     try {
       // Check browser automation limits before sending
@@ -2171,11 +2171,10 @@ export default function ChatPage() {
       return res;
     };
 
-    const FALLBACK_MODELS = [
-      { id: selectedModel.id, trim: false },
-      { id: "mistral-small-latest", trim: true },
-      { id: "mistral-medium-latest", trim: true },
-    ];
+    // The server owns failover. If it reports a provider failure it has already
+    // tried its own capability-compatible chain, and swapping to a different
+    // model here would silently answer as the wrong model.
+    const FALLBACK_MODELS = [{ id: selectedModel.id, trim: false }];
 
     try {
       const abortController = new AbortController();
@@ -3563,12 +3562,12 @@ export default function ChatPage() {
                             </div>
                           </div>
                         )}
-                        {/* ChatGPT-style Sponsored Ad: Only on latest assistant response if 10+ lines on Free plan */}
+                        {/* ChatGPT-style Sponsored Ad: Only on latest assistant response on Free plan */}
                         {i === lastAssistantIndex &&
                           m.role === "assistant" &&
                           (!m.status || (m.status !== "thinking" && m.status !== "typing")) &&
                           shouldShowAds &&
-                          (m.content || "").trim().split("\n").length >= 10 && (
+                          (m.content || "").trim().length >= 30 && (
                             <div className="w-full mt-4">
                               <ChatGPTStyleAd
                                 theme={theme}
@@ -3591,6 +3590,13 @@ export default function ChatPage() {
 
           </section>
         </div>
+
+        {/* ── Free-tier ad slot (never rendered for paying plans) ── */}
+        <FreeTierAdSlot
+          plan={currentPlan}
+          hasConversation={messages.length > 0}
+          className="chat-container px-4 pb-1 shrink-0"
+        />
 
         {/* ── Input Area ───────────────────────────────────── */}
         <div className="chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom">

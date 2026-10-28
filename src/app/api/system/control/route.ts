@@ -4,6 +4,14 @@ import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import { consumeEntitlement, entitlementDenied } from "@/lib/entitlements";
 
 export async function GET(req: NextRequest) {
+  // Enumerating installed software spawns processes on the host — never
+  // expose it to unauthenticated callers.
+  const tokens = getTokenFromCookies(req);
+  const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
+  if (!payload) {
+    return NextResponse.json({ error: "Sign in to use Computer Control." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const app = searchParams.get("app");
 

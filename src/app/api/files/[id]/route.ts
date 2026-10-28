@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTokenFromCookies, verifyAccessToken } from "@/lib/auth";
 import { getGeneratedFile } from "@/lib/file-store";
+import { requireIdentity, unauthorizedResponse } from "@/lib/request-auth";
 
 export const maxDuration = 30;
 
 /**
  * GET /api/files/[id] — download an AI-generated file.
- * Ownership is enforced via the session cookie when authenticated.
+ *
+ * Always authenticated and always scoped to the owner. Previously an
+ * unauthenticated caller could download any generated document by id because
+ * the owner filter was only applied when a token happened to be present.
  */
 export async function GET(
   req: NextRequest,
@@ -15,11 +18,10 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const tokens = getTokenFromCookies(req);
-    const payload = tokens.access ? verifyAccessToken(tokens.access) : null;
-    const userId = payload?.sub;
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
 
-    const file = await getGeneratedFile(id, userId);
+    const file = await getGeneratedFile(id, identity.userId!);
     if (!file) {
       return NextResponse.json({ error: "File not found or expired" }, { status: 404 });
     }
@@ -29,8 +31,9 @@ export async function GET(
       headers: {
         "Content-Type": file.meta.contentType,
         "Content-Length": String(file.meta.size),
-        "Content-Disposition": `attachment; filename="${file.meta.filename}"`,
-        "Cache-Control": "private, max-age=3600",
+        "Content-Disposition": `attachment; filename="${String(file.meta.filename).replace(/["\r\n]/g, "")}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

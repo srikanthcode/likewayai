@@ -103,7 +103,11 @@ export async function POST(req: NextRequest) {
 
     // ── Branch 2: Razorpay Order / Subscription Confirmation ─────────────
     const planId = normalizePlan(rawPlanId);
-    const orderId = razorpay_order_id || razorpay_subscription_id;
+
+    // An order id and a subscription id are different resources with different
+    // signature shapes. Never let one stand in for the other.
+    const isSubscription = Boolean(razorpay_subscription_id) && !razorpay_order_id;
+    const orderId = isSubscription ? razorpay_subscription_id : razorpay_order_id;
 
     if (!rawPlanId || !orderId || !razorpay_payment_id || !razorpay_signature) {
       return NextResponse.json({ error: "Missing required payment parameters" }, { status: 400 });
@@ -124,38 +128,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Payment gateway not configured" }, { status: 500 });
     }
 
-    // Verify both order_id|payment_id and payment_id|subscription_id HMAC signatures
-    const orderSig = crypto
+    // Verify the ONE signature shape that applies to this resource:
+    //   order        → HMAC(order_id|payment_id)
+    //   subscription → HMAC(payment_id|subscription_id)
+    const signedPayload = isSubscription
+      ? `${razorpay_payment_id}|${orderId}`
+      : `${orderId}|${razorpay_payment_id}`;
+
+    const expectedSig = crypto
       .createHmac("sha256", razorpayKeySecret)
-      .update(`${orderId}|${razorpay_payment_id}`)
+      .update(signedPayload)
       .digest("hex");
 
-    const subSig = crypto
-      .createHmac("sha256", razorpayKeySecret)
-      .update(`${razorpay_payment_id}|${orderId}`)
-      .digest("hex");
-
-    const isMatch =
-      Boolean(razorpay_signature) &&
-      (timingSafeEqual(orderSig, razorpay_signature) || timingSafeEqual(subSig, razorpay_signature));
-
-    if (!isMatch) {
-      console.error("[Subscription Confirm] Signature mismatch");
+    if (!timingSafeEqual(expectedSig, razorpay_signature)) {
+      console.error("[Subscription Confirm] Signature mismatch", { isSubscription });
       return NextResponse.json({ error: "Invalid signature verification" }, { status: 400 });
     }
 
-    // Verify payment reference ownership if recorded in DB
+    // A valid signature proves Razorpay produced it, but NOT that this order
+    // belongs to this user or this plan. The server-side reference is the
+    // authority, so a missing reference is a hard failure (fail closed).
     const ref = await getPaymentRef(orderId);
-    if (ref) {
-      if (ref.userId !== userId || normalizePlan(ref.planId) !== planId) {
-        console.error("[Subscription Confirm] Order/plan mismatch", {
-          refUserId: ref.userId,
-          userId,
-          refPlan: ref.planId,
-          planId,
+    if (!ref) {
+      console.error("[Subscription Confirm] No server-side payment reference for order", { orderId });
+      return NextResponse.json(
+        { error: "This payment was not started from your account. Contact support." },
+        { status: 403 }
+      );
+    }
+    if (ref.userId !== userId || normalizePlan(ref.planId) !== planId) {
+      console.error("[Subscription Confirm] Order/plan mismatch", {
+        refUserId: ref.userId,
+        userId,
+        refPlan: ref.planId,
+        planId,
+      });
+      return NextResponse.json({ error: "Order does not match this account or plan." }, { status: 403 });
+    }
+    if (ref.type !== (isSubscription ? "subscription" : "order")) {
+      return NextResponse.json({ error: "Payment type mismatch." }, { status: 400 });
+    }
+    if (!isSubscription && typeof ref.amount === "number") {
+      // The charge must equal the server-side price for this plan.
+      const expectedAmount =
+        parseInt(String(PLANS[planId].price).replace(/[^0-9]/g, ""), 10) * 100;
+      if (expectedAmount > 0 && ref.amount !== expectedAmount) {
+        console.error("[Subscription Confirm] Amount mismatch", {
+          expectedAmount,
+          recordedAmount: ref.amount,
         });
-        return NextResponse.json({ error: "Order does not match this account or plan." }, { status: 403 });
+        return NextResponse.json({ error: "Payment amount does not match the plan price." }, { status: 400 });
       }
+    }
+
+    // Reject a replay: a reference already marked paid must not extend access again.
+    if (ref.status === "paid" || ref.status === "active") {
+      return NextResponse.json(
+        { status: "already_confirmed", plan: planId, message: "This payment was already applied." },
+        { status: 200 }
+      );
     }
 
     // Persist the plan upgrade to the DB

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
+import { callLLM7 } from "@/lib/llm7";
 import { API_KEYS } from "@/config/keys";
 import { MODELS, getProviderForModel } from "@/lib/models";
 import { SYSTEM_PROMPTS, AgentMode, LIKEWAY_RESPONSE_ARCHITECTURE } from "@/lib/agents";
@@ -13,7 +14,9 @@ import {
   TIME_KEYWORDS,
   CODING_KEYWORDS_PATTERN,
   CODING_ACTION_PATTERN,
-  REAL_TIME_TERM_PATTERN
+  REAL_TIME_TERM_PATTERN,
+  TECHNICAL_FACTS_PATTERN,
+  AI_MODELS_PATTERN
 } from "@/lib/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDailyLimit } from "@/lib/daily-rate-limit";
@@ -31,6 +34,7 @@ import { classifyTask } from "@/lib/intelligence/task-classifier";
 import { synthesizeAdaptivePrompt } from "@/lib/intelligence/prompt-adapter";
 import { evaluateResponseQuality } from "@/lib/intelligence/quality-evaluator";
 import { extractUrls, reachAll } from "@/lib/agent-reach";
+import { assertSafeUrl } from "@/lib/ssrf-guard";
 
 // ── Free proxy URL — SERVER-SIDE ONLY. Never imported by client bundle.
 const FREE_MODELS_PROXY = "https://freemodels-chat.freemodels.workers.dev";
@@ -907,7 +911,7 @@ export async function POST(req: NextRequest) {
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           start(controller) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: imageResult + "\n\n💡 *Generated with FLUX.1 Schnell / SDXL via Pollinations*" } }] })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: imageResult } }] })}\n\n`));
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           },
@@ -1089,6 +1093,42 @@ export async function POST(req: NextRequest) {
             response = null;
           }
         }
+
+        // Additional fallback: If all vision models fail, try LLM7 text extraction fallback
+        if (!response || !response.ok) {
+          try {
+            console.warn("[Chat API] All vision models failed. Trying LLM7 fallback...");
+            const textContent = visionMessages
+              .map((m: any) => {
+                if (typeof m.content === "string") return m.content;
+                if (Array.isArray(m.content)) {
+                  const textPart = m.content.find((p: any) => p.type === "text");
+                  return textPart?.text || "";
+                }
+                return "";
+              })
+              .filter(Boolean)
+              .join("\n");
+
+            const llm7Res = await callLLM7({
+              messages: [{ role: "user", content: textContent || "Please assist with my request." }],
+              model: "fast",
+            });
+            if (llm7Res && llm7Res.content) {
+              const encoder = new TextEncoder();
+              const ssePayload = `data: ${JSON.stringify({ choices: [{ delta: { content: llm7Res.content } }] })}\n\ndata: [DONE]\n\n`;
+              return new Response(ssePayload, {
+                headers: {
+                  "Content-Type": "text/event-stream",
+                  "Cache-Control": "no-cache",
+                  Connection: "keep-alive",
+                },
+              });
+            }
+          } catch (e) {
+            console.warn("[Chat API] LLM7 vision fallback failed:", e);
+          }
+        }
       } catch (err: any) {
         console.warn("[Chat API] Vision attempt exception:", err?.message || err);
       }
@@ -1140,10 +1180,14 @@ export async function POST(req: NextRequest) {
     // ── Determine if the query needs web search ─────────────────────────
     const isCodingQ = CODING_KEYWORDS_PATTERN.test(sanitizedPrompt) && CODING_ACTION_PATTERN.test(sanitizedPrompt);
     const hasRealTimeTerm = REAL_TIME_TERM_PATTERN.test(sanitizedPrompt);
+    const isTechSpecQuery =
+      TECHNICAL_FACTS_PATTERN.test(sanitizedPrompt) ||
+      AI_MODELS_PATTERN.test(sanitizedPrompt);
 
     const needsSearch =
       webSearch ||
       hasRealTimeTerm ||
+      isTechSpecQuery ||
       SEARCH_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) ||
       (TIME_KEYWORDS.some((w) => sanitizedPrompt.toLowerCase().includes(w)) && !isCodingQ);
 
@@ -1151,7 +1195,7 @@ export async function POST(req: NextRequest) {
     if (needsSearch) {
       try {
         const info = await getVerifiedLatestInfo(sanitizedPrompt);
-        if (info.context && info.confidence > 20) {
+        if (info.context && info.confidence >= 20) {
           searchContext = `\n\n[VERIFIED WEB CONTEXT — Confidence: ${info.confidence}%]\n${info.context}\n[END WEB CONTEXT]\n`;
         }
       } catch (e) {
@@ -1164,8 +1208,23 @@ export async function POST(req: NextRequest) {
     const promptUrls = extractUrls(sanitizedPrompt);
     if (promptUrls.length > 0) {
       try {
-        reqLogger.info("Agent Reach extracting URLs from user prompt", { urls: promptUrls });
-        const reachResults = await reachAll(promptUrls.slice(0, 3));
+        // Only fetch URLs that pass the egress guard. A prompt is untrusted
+        // input, so it must not be able to point the server at loopback,
+        // private networks or cloud metadata endpoints.
+        const safeUrls: string[] = [];
+        for (const candidate of promptUrls.slice(0, 3)) {
+          try {
+            await assertSafeUrl(candidate);
+            safeUrls.push(candidate);
+          } catch (ssrfErr: any) {
+            reqLogger.warn("Skipped unsafe URL in prompt", { reason: ssrfErr?.message });
+          }
+        }
+        if (safeUrls.length === 0) {
+          reqLogger.info("No safe URLs to extract from prompt");
+        }
+        reqLogger.info("Agent Reach extracting URLs from user prompt", { urls: safeUrls });
+        const reachResults = safeUrls.length > 0 ? await reachAll(safeUrls) : [];
         const successfulReaches = reachResults.filter((r) => r.success && r.content);
         if (successfulReaches.length > 0) {
           agentReachContext =
@@ -1574,6 +1633,26 @@ After the closing </thought> tag, present your structured, user-friendly final a
       }
     }
 
+    // ── ADDITIONAL ULTIMATE FALLBACK: LLM7 Gateway (OpenAI SDK) ──
+    // If primary providers and existing worker fallbacks fail, reply via LLM7 ("fast" smart selector)
+    if (!workerContent && (!response || !response.ok)) {
+      console.warn(`[Chat API] All primary providers and existing fallbacks failed. Engaging additional LLM7 fallback...`);
+      try {
+        const llm7Res = await callLLM7({
+          messages: freeMessages,
+          model: "fast",
+          max_tokens: maxTokens,
+          temperature: agentMode === "Creative" ? 0.9 : agentMode === "Researcher" ? 0.3 : 0.7,
+        });
+        if (llm7Res && llm7Res.content) {
+          workerContent = llm7Res.content;
+          console.log(`[Chat API] Additional LLM7 fallback succeeded with ${workerContent.length} chars (model: ${llm7Res.model})`);
+        }
+      } catch (llm7Err: any) {
+        console.error(`[Chat API] Additional LLM7 fallback failed:`, llm7Err?.message || llm7Err);
+      }
+    }
+
     if (!workerContent && (!response || !response.ok)) {
       const errText = response ? await response.text().catch(() => "Unknown error") : "No response from AI providers";
       console.error(`[Chat API] AI request failed:`, errText);
@@ -1595,120 +1674,39 @@ After the closing </thought> tag, present your structured, user-friendly final a
         );
       }
 
-      // Check if response contains Claude identity or denies GPT-6 Astra existence
-      if (isAstraModel) {
-        if (
-          isAskingAboutAstra ||
-          isIdentityPrompt ||
-          /hypothetical model|not publicly announced|proprietary information about GPT-6/i.test(cleaned)
-        ) {
-          return getAstraDescription();
-        }
-        // Clean any competitor leaks
-        cleaned = cleaned
-          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I am ${targetModelName} by OpenAI.`)
-          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I'm ${targetModelName} by OpenAI.`)
-          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
-          .replace(/Anthropic/gi, "OpenAI");
-        return cleaned;
+      // ACCURATE ATTRIBUTION
+      //
+      // The previous implementation rewrote an upstream model's self-identity
+      // into a different vendor's claim (e.g. an Anthropic response presented
+      // as "I am <model> by OpenAI"), and answered identity questions with
+      // hardcoded fictional descriptions. That tells paying users the
+      // assistant is something it is not. Attribution now names the actual
+      // vendor; only a neutral Likeway brand line is added.
+      if (isAstraModel && isIdentityPrompt && !/hypothetical model/i.test(cleaned)) {
+        // Identity question at the very start of a turn: let the provider's
+        // real answer through, with accurate attribution applied below.
       }
-
-      if (isSolModel) {
-        if (isAskingAboutSol || (isIdentityPrompt && !isAskingAboutAstra) || /hypothetical model/i.test(cleaned)) {
-          return getSolDescription();
-        }
-        cleaned = cleaned
-          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I am ${targetModelName} by OpenAI.`)
-          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I'm ${targetModelName} by OpenAI.`)
-          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
-          .replace(/Anthropic/gi, "OpenAI");
-        return cleaned;
-      }
-
-      if (isTerraModel) {
-        if (isAskingAboutTerra || (isIdentityPrompt && !isAskingAboutAstra) || /hypothetical model/i.test(cleaned)) {
-          return getTerraDescription();
-        }
-        cleaned = cleaned
-          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I am ${targetModelName} by OpenAI.`)
-          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic[.,]?/gi, `I'm ${targetModelName} by OpenAI.`)
-          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
-          .replace(/Anthropic/gi, "OpenAI");
-        return cleaned;
-      }
-
-      // If the selected model is Claude, preserve Claude identity but replace any fallback leaks
-      if (selectedModel.category === "Claude") {
-        cleaned = cleaned
-          .replace(/I am GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I am ${targetModelName} by Anthropic`)
-          .replace(/I['’]m GPT[- ]?6 Astra(?: created)?\s*by OpenAI/gi, `I'm ${targetModelName} by Anthropic`)
-          .replace(/GPT[- ]?6 Astra by OpenAI/gi, `${targetModelName} by Anthropic`)
-          .replace(/GPT[- ]?6 Astra/gi, targetModelName)
-          .replace(/OpenAI/gi, "Anthropic");
-        return cleaned;
-      }
-
-      // If the selected model is GPT, preserve GPT/OpenAI identity but replace any fallback leaks
-      if (selectedModel.category === "GPT") {
-        cleaned = cleaned
-          .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by OpenAI`)
-          .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by OpenAI`)
-          .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by OpenAI`)
-          .replace(/Anthropic/gi, "OpenAI");
-        return cleaned;
-      }
-
-      // For Likeway models (and any other models):
-      // Clean all competitor identities and strictly present targetModelName by Likeway AI
       cleaned = cleaned
-        // Claude / Anthropic
-        .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I am Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I am ${targetModelName}`)
-        .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?(?: created| developed)?\s*by Anthropic/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I['’]m Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?/gi, `I'm ${targetModelName}`)
-        .replace(/Claude(?: Sonnet| Opus| Fable)?(?: [0-9.]+)?\s*by Anthropic/gi, `${targetModelName} by ${targetModelCompany}`)
-        .replace(/As an AI (?:created|developed) by Anthropic/gi, `As an AI model (${targetModelName}) by ${targetModelCompany}`)
-        .replace(/As Claude,/gi, `As ${targetModelName},`)
-        // GPT / OpenAI
-        .replace(/I am GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I['’]m GPT[- ]?6 Astra(?: created| developed)?\s*by OpenAI/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I am GPT[- ]?5\.6 Sol(?: created| developed)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I am ChatGPT(?:, a large language model)?(?: created| trained)?\s*by OpenAI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/GPT[- ]?6 Astra by OpenAI/gi, `${targetModelName} by ${targetModelCompany}`)
-        .replace(/GPT[- ]?5\.6 Sol by OpenAI/gi, `${targetModelName} by ${targetModelCompany}`)
-        .replace(/GPT[- ]?6 Astra/gi, targetModelName)
-        .replace(/created by OpenAI/gi, `created by ${targetModelCompany}`)
-        .replace(/developed by OpenAI/gi, `developed by ${targetModelCompany}`)
-        .replace(/trained by OpenAI/gi, `developed by ${targetModelCompany}`)
-        // Gemini / Google
-        .replace(/I am Gemini(?: [a-zA-Z0-9.]+)?(?:, a large language model)?(?: created| built)?\s*by Google/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/built by Google/gi, `developed by ${targetModelCompany}`)
-        .replace(/created by Google/gi, `created by ${targetModelCompany}`)
-        // DeepSeek
-        .replace(/I am DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I['’]m DeepSeek(?:[- ][a-zA-Z0-9.]+)?(?: created| developed)?\s*by DeepSeek(?: AI)?/gi, `I'm ${targetModelName} by ${targetModelCompany}`)
-        .replace(/created by DeepSeek(?: AI)?/gi, `created by ${targetModelCompany}`)
-        .replace(/developed by DeepSeek(?: AI)?/gi, `developed by ${targetModelCompany}`)
-        .replace(/\*\*DeepSeek(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
-        .replace(/DeepSeek AI/gi, targetModelCompany)
-        .replace(/DeepSeek R1/gi, targetModelName)
-        .replace(/DeepSeek Chat/gi, targetModelName)
-        .replace(/DeepSeek/gi, targetModelName)
-        // Mistral / Codestral
-        .replace(/I am Mistral(?: created)?\s*by Mistral AI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/created by Mistral AI/gi, `created by ${targetModelCompany}`)
-        .replace(/\*\*Mistral(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
-        .replace(/Mistral AI/gi, targetModelCompany)
-        .replace(/Codestral/gi, targetModelName)
-        // Meta / Llama
-        .replace(/I am Llama(?: created)?\s*by Meta/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/created by Meta/gi, `created by ${targetModelCompany}`)
-        .replace(/\*\*Llama(?:[- ][a-zA-Z0-9.]+)?\*\*/gi, `**${targetModelName}**`)
-        .replace(/Meta AI/gi, targetModelCompany)
-        // Moonshot / Kimi / Zhipu / GLM
-        .replace(/I am Kimi(?: created)?\s*by Moonshot AI/gi, `I am ${targetModelName} by ${targetModelCompany}`)
-        .replace(/I am GLM(?: created)?\s*by Zhipu AI/gi, `I am ${targetModelName} by ${targetModelCompany}`);
+        .replace(/\bby OpenAI\b/gi, "powered via Likeway AI")
+        .replace(/\bby Anthropic\b/gi, "powered via Likeway AI")
+        .replace(/\bby Google\b/gi, "powered via Likeway AI");
+      {
+        return cleaned;
+      }
 
+      // Vendor-specific branches previously rewrote one vendor's self-identity
+      // into another's. Attribution is now normalised only (see above); the
+      // model's real answer is preserved.
+      if (isSolModel || isTerraModel) {
+        return cleaned;
+      }
+
+      if (selectedModel.category === "Claude" || selectedModel.category === "GPT") {
+        return cleaned;
+      }
+
+      // Any other model: keep its real self-description. Only the vendor
+      // attribution is normalised, never the claimed identity.
       return cleaned;
     }
 
@@ -1871,14 +1869,8 @@ After the closing </thought> tag, present your structured, user-friendly final a
           );
         }
 
-        const danglingWordMatch = fullContent.match(/\s+(?:in|and|the|a|an|to|for|with|or|of|by|is|are|was|were|that|this|it|as|at|from)\s*$/i);
-        if (danglingWordMatch) {
-          const autoCompletion = " modern software systems worldwide.\n";
-          fullContent += autoCompletion;
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: autoCompletion } }] })}\n\n`)
-          );
-        }
+        // Never invent content to "finish" a truncated answer. If the provider
+        // stopped mid-sentence, the client shows what actually arrived.
 
         if (fullContent.trim()) {
           const finalCleaned = cleanFormatting(sanitizeSelfIdentity(fullContent));

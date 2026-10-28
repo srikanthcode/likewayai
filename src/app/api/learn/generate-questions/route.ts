@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
+import { requireIdentity, unauthorizedResponse } from "@/lib/request-auth";
+import { consumeEntitlement, entitlementDenied, resolveEffectivePlan } from "@/lib/entitlements";
 
 // POST /api/learn/generate-questions
 export async function POST(req: NextRequest) {
   try {
+    // Paid LLM call — never an open proxy.
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
+
+    const plan = await resolveEffectivePlan(identity.userId!, identity.plan, identity.role);
+    const entitlement = await consumeEntitlement(
+      identity.userId!,
+      plan,
+      "chat_messages",
+      identity.role
+    );
+    if (!entitlement.allowed) {
+      return NextResponse.json(entitlementDenied(entitlement), { status: 402 });
+    }
+
     const { courseId, moduleTitle, difficulty, count = 5 } = await req.json();
 
     const systemPrompt = `You are an expert educational content creator. Generate ${count} high-quality practice questions for the course "${courseId}" (Module: ${moduleTitle}) at ${difficulty} level.

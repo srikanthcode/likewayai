@@ -1,6 +1,15 @@
 import { API_KEYS } from "@/config/keys";
+import { fetchLLM7Response, LLM7_BASE_URL, LLM7_API_KEY } from "@/lib/llm7";
 
-type Provider = "openrouter" | "groq" | "mistral" | "image" | "freemodels" | "tokenharbor";
+type Provider =
+  | "openrouter"
+  | "groq"
+  | "mistral"
+  | "image"
+  | "freemodels"
+  | "tokenharbor"
+  | "llm7"
+  | "qwen";
 
 // ── Model mapping for each provider ──────────────────────────────────────
 // Key insight: Direct Mistral API expects model names WITHOUT "mistral/" prefix
@@ -12,7 +21,13 @@ const FALLBACK_MODELS: Record<Provider, string> = {
   image: "",
   freemodels: "llama-3.3-70b-versatile", // fallback within free proxy
   tokenharbor: "mimo-v2.6-flash:free",   // default to mimo for tokenharbor
+  llm7: "fast",
+  qwen: process.env.QWEN_MODEL || "qwen3.8-27b",
 };
+
+// Self-hosted Qwen, OpenAI-compatible.
+const QWEN_BASE_URL = process.env.QWEN_BASE_URL || "https://qwen.ai.unturf.com/v1";
+const QWEN_API_KEY = process.env.QWEN_API_KEY || "";
 
 // TokenHarbor API key — server-side only. MUST come from the environment;
 // it is never hardcoded in source. Set TOKENHARBOR_API_KEY in .env / Vercel.
@@ -26,6 +41,8 @@ const PROVIDER_INFO: Record<Provider, { envVar: string; url: string }> = {
   image: { envVar: "IMAGE_GENERATION_KEYS", url: "https://api.deepai.org/api/text2img" },
   freemodels: { envVar: "", url: "https://freemodels-chat.freemodels.workers.dev/v1/chat/completions" },
   tokenharbor: { envVar: "TOKENHARBOR_API_KEY", url: `${TOKENHARBOR_BASE_URL}/chat/completions` },
+  llm7: { envVar: "LLM7_API_KEY", url: `${LLM7_BASE_URL}/chat/completions` },
+  qwen: { envVar: "QWEN_API_KEY", url: `${QWEN_BASE_URL}/chat/completions` },
 };
 
 class KeyPool {
@@ -41,6 +58,9 @@ class KeyPool {
       image: API_KEYS.image || [],
       freemodels: [], // no API key needed — direct fetch in route
       tokenharbor: [TOKENHARBOR_API_KEY].filter(Boolean), // TokenHarbor key
+      llm7: [LLM7_API_KEY || "unused"],
+      // Keyless by default; send a key only when the deployment configures one.
+      qwen: QWEN_API_KEY ? [QWEN_API_KEY] : ["unused"],
     };
     this.indices = {
       openrouter: 0,
@@ -49,6 +69,8 @@ class KeyPool {
       image: 0,
       freemodels: 0,
       tokenharbor: 0,
+      llm7: 0,
+      qwen: 0,
     };
   }
 
@@ -222,6 +244,33 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
       console.warn("[fetchAI] freemodels proxy request failed:", err);
     }
     // Fall back to openrouter if proxy fails
+    provider = "openrouter";
+  }
+
+  // ── LLM7 gateway handler (OpenAI-compatible) ─────────────────────────
+  if (provider === "llm7") {
+    try {
+      let bodyObj: any = {};
+      try {
+        bodyObj = typeof options.body === "string" ? JSON.parse(options.body) : (options.body || {});
+      } catch {}
+
+      const llm7Res = await fetchLLM7Response({
+        messages: bodyObj.messages || [],
+        model: bodyObj.model || "fast",
+        stream: !!bodyObj.stream,
+        temperature: bodyObj.temperature ?? 0.7,
+        max_tokens: bodyObj.max_tokens,
+      });
+
+      if (llm7Res.ok) {
+        return llm7Res;
+      }
+      console.warn("[fetchAI] LLM7 direct request returned status:", llm7Res.status);
+    } catch (err) {
+      console.warn("[fetchAI] LLM7 direct request failed:", err);
+    }
+    // Fall back to openrouter if direct LLM7 fails
     provider = "openrouter";
   }
 
@@ -402,6 +451,39 @@ export async function fetchAI(provider: Provider, url: string, options: any) {
   }
 
   // ── ALL PROVIDERS EXHAUSTED ────────────────────────────────────────────
+  // ── ULTIMATE RESILIENCE FALLBACK: LLM7 Gateway ─────────────────────────
+  // If all standard providers failed, timed out, or ran out of quota/keys,
+  // engage LLM7 OpenAI-compatible fallback ("fast" smart selector).
+  console.warn(
+    "[fetchAI] All standard providers exhausted. Engaging LLM7 ultimate fallback..."
+  );
+  try {
+    let messages: any[] = [];
+    let bodyObj: any = {};
+    try {
+      bodyObj = typeof options.body === "string" ? JSON.parse(options.body) : (options.body || {});
+      messages = bodyObj.messages || [];
+    } catch {}
+
+    if (messages.length > 0) {
+      const llm7Response = await fetchLLM7Response({
+        messages,
+        model: "fast",
+        stream: !!bodyObj.stream,
+        temperature: bodyObj.temperature ?? 0.7,
+        max_tokens: bodyObj.max_tokens,
+      });
+
+      if (llm7Response && llm7Response.ok) {
+        console.log("[fetchAI] LLM7 ultimate fallback succeeded!");
+        return llm7Response;
+      }
+      console.warn("[fetchAI] LLM7 ultimate fallback responded with status:", llm7Response?.status);
+    }
+  } catch (llm7Err) {
+    console.error("[fetchAI] LLM7 ultimate fallback attempt failed:", llm7Err);
+  }
+
   // Determine the reason for detailed error message
   const configuredProviders = allProviders.filter(p => keyPool.keyCount(p) > 0);
   const triedSet = new Set(triedProviders.map(t => t.split("#")[0]));

@@ -217,9 +217,31 @@ let _lastConnectAttempt = 0;
 let _fallbackClient: MongoClient | null = null;
 const RETRY_COOLDOWN_MS = 60000;
 
+/**
+ * In-memory fallback is a DEVELOPMENT convenience only.
+ *
+ * In production it is a data-loss and security hazard: every restart drops all
+ * user data, and multiple instances each see a different "database". A
+ * deployment must never silently degrade to it, so production refuses to start
+ * without a real connection configured.
+ */
+function assertProductionDatabase(uriConfigured: boolean): void {
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.LIKEWAY_ALLOW_MEMORY_DB === "1") return;
+  if (uriConfigured) return;
+
+  throw new Error(
+    "[MongoDB] MONGODB_URI is required in production. " +
+      "Refusing to start with an in-memory database. " +
+      "Set MONGODB_URI, or set LIKEWAY_ALLOW_MEMORY_DB=1 for an explicitly throwaway environment."
+  );
+}
+
 function createClientPromise(): Promise<MongoClient> {
+  assertProductionDatabase(Boolean(uri));
+
   if (!uri) {
-    console.warn("[MongoDB] MONGODB_URI not set — using resilient in-memory client.");
+    console.warn("[MongoDB] MONGODB_URI not set — using resilient in-memory client (development only).");
     return Promise.resolve(createMockClient());
   }
 
@@ -238,6 +260,18 @@ function createClientPromise(): Promise<MongoClient> {
         return c;
       })
       .catch((err) => {
+        const isProd = process.env.NODE_ENV === "production";
+        const memoryAllowed = process.env.LIKEWAY_ALLOW_MEMORY_DB === "1";
+
+        if (isProd && !memoryAllowed) {
+          // Surface the failure. The proxy client is reused for RETRY_COOLDOWN_MS,
+          // after which a new connection is attempted; no data is ever written
+          // to a throwaway store in production.
+          console.error("[MongoDB] CRITICAL: production database connection failed:", err.message);
+          global._mongoClientPromise = undefined;
+          throw err;
+        }
+
         console.error("[MongoDB] Connection error, activating resilient fallback client:", err.message);
         _lastConnectAttempt = Date.now();
         _fallbackClient = createMockClient();

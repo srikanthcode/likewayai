@@ -1,11 +1,40 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isMongoConfigured } from "@/lib/mongodb";
 import { keyPool } from "@/lib/api-manager";
 import { validateEnv } from "@/lib/env-validate";
+import { getRequestIdentity, isAdmin } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Which secrets are configured, how many keys each provider has, and the
+  // exact validation errors are reconnaissance data. They are served to
+  // operators only; everyone else gets a boolean status.
+  const identity = getRequestIdentity(req);
+  if (!isAdmin(identity)) {
+    let dbStatus = "not_configured";
+    if (isMongoConfigured()) {
+      try {
+        const clientPromise = (await import("@/lib/mongodb")).default;
+        const client = await Promise.race([
+          clientPromise,
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+        ]);
+        await client.db("admin").command({ ping: 1 });
+        dbStatus = "healthy";
+      } catch {
+        dbStatus = "unavailable";
+      }
+    }
+    return NextResponse.json(
+      {
+        status: dbStatus === "unavailable" ? "degraded" : "ok",
+        timestamp: new Date().toISOString(),
+      },
+      { status: dbStatus === "unavailable" ? 503 : 200 }
+    );
+  }
+
   const checkKey = (val: string | undefined) => {
     if (!val || val.trim() === "") return "MISSING";
     return "SET";

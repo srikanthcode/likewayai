@@ -4,10 +4,48 @@
 // desktop or web applications with user confirmation / auto-launch.
 // ══════════════════════════════════════════════════════════════════════
 
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// ── Input hardening ────────────────────────────────────────────────────────
+// Nothing user-supplied is ever interpolated into a shell string. Values are
+// either validated against a strict charset or handed to the child process
+// through an environment variable, so PowerShell only ever evaluates a
+// constant script template.
+
+/** App names we are willing to search for. */
+const SAFE_APP_NAME = /^[A-Za-z0-9 ._+\-]{1,40}$/;
+/** Package family identifiers returned by Get-StartApps. */
+const SAFE_APP_ID = /^[A-Za-z0-9._!\-]{1,200}$/;
+
+export function isSafeAppName(value: unknown): value is string {
+  return typeof value === "string" && SAFE_APP_NAME.test(value.trim());
+}
+
+function isSafeAppId(value: unknown): value is string {
+  return typeof value === "string" && SAFE_APP_ID.test(value);
+}
+
+/** Only http(s) URLs may be handed to the OS "open" handler. */
+function isSafeExternalUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+async function runPowerShell(script: string, env: Record<string, string>, timeout: number) {
+  return execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    timeout,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, ...env },
+  });
+}
 
 /**
  * OS-level control only works when this server runs on the user's OWN machine.
@@ -281,6 +319,15 @@ export function detectComputerControlIntent(prompt: string): {
  * Searches the Windows system for installed apps matching the target name
  */
 export async function findSystemApp(appName: string): Promise<AppDetectionResult> {
+  if (!isSafeAppName(appName)) {
+    return {
+      foundOnSystem: false,
+      appName: String(appName).slice(0, 40),
+      displayName: "Unsupported app name",
+      protocol: undefined,
+      webUrl: undefined,
+    };
+  }
   const normalized = appName.toLowerCase().trim();
   const known = KNOWN_SYSTEM_APPS.find(
     (a) => a.id === normalized || a.name === normalized || a.displayName.toLowerCase() === normalized
@@ -303,16 +350,21 @@ export async function findSystemApp(appName: string): Promise<AppDetectionResult
     };
   }
 
-  // Check via Windows Get-StartApps
+  // Check via Windows Get-StartApps.
+  // The search term travels through an environment variable, so the script is a
+  // constant and the value can never break out into executable PowerShell.
   try {
     const searchPattern = known?.name || normalized;
-    const cmd = `Get-StartApps | Where-Object { $_.Name -like "*${searchPattern}*" } | Select-Object -First 1 | ConvertTo-Json`;
-    const { stdout } = await execAsync(cmd, { shell: "powershell.exe", timeout: 8000 });
+    const { stdout } = await runPowerShell(
+      'Get-StartApps | Where-Object { $_.Name -like "*$env:LW_APP_SEARCH*" } | Select-Object -First 1 | ConvertTo-Json',
+      { LW_APP_SEARCH: searchPattern },
+      8000
+    );
 
     if (stdout && stdout.trim()) {
       try {
         const parsed = JSON.parse(stdout.trim());
-        if (parsed.AppID) {
+        if (isSafeAppId(parsed.AppID)) {
           return {
             foundOnSystem: true,
             appId: parsed.AppID,
@@ -331,7 +383,10 @@ export async function findSystemApp(appName: string): Promise<AppDetectionResult
   // Check if executable exists via where.exe
   if (known?.defaultExe) {
     try {
-      const { stdout } = await execAsync(`where.exe ${known.defaultExe}`, { timeout: 3000 });
+      const { stdout } = await execFileAsync("where.exe", [known.defaultExe], {
+        timeout: 3000,
+        windowsHide: true,
+      });
       if (stdout && stdout.trim()) {
         const exePath = stdout.trim().split("\n")[0].trim();
         return {
@@ -364,13 +419,13 @@ export async function launchSystemApp(appName: string): Promise<AppLaunchResult>
   const isWindows = process.platform === "win32";
 
   // 1. Launch via Windows AppID (StartApps package)
-  if (detection.foundOnSystem && detection.appId && isWindows) {
+  if (detection.foundOnSystem && detection.appId && isWindows && isSafeAppId(detection.appId)) {
     try {
-      // explorer.exe shell:AppsFolder\<AppID> launches any UWP or packaged app cleanly
-      await execAsync(`Start-Process "shell:AppsFolder\\${detection.appId}"`, {
-        shell: "powershell.exe",
-        timeout: 6000,
-      });
+      // shell:AppsFolder\<AppID> launches any UWP or packaged app cleanly.
+      // The target is passed as data, never as script text.
+      await runPowerShell("Start-Process $env:LW_LAUNCH_TARGET", {
+        LW_LAUNCH_TARGET: `shell:AppsFolder\\${detection.appId}`,
+      }, 6000);
 
       return {
         ...detection,
@@ -384,12 +439,13 @@ export async function launchSystemApp(appName: string): Promise<AppLaunchResult>
   }
 
   // 2. Launch via native URI Protocol (e.g. whatsapp://, spotify://, calc:)
-  if (detection.protocol && isWindows) {
+  // Protocols come only from the static KNOWN_SYSTEM_APPS table.
+  const knownProtocol = KNOWN_SYSTEM_APPS.find((a) => a.protocol === detection.protocol)?.protocol;
+  if (knownProtocol && isWindows) {
     try {
-      await execAsync(`Start-Process "${detection.protocol}"`, {
-        shell: "powershell.exe",
-        timeout: 5000,
-      });
+      await runPowerShell("Start-Process $env:LW_LAUNCH_TARGET", {
+        LW_LAUNCH_TARGET: knownProtocol,
+      }, 5000);
 
       return {
         ...detection,
@@ -405,12 +461,11 @@ export async function launchSystemApp(appName: string): Promise<AppLaunchResult>
   // 3. Launch via executable name
   const known = KNOWN_SYSTEM_APPS.find((a) => a.id === appName.toLowerCase().trim());
   const exeToRun = detection.exePath || known?.defaultExe;
-  if (exeToRun && isWindows) {
+  if (exeToRun && isWindows && isSafeAppName(exeToRun)) {
     try {
-      await execAsync(`Start-Process "${exeToRun}"`, {
-        shell: "powershell.exe",
-        timeout: 5000,
-      });
+      await runPowerShell("Start-Process -FilePath $env:LW_LAUNCH_EXE", {
+        LW_LAUNCH_EXE: exeToRun,
+      }, 5000);
 
       return {
         ...detection,
@@ -425,12 +480,11 @@ export async function launchSystemApp(appName: string): Promise<AppLaunchResult>
 
   // 4. Web fallback if desktop launch unavailable or not running on local Windows
   if (detection.webUrl) {
-    if (isWindows) {
+    if (isWindows && isSafeExternalUrl(detection.webUrl)) {
       try {
-        await execAsync(`Start-Process "${detection.webUrl}"`, {
-          shell: "powershell.exe",
-          timeout: 5000,
-        });
+        await runPowerShell("Start-Process $env:LW_LAUNCH_URL", {
+          LW_LAUNCH_URL: detection.webUrl,
+        }, 5000);
         return {
           ...detection,
           success: true,

@@ -21,12 +21,15 @@ export async function POST() {
   const isProd = process.env.NODE_ENV === "production";
   const oneYear = 365 * 24 * 60 * 60; // 1 year
 
+  // Guest mode is a UI preference, not an identity: the guest id above is
+  // never trusted by the API. Cookies stay httpOnly so page scripts cannot
+  // forge a guest session, and are never used to grant quota or access.
   response.cookies.set("lw_guest", "true", {
     path: "/",
     maxAge: oneYear,
     sameSite: "lax",
     secure: isProd,
-    httpOnly: false, // Accessible to client scripts if needed
+    httpOnly: true,
   });
 
   response.cookies.set("likeway_guest_mode", "true", {
@@ -34,7 +37,7 @@ export async function POST() {
     maxAge: oneYear,
     sameSite: "lax",
     secure: isProd,
-    httpOnly: false,
+    httpOnly: true,
   });
 
   return response;

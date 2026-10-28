@@ -1,23 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeIntegrationTool } from "@/lib/integrations/integration-registry";
-import { verifyAccessToken } from "@/lib/auth";
+import { requireIdentity, unauthorizedResponse } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 
-function getUserId(req: NextRequest): string {
-  try {
-    const cookie = req.cookies.get("lw_at")?.value || req.cookies.get("likeway_access_token")?.value;
-    if (cookie) {
-      const payload = verifyAccessToken(cookie);
-      if (payload?.sub) return payload.sub;
-    }
-  } catch {}
-  return req.headers.get("x-user-id") || "guest-user";
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const userId = getUserId(req);
+    // Tool execution acts with the user's connected credentials — never run it
+    // for a caller we cannot identify.
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
+    const userId = identity.userId!;
     const { toolName, params } = await req.json();
 
     if (!toolName) {

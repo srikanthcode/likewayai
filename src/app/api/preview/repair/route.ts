@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAI } from "@/lib/api-manager";
+import { requireIdentity, unauthorizedResponse } from "@/lib/request-auth";
+import { consumeEntitlement, entitlementDenied, resolveEffectivePlan } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // This route calls a paid LLM. It is authenticated and metered.
+    const identity = requireIdentity(req);
+    if (!identity) return unauthorizedResponse();
+
+    const plan = await resolveEffectivePlan(identity.userId!, identity.plan, identity.role);
+    const entitlement = await consumeEntitlement(
+      identity.userId!,
+      plan,
+      "autonomous_app_builder",
+      identity.role
+    );
+    if (!entitlement.allowed) {
+      return NextResponse.json(entitlementDenied(entitlement), { status: 402 });
+    }
+
     const { code, error, stack, language, title } = await req.json();
 
     if (!code || !error) {

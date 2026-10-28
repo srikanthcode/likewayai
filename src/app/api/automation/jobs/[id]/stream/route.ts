@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { browserJobQueue, JobStep, AutomationJob } from "@/lib/automation/job-queue";
+import { getRequestIdentity, canAccessResource } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -8,38 +9,58 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+const STREAM_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  // Event streams carry a user's live task data — never open them to all origins.
+  "Vary": "Origin",
+};
+
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
+
+  // A stream reveals a job's task, steps, screenshots and result. It is
+  // authenticated and owner-scoped before any event is emitted.
+  const identity = getRequestIdentity(req);
+  if (!identity.userId) {
+    return NextResponse.json({ error: "Sign in to view this job." }, { status: 401 });
+  }
+
   const isOnVercel = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
   const isRender = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
 
   // On Vercel: proxy SSE stream from Render backend
   if (isOnVercel && !isRender) {
-    const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://likewayai.onrender.com";
+    const renderUrl = process.env.RENDER_API_URL || process.env.NEXT_PUBLIC_API_URL;
     const selfUrl = req.nextUrl.origin;
+
+    if (!renderUrl) {
+      return NextResponse.json({ error: "Automation backend is not configured." }, { status: 503 });
+    }
 
     if (renderUrl !== selfUrl && !renderUrl.startsWith(selfUrl + "/")) {
       try {
         const upstream = await fetch(`${renderUrl}/api/automation/jobs/${id}/stream`, {
           headers: {
             Accept: "text/event-stream",
-            ...(req.headers.get("authorization") ? { Authorization: req.headers.get("authorization")! } : {}),
+            "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+            "x-internal-user-id": identity.userId,
           },
           signal: req.signal,
         });
 
-        return new Response(upstream.body, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
+        return new Response(upstream.body, { headers: STREAM_HEADERS });
       } catch (err: any) {
         console.error("[Job Stream Proxy Error]", err);
       }
     }
+  }
+
+  // Check ownership up front; do not open a stream for a job the caller cannot see.
+  const jobForAuth = await browserJobQueue.getJob(id);
+  if (!jobForAuth || !canAccessResource(identity, jobForAuth.userId)) {
+    return NextResponse.json({ error: `Job "${id}" not found` }, { status: 404 });
   }
 
   const encoder = new TextEncoder();
@@ -118,12 +139,5 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
+  return new Response(stream, { headers: STREAM_HEADERS });
 }

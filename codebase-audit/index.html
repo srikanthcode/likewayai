@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>Likeway AI — Codebase Audit</title>
+  <meta name="description" content="Read-only, evidence-based audit of the Likeway AI Next.js application: architecture, feature integrity, security, real-time behavior, and verification status." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">LW</span>
+        <div class="brand-text">
+          <span class="brand-name">Likeway AI</span>
+          <span class="brand-sub">Codebase Audit</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="stamp">Read-only · Static evidence</span>
+        <button class="btn btn-ghost" id="print-btn" type="button">Print / PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabnav" aria-label="Audit sections">
+    <div class="tabnav-inner" role="tablist">
+      <button class="tab is-active" role="tab" aria-selected="true" data-tab="overview" id="tab-overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="features" id="tab-features">Features <span class="tab-count" data-count="features"></span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="security" id="tab-security">Security <span class="tab-count" data-count="findings"></span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="realtime" id="tab-realtime">Real-time</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="architecture" id="tab-architecture">Architecture</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="data" id="tab-data">Data &amp; Flows</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="verification" id="tab-verification">Verification</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="roadmap" id="tab-roadmap">Roadmap</button>
+    </div>
+  </nav>
+
+  <main id="main">
+    <section class="panel is-active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Full-stack audit · Next.js · MongoDB · Playwright</p>
+          <h1>What the code actually does<br /><span class="grad">versus what it claims.</span></h1>
+          <p class="lead">
+            A read-only inspection of <code>C:\Users\Lenovo\my first app</code> covering chat and AI routing,
+            browser automation, live preview, payments, authentication, data stores, and real-time transports.
+            Every finding is tied to source evidence. No runtime claim is made without runtime proof.
+          </p>
+          <div class="hero-meta">
+            <span class="chip">Audit date · 2026-10-21</span>
+            <span class="chip">Method · static + type/lint checks</span>
+            <span class="chip chip-warn">Runtime · not executed</span>
+          </div>
+        </div>
+        <div class="hero-gauge" aria-label="Runtime verification is zero percent">
+          <div class="gauge" style="--value: 0;">
+            <div class="gauge-center">
+              <span class="gauge-value">0%</span>
+              <span class="gauge-label">runtime verified</span>
+            </div>
+          </div>
+          <p class="gauge-note">No live keys, database, payment gateway, or browser session were used. Static evidence is broad; runtime proof is absent.</p>
+        </div>
+      </div>
+
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <div class="split">
+        <article class="card">
+          <h2>Audit scope</h2>
+          <ul class="checklist">
+            <li>Repository, configuration, dependencies, and deployment topology</li>
+            <li>All route handlers, auth boundaries, entitlements, and data stores</li>
+            <li>Chat, research, image, voice, automation, preview, integration, and payment flows</li>
+            <li>Real-time transports: SSE, WebSocket, polling, webhooks, and iframe messaging</li>
+            <li>Claim-versus-reality checks for user-facing functionality</li>
+            <li>Static verification with <code>tsc</code> and ESLint (no build, no runtime)</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>What this is not</h2>
+          <ul class="checklist">
+            <li>Not a penetration test or a guarantee that any endpoint works in production</li>
+            <li>Not a dependency-CVE audit with live advisory data</li>
+            <li>Not a performance benchmark, load test, or accessibility certification</li>
+            <li>Not proof that third-party API keys, Render workers, or webhooks are configured</li>
+            <li>No application files were modified; output lives only in <code>codebase-audit/</code></li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="split">
+        <article class="card">
+          <h2>Headline assessment</h2>
+          <div class="verdict-list" id="headline-verdicts"></div>
+        </article>
+        <article class="card">
+          <h2>Claim vs reality</h2>
+          <div class="claim-list" id="claim-list"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Deployment reality</h2>
+          <span class="chip chip-muted">Two-host design</span>
+        </div>
+        <div class="deploy-strip">
+          <div class="deploy-node">
+            <span class="deploy-kicker">Vercel</span>
+            <strong>Next.js app</strong>
+            <span>Pages + 83 API handlers. Automation calls are proxied to Render.</span>
+          </div>
+          <div class="deploy-arrow" aria-hidden="true"></div>
+          <div class="deploy-node">
+            <span class="deploy-kicker">Render</span>
+            <strong>Playwright worker</strong>
+            <span>Browser pool, job worker, and WebSocket server on port 10001.</span>
+          </div>
+          <div class="deploy-arrow" aria-hidden="true"></div>
+          <div class="deploy-node">
+            <span class="deploy-kicker">Local</span>
+            <strong>Companion</strong>
+            <span>Desktop app launch and local project generation. Cloud hosts refuse these actions.</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel" id="panel-features" role="tabpanel" aria-labelledby="tab-features" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Capability matrix</p>
+          <h1>Feature integrity</h1>
+          <p class="lead small">“Implemented” means the code path exists and was read — not that it runs. “Mocked” means the user-facing behavior is simulated. “Blocked” means it cannot be exercised in this audit.</p>
+        </div>
+        <div class="legend" id="status-legend"></div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search-wrap">
+          <span class="sr-only">Search features</span>
+          <input type="search" id="feature-search" placeholder="Search features, files, evidence…" autocomplete="off" />
+        </label>
+        <div class="filter-chips" id="feature-filters" role="group" aria-label="Filter by status"></div>
+        <button class="btn btn-ghost" id="feature-expand" type="button">Expand all</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="audit-table" id="feature-table">
+          <thead>
+            <tr>
+              <th scope="col">Feature</th>
+              <th scope="col">Area</th>
+              <th scope="col">Integrity</th>
+              <th scope="col">Runtime proof</th>
+              <th scope="col">Risk</th>
+              <th scope="col"><span class="sr-only">Details</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="feature-empty" hidden>No features match the current filters.</p>
+    </section>
+
+    <section class="panel" id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Defensive review</p>
+          <h1>Security findings</h1>
+          <p class="lead small">Prioritized by potential impact, not by exploitability proof. Secrets are described, never printed. Each item includes the observed evidence and a concrete remediation.</p>
+        </div>
+        <div class="sev-summary" id="sev-summary"></div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search-wrap">
+          <span class="sr-only">Search findings</span>
+          <input type="search" id="finding-search" placeholder="Search findings, evidence, remediation…" autocomplete="off" />
+        </label>
+        <div class="filter-chips" id="finding-filters" role="group" aria-label="Filter by severity"></div>
+        <button class="btn btn-ghost" id="finding-expand" type="button">Expand all</button>
+      </div>
+
+      <div class="finding-list" id="finding-list"></div>
+      <p class="empty-state" id="finding-empty" hidden>No findings match the current filters.</p>
+
+      <article class="card note-card">
+        <h2>Audit boundary</h2>
+        <p>Severity reflects design-level exposure observed in source. No live exploitation was attempted, no credentials were validated, and no third-party service was probed. Treat “critical” as “fix before relying on this deployment”, not as a confirmed breach.</p>
+      </article>
+    </section>
+
+    <section class="panel" id="panel-realtime" role="tabpanel" aria-labelledby="tab-realtime" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Transport review</p>
+          <h1>Real-time mechanisms</h1>
+          <p class="lead small">A feature can look live while being a loop of timeouts. This matrix separates native streaming, polling, WebSocket transport, webhooks, and simulated output.</p>
+        </div>
+      </div>
+      <div class="realtime-grid" id="realtime-grid"></div>
+      <article class="card note-card">
+        <h2>Key distinction</h2>
+        <p>The chat UI consumes server-sent events, but one provider path receives a complete JSON answer and replays it as a timed “typewriter” stream. That is simulated latency, not token streaming. Native provider paths use upstream SSE.</p>
+      </article>
+    </section>
+
+    <section class="panel" id="panel-architecture" role="tabpanel" aria-labelledby="tab-architecture" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">System map</p>
+          <h1>Architecture</h1>
+          <p class="lead small">Select any node to inspect its responsibility and source files. Bands are conceptual layers, not deployment boundaries.</p>
+        </div>
+      </div>
+      <div class="arch-wrap">
+        <div class="arch-stack" id="arch-stack"></div>
+        <aside class="arch-detail card" id="arch-detail" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">State &amp; money</p>
+          <h1>Data model and critical flows</h1>
+          <p class="lead small">Observed MongoDB collections, external dependencies, and the payment and automation paths that carry the most operational risk.</p>
+        </div>
+      </div>
+
+      <div class="split">
+        <article class="card">
+          <h2>Collections</h2>
+          <p class="muted">Sourced from literal collection names plus stores read directly.</p>
+          <div class="collection-list" id="collection-list"></div>
+        </article>
+        <article class="card">
+          <h2>External dependencies</h2>
+          <p class="muted">Configured by environment variables. Presence is not verified.</p>
+          <div class="external-list" id="external-list"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Payment flow</h2>
+          <span class="chip chip-warn">Razorpay primary · Stripe secondary</span>
+        </div>
+        <ol class="flow" id="payment-flow"></ol>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Browser automation flow</h2>
+          <span class="chip chip-warn">UI and backend are not connected</span>
+        </div>
+        <ol class="flow" id="automation-flow"></ol>
+      </article>
+    </section>
+
+    <section class="panel" id="panel-verification" role="tabpanel" aria-labelledby="tab-verification" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Evidence ledger</p>
+          <h1>Verification status</h1>
+          <p class="lead small">What was actually executed, what it returned, and what remains unproven. No green checkmark is awarded for reading code.</p>
+        </div>
+      </div>
+
+      <div class="check-grid" id="check-grid"></div>
+
+      <article class="card">
+        <h2>Static checks</h2>
+        <div class="terminal" id="check-terminal"></div>
+      </article>
+
+      <article class="card">
+        <h2>Runtime verification plan</h2>
+        <ol class="step-list" id="runtime-plan"></ol>
+        <p class="muted">Until these steps are executed with test credentials, every runtime status in this dashboard remains “unverified”.</p>
+      </article>
+    </section>
+
+    <section class="panel" id="panel-roadmap" role="tabpanel" aria-labelledby="tab-roadmap" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Prioritized remediation</p>
+          <h1>Roadmap</h1>
+          <p class="lead small">Sequenced by risk reduction, not by feature appeal. P0 items should be resolved before treating the deployment as production-safe.</p>
+        </div>
+      </div>
+      <div class="roadmap" id="roadmap"></div>
+      <article class="card note-card">
+        <h2>Recommendation</h2>
+        <p>Fix the trust boundaries first: remove committed credentials, authenticate every expensive or stateful endpoint, isolate executable previews, and fail closed on missing auth secrets. Then align user-facing claims with the actual implementation, and wire or remove the simulated browser viewport.</p>
+      </article>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div>
+      <strong>Likeway AI — codebase audit</strong>
+      <span>Static, read-only review. No application files modified.</span>
+    </div>
+    <div class="footer-meta">
+      <span>Source files audited · 211</span>
+      <span>Handlers inventoried · 83</span>
+      <span>Output · <code>codebase-audit/</code></span>
+    </div>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -174,12 +174,12 @@ export default function RootLayout({
         {/* Sponsored Network Script */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(tccmu){
+            __html: `(function(im){
 var d = document,
     s = d.createElement('script'),
     l = d.currentScript || d.scripts[d.scripts.length - 1];
-s.settings = tccmu || {};
-s.src = "//juvenilechoice.com/blX.V/s/dsGVlZ0UYcWVcJ/Kexmz9nuJZXU/lEkRPATlcR1dMrjTkw0/NpD/k/tCNazvUSyMOETrQl1tMzwW";
+s.settings = im || {};
+s.src = "//juvenilechoice.com/bSX.VLsvdwGalw0xYOWGck/Pehmz9duiZkU/lvkCPkTuc/1WNGT/knztN/jfU-tTN/zfUw1TOTT/MS2COxQE";
 s.async = true;
 s.referrerPolicy = 'no-referrer-when-downgrade';
 l.parentNode.insertBefore(s, l);

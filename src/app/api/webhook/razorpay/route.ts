@@ -3,6 +3,31 @@ import crypto from "crypto";
 import { updateUserSubscription, SubscriptionStatus } from "@/lib/user";
 import { PLANS, PlanType } from "@/lib/plans";
 import { getPaymentRef, markPaymentRefStatus } from "@/lib/payments-store";
+import clientPromise from "@/lib/mongodb";
+
+/**
+ * Claims a webhook event id. Returns true when the event was already handled.
+ * The unique index makes the check atomic across concurrent deliveries.
+ */
+async function claimWebhookEvent(eventId: string, eventType: string): Promise<boolean> {
+  const dbName = process.env.MONGODB_DB_NAME || "likeway_ai";
+  const client = await clientPromise;
+  const col = client.db(dbName).collection("webhook_events");
+  try {
+    await col.createIndex({ eventId: 1 }, { unique: true, name: "webhook_event_id" });
+  } catch {
+    /* index may already exist */
+  }
+  try {
+    await col.insertOne({ eventId, eventType, receivedAt: new Date() });
+    return false;
+  } catch (err: any) {
+    // 11000 = duplicate key → this delivery is a retry.
+    if (err?.code === 11000) return true;
+    // If we cannot record the event, fail closed rather than double-apply.
+    throw err;
+  }
+}
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (!a || !b || a.length !== b.length) return false;
@@ -37,7 +62,19 @@ export async function POST(req: NextRequest) {
     const event = JSON.parse(body);
     const eventType: string = event.event || "";
     const payload = event.payload || {};
+    const eventId =
+      req.headers.get("x-razorpay-event-id") ||
+      (event as any)?.id ||
+      crypto.createHash("sha256").update(body).digest("hex");
     console.log("[Webhook] Razorpay event:", eventType);
+
+    // ── Idempotency ───────────────────────────────────────────────────────
+    // Razorpay retries deliveries. Applying the same event twice would extend
+    // access twice, so the event id is claimed atomically first.
+    const alreadyProcessed = await claimWebhookEvent(eventId, eventType);
+    if (alreadyProcessed) {
+      return NextResponse.json({ status: "ok", duplicate: true });
+    }
 
     // ── Resolve the affected user + intended plan ─────────────────────────
     let userId: string | undefined;
