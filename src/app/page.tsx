@@ -65,7 +65,6 @@ import PremiumVoiceInput from "@/components/PremiumVoiceInput";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import AgentSelector from "@/components/AgentSelector";
 import PricingModal from "@/components/PricingModal";
-import FreeTierAdSlot from "@/components/FreeTierAdSlot";
 import VoiceCharacterSelector from "@/components/VoiceCharacterSelector";
 import AccountMenu from "@/components/AccountMenu";
 import SlashCommandMenu from "@/components/SlashCommandMenu";
@@ -3591,12 +3590,6 @@ export default function ChatPage() {
           </section>
         </div>
 
-        {/* ── Free-tier ad slot (never rendered for paying plans) ── */}
-        <FreeTierAdSlot
-          plan={currentPlan}
-          hasConversation={messages.length > 0}
-          className="chat-container px-4 pb-1 shrink-0"
-        />
 
         {/* ── Input Area ───────────────────────────────────── */}
         <div className="chat-input-wrapper transition-colors duration-300 shrink-0 safe-area-bottom">
