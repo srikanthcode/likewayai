@@ -45,6 +45,7 @@ export const PLANS: Record<PlanType, Plan> = {
     },
     features: [
       "Free unlimited chat with Claude Opus 5.5, Claude Sonnet 5.5, GPT 6 Astra & GPT 5.6 Sol",
+      "Supported by non-intrusive sponsored ads",
       "Multimodal vision, video & audio support",
       "Smart conversation assistant",
       "Web search capabilities",
@@ -91,6 +92,7 @@ export const PLANS: Record<PlanType, Plan> = {
       computerControl: 25,
     },
     features: [
+      "100% Ad-Free Experience",
       "Unlimited messages",
       "All frontier models unlocked (Claude, GPT, GLM, Kimi)",
       "GPT 6 Astra — 1 month unlimited free",
@@ -145,6 +147,7 @@ export const PLANS: Record<PlanType, Plan> = {
       computerControl: -1,
     },
     features: [
+      "100% Ad-Free Experience",
       "Unlimited messages",
       "23 elite frontier AI models unlocked",
       "Architect Coding Agent for 50+ languages",
@@ -176,6 +179,7 @@ export const PLANS: Record<PlanType, Plan> = {
       computerControl: -1,
     },
     features: [
+      "100% Ad-Free Experience",
       "Unlimited messages & zero daily caps",
       "All models unlocked — ultimate frontier power",
       "Early access to cutting-edge reasoning models",
