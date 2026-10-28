@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { MoreHorizontal, X, Info, ShieldCheck, Sparkles, ExternalLink } from "lucide-react";
+import { MoreHorizontal, X, Info, ShieldCheck, Sparkles, ArrowUpRight, Zap, Globe, Server, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ZONE_SCRIPT_URL = "//juvenilechoice.com/bSX.VLsvdwGalw0xYOWGck/Pehmz9duiZkU/lvkCPkTuc/1WNGT/knztN/jfU-tTN/zfUw1TOTT/MS2COxQE";
@@ -21,25 +21,21 @@ export default function ChatGPTStyleAd({
   const [isDismissed, setIsDismissed] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [adLoaded, setAdLoaded] = useState(false);
   const adSlotRef = useRef<HTMLDivElement>(null);
 
   const isDark = theme === "dark";
 
+  // Mount HilltopAds background tracking script
   useEffect(() => {
     if (isDismissed || !adSlotRef.current) return;
 
-    // Clear previous children
-    adSlotRef.current.innerHTML = "";
-
-    const script = document.createElement("script");
-    script.src = ZONE_SCRIPT_URL;
-    script.async = true;
-    script.referrerPolicy = "no-referrer-when-downgrade";
-    script.onload = () => setAdLoaded(true);
-    script.onerror = () => setAdLoaded(false);
-
-    adSlotRef.current.appendChild(script);
+    try {
+      const script = document.createElement("script");
+      script.src = ZONE_SCRIPT_URL;
+      script.async = true;
+      script.referrerPolicy = "no-referrer-when-downgrade";
+      adSlotRef.current.appendChild(script);
+    } catch {}
 
     return () => {
       if (adSlotRef.current) {
@@ -71,143 +67,175 @@ export default function ChatGPTStyleAd({
             "relative rounded-2xl border p-3.5 sm:p-4 transition-all duration-200 group shadow-sm overflow-hidden",
             isDark
               ? "bg-[#161616] border-white/10 hover:border-white/20 text-white"
-              : "bg-gray-50 border-gray-200 hover:border-gray-300 text-gray-900 shadow-sm"
+              : "bg-white border-gray-200 hover:border-gray-300 text-gray-900 shadow-sm"
           )}
         >
-          {/* Header row: Brand / Sponsor tag + Ad badge + Options Menu */}
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-2 h-2 rounded-full shrink-0 bg-amber-400 animate-pulse" />
-              <span
-                className={cn(
-                  "text-xs font-semibold truncate",
-                  isDark ? "text-gray-300" : "text-gray-700"
-                )}
-              >
-                Sponsored
+          <div className="flex items-start gap-3.5 sm:gap-4">
+            {/* Left Thumbnail / Logo Box */}
+            <a
+              href={CAMPAIGN_URL}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              className={cn(
+                "w-16 h-16 sm:w-20 sm:h-20 rounded-xl flex flex-col items-center justify-center p-2 text-center select-none shrink-0 transition-transform hover:scale-[1.03] shadow-sm overflow-hidden no-underline",
+                isDark
+                  ? "bg-gradient-to-br from-indigo-500/20 via-purple-500/10 to-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                  : "bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-violet-500/10 text-indigo-600 border border-indigo-200"
+              )}
+              title="Verified Sponsor"
+            >
+              <Zap size={22} className="mb-0.5 animate-pulse" />
+              <span className="text-[10px] sm:text-[11px] font-bold tracking-tight leading-tight">
+                PRO SPONSOR
               </span>
-            </div>
+            </a>
 
-            <div className="flex items-center gap-1.5 relative">
-              <span
-                className={cn(
-                  "text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border",
-                  isDark
-                    ? "border-white/10 text-gray-400 bg-white/5"
-                    : "border-gray-200 text-gray-500 bg-gray-100"
-                )}
-              >
-                Ad
-              </span>
-
-              {/* Menu button */}
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowMenu((prev) => !prev);
-                }}
-                className={cn(
-                  "p-1 rounded-md transition-colors",
-                  isDark
-                    ? "text-gray-400 hover:text-white hover:bg-white/10"
-                    : "text-gray-500 hover:text-gray-900 hover:bg-gray-200"
-                )}
-                title="Ad options"
-              >
-                <MoreHorizontal size={14} />
-              </button>
-
-              {/* Dropdown Menu */}
-              {showMenu && (
-                <div
-                  className={cn(
-                    "absolute right-0 top-7 w-48 rounded-xl border shadow-xl z-50 py-1 text-xs",
-                    isDark
-                      ? "bg-[#1f2430] border-white/10 text-gray-200"
-                      : "bg-white border-gray-200 text-gray-800"
-                  )}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      setShowInfoModal(true);
-                    }}
+            {/* Right Content Details */}
+            <div className="flex-1 min-w-0 pr-1">
+              {/* Header row: Brand indicator + Name + Ad badge + Options Menu */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />
+                  <span
                     className={cn(
-                      "w-full text-left px-3 py-2 flex items-center gap-2 transition-colors",
-                      isDark ? "hover:bg-white/10" : "hover:bg-gray-100"
+                      "text-xs font-semibold truncate",
+                      isDark ? "text-gray-300" : "text-gray-700"
                     )}
                   >
-                    <Info size={13} className="text-gray-400" />
-                    <span>Why this ad?</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      setIsDismissed(true);
-                    }}
+                    Cloud & Developer Tools
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 relative">
+                  <span
                     className={cn(
-                      "w-full text-left px-3 py-2 flex items-center gap-2 transition-colors text-rose-400",
-                      isDark ? "hover:bg-white/10" : "hover:bg-gray-100"
+                      "text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border",
+                      isDark
+                        ? "border-white/10 text-gray-400 bg-white/5"
+                        : "border-gray-200 text-gray-500 bg-gray-100"
                     )}
                   >
-                    <X size={13} />
-                    <span>Hide this ad</span>
+                    Ad
+                  </span>
+
+                  {/* Menu button */}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMenu((prev) => !prev);
+                    }}
+                    className={cn(
+                      "p-1 rounded-md transition-colors",
+                      isDark
+                        ? "text-gray-400 hover:text-white hover:bg-white/10"
+                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-200"
+                    )}
+                    title="Ad options"
+                  >
+                    <MoreHorizontal size={14} />
                   </button>
-                  {onUpgradeClick && (
-                    <button
-                      onClick={() => {
-                        setShowMenu(false);
-                        onUpgradeClick();
-                      }}
+
+                  {/* Dropdown Menu */}
+                  {showMenu && (
+                    <div
                       className={cn(
-                        "w-full text-left px-3 py-2 flex items-center gap-2 transition-colors border-t font-medium text-cyan-400",
-                        isDark ? "border-white/10 hover:bg-white/10" : "border-gray-100 hover:bg-gray-100"
+                        "absolute right-0 top-7 w-48 rounded-xl border shadow-xl z-50 py-1 text-xs",
+                        isDark
+                          ? "bg-[#1f2430] border-white/10 text-gray-200"
+                          : "bg-white border-gray-200 text-gray-800"
                       )}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Sparkles size={13} />
-                      <span>Remove ads with ₹299 Go</span>
-                    </button>
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          setShowInfoModal(true);
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 flex items-center gap-2 transition-colors",
+                          isDark ? "hover:bg-white/10" : "hover:bg-gray-100"
+                        )}
+                      >
+                        <Info size={13} className="text-gray-400" />
+                        <span>Why this ad?</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          setIsDismissed(true);
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 flex items-center gap-2 transition-colors text-rose-400",
+                          isDark ? "hover:bg-white/10" : "hover:bg-gray-100"
+                        )}
+                      >
+                        <X size={13} />
+                        <span>Hide this ad</span>
+                      </button>
+                      {onUpgradeClick && (
+                        <button
+                          onClick={() => {
+                            setShowMenu(false);
+                            onUpgradeClick();
+                          }}
+                          className={cn(
+                            "w-full text-left px-3 py-2 flex items-center gap-2 transition-colors border-t font-medium text-cyan-400",
+                            isDark ? "border-white/10 hover:bg-white/10" : "border-gray-100 hover:bg-gray-100"
+                          )}
+                        >
+                          <Sparkles size={13} />
+                          <span>Remove ads with ₹299 Go</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          {/* Real Ad Network Container */}
-          <div
-            ref={adSlotRef}
-            className="w-full min-h-[90px] flex items-center justify-center text-center overflow-hidden my-1 rounded-xl"
-          >
-            {/* Real Network Ad from HilltopAds will render inside here */}
-            {!adLoaded && (
+              {/* Title / Headline (Links to live campaign) */}
               <a
                 href={CAMPAIGN_URL}
                 target="_blank"
                 rel="noopener noreferrer sponsored"
                 className={cn(
-                  "w-full py-4 px-3 rounded-xl border border-dashed flex flex-col sm:flex-row items-center justify-between gap-3 text-left no-underline transition-all hover:opacity-95",
-                  isDark
-                    ? "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
-                    : "border-black/10 bg-black/[0.02] hover:bg-black/[0.05]"
+                  "block mt-1 font-bold text-sm sm:text-base leading-snug no-underline hover:underline",
+                  isDark ? "text-white" : "text-gray-900"
                 )}
               >
-                <div className="flex-1 min-w-0">
-                  <p className={cn("text-xs font-semibold", isDark ? "text-gray-200" : "text-gray-800")}>
-                    Sponsored Partner Recommendation
-                  </p>
-                  <p className={cn("text-[11px] mt-0.5", isDark ? "text-gray-400" : "text-gray-500")}>
-                    Explore exclusive cloud, software & digital developer offers
-                  </p>
-                </div>
-                <span className="text-xs font-medium text-cyan-400 shrink-0 inline-flex items-center gap-1">
-                  <span>Visit Sponsor</span>
-                  <ExternalLink size={12} />
-                </span>
+                High-Performance Cloud & Software Solutions
               </a>
-            )}
+
+              {/* Description */}
+              <p
+                className={cn(
+                  "text-xs sm:text-[13px] leading-relaxed mt-0.5 line-clamp-2",
+                  isDark ? "text-gray-400" : "text-gray-600"
+                )}
+              >
+                Discover curated cloud hosting, developer platforms, and enterprise software solutions designed for scale.
+              </p>
+
+              {/* Action Link: "Learn more ↗" */}
+              <div className="mt-1.5 flex items-center gap-3">
+                <a
+                  href={CAMPAIGN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  className={cn(
+                    "text-xs font-semibold inline-flex items-center gap-1 transition-colors",
+                    isDark ? "text-cyan-400 hover:text-cyan-300" : "text-indigo-600 hover:text-indigo-700"
+                  )}
+                >
+                  <span>Learn more</span>
+                  <ArrowUpRight size={13} className="inline opacity-90" />
+                </a>
+              </div>
+            </div>
           </div>
+
+          {/* Hidden ad container to run HilltopAds background tracking */}
+          <div ref={adSlotRef} className="hidden" aria-hidden="true" />
         </div>
 
         {/* ChatGPT Style Disclaimer Line Below Card */}
@@ -222,7 +250,7 @@ export default function ChatGPTStyleAd({
           </span>
           <button
             onClick={() => setShowInfoModal(true)}
-            className="hover:underline text-[11px] font-medium transition-colors text-gray-400 hover:text-gray-300 inline-flex items-center gap-0.5"
+            className="hover:underline text-[11px] font-medium transition-colors text-gray-400 hover:text-gray-600 inline-flex items-center gap-0.5"
           >
             <span>Learn about ads and personalization</span>
             <span>›</span>
